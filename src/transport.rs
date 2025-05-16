@@ -1,7 +1,7 @@
 // src/transport.rs
 
 // Licença Apache 2.0
-// Copyright [ANO_ATUAL] [SEU_NOME_OU_ORGANIZACAO]
+// Copyright 2024 Guilherme Leste
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
