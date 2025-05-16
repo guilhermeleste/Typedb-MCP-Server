@@ -3,17 +3,22 @@
 ## Build Multiplataforma com Docker Buildx
 
 Pré-requisitos:
+
 - Docker com suporte a buildx
 - QEMU para cross-build:
+
   ```sh
   docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
   ```
+
 - Toolchains Rust para multiplataforma:
+
   ```sh
   rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
   ```
 
 Build multiplataforma e push para Docker Hub:
+
 ```sh
 docker buildx build --platform linux/amd64,linux/arm64 \
   -t seu-usuario/typedb-mcp-server:latest --push .
@@ -22,7 +27,9 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 ## Exemplos de Uso com OAuth2
 
 ### Ambiente Real (Auth Server Externo)
+
 No `docker-compose.yml`:
+
 ```yaml
 services:
   typedb-mcp-server:
@@ -34,7 +41,9 @@ services:
 ```
 
 ### Ambiente de Desenvolvimento/Teste (Mock JWKS)
+
 No `docker-compose.yml`:
+
 ```yaml
 services:
   mock-auth-server:
@@ -51,12 +60,14 @@ services:
 ```
 
 ## Healthcheck
+
 - O endpoint `/health` é usado para liveness/readiness.
 - Endpoints adicionais: `/livez`, `/readyz`.
 
 ## Scripts Auxiliares
 
 ### buildx-multiplatform.sh
+
 ```sh
 #!/bin/bash
 # Build multiplataforma e push para Docker Hub
@@ -72,6 +83,7 @@ docker buildx build --platform $PLATFORMS -t $IMAGE --push .
 ```
 
 ### run-mock-oauth2.sh
+
 ```sh
 #!/bin/bash
 # Sobe um mock JWKS server local para OAuth2
