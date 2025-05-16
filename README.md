@@ -125,7 +125,7 @@ $ cargo run --release
 
 ## Estrutura de Pastas
 
-```
+```sh
 ├── src/
 │   ├── main.rs              # Binário principal
 │   ├── lib.rs               # Biblioteca central

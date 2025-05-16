@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  typedb-mcp-server-it:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: typedb-mcp-server-it-compose
+    ports:
+      - "${MCP_SERVER_TEST_PORT:-8788}:8787"
+    volumes:
+      - ./config.test.toml:/app/typedb_mcp_server_config.toml:ro
+      - ./certs/generated:/app/certs:ro
+    environment:
+      - RUST_LOG=${RUST_LOG:-info,typedb_mcp_server_lib=debug}
+      - MCP_CONFIG_PATH=/app/typedb_mcp_server_config.toml
+      - TYPEDB_ADDRESS=typedb-server-it:1729
+      - TYPEDB_USERNAME=${TYPEDB_USERNAME:-admin}
+      - TYPEDB_PASSWORD=${TYPEDB_PASSWORD}
+      - TYPEDB_TLS_ENABLED=${TYPEDB_TLS_ENABLED:-false}
+      - TYPEDB_TLS_CA_PATH=${TYPEDB_TLS_CA_PATH:-/app/certs/typedb-ca.pem}
+      - MCP_SERVER_TLS_ENABLED=${MCP_SERVER_TLS_ENABLED:-false}
+      - MCP_SERVER_CERT_PATH=${MCP_SERVER_CERT_PATH:-/app/certs/mcp-server.crt}
+      - MCP_SERVER_KEY_PATH=${MCP_SERVER_KEY_PATH:-/app/certs/mcp-server.key}
+      - MCP_AUTH_OAUTH_ENABLED=${MCP_AUTH_OAUTH_ENABLED:-false}
+      - MCP_AUTH_OAUTH_JWKS_URI=${MCP_AUTH_OAUTH_JWKS_URI}
+    depends_on:
+      - typedb-server-it
+    networks:
+      - typedb_mcp_test_network
+    restart: "no"
+
+  typedb-server-it:
+    image: typedb/typedb:3.2.0
+    container_name: typedb-server-it-compose
+    environment:
+      - TYPEDB_SERVER_OPTS=--server.authentication.enable=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - typedb_mcp_test_network
+
+networks:
+  typedb_mcp_test_network:
+    driver: bridge

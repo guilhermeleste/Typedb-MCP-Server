@@ -1,0 +1,82 @@
+# Git
+.git/
+.gitignore
+
+# Cargo build artifacts
+target/
+
+# IDE e arquivos de OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Documentação e exemplos (a menos que um exemplo precise ser copiado para a imagem)
+docs/
+# examples/
+
+# Scripts (geralmente não necessários na imagem final)
+scripts/
+
+# Arquivos de ambiente locais e específicos
+.env
+*.env.*
+!*.env.example
+
+# Arquivos de configuração locais (o config.example.toml pode ser versionado)
+# config.toml
+
+# Certificados gerados localmente
+certs/generated/
+dev-certs/
+
+# Outros
+*.log
+*.profraw
+*.profdata
+
+# Se NÃO estiver usando vendoring no Dockerfile, pode ignorar:
+# vendor/
+# .cargo/config.toml
+# Git
+.git/
+.gitignore
+
+# Cargo build artifacts
+target/
+
+# IDE e arquivos de OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Documentação e exemplos (a menos que um exemplo precise ser copiado para a imagem)
+docs/
+# examples/ # Comentado se algum exemplo for usado no Dockerfile
+
+# Scripts (geralmente não necessários na imagem final)
+scripts/
+
+# Arquivos de ambiente locais e específicos
+.env
+*.env.*
+!*.env.example # Mantém o exemplo, se existir na raiz e não for para a imagem
+
+# Arquivos de configuração locais (o config.example.toml pode ser versionado)
+# config.toml # Se o config.toml real não deve ir para o build context
+
+# Certificados gerados localmente
+certs/generated/ # Ou qualquer diretório onde os certs de dev são colocados
+dev-certs/
+
+# Outros
+*.log
+*.profraw
+*.profdata
+
+# Se NÃO estiver usando vendoring no Dockerfile, pode ignorar:
+# vendor/
+# .cargo/config.toml # Se este arquivo for específico para vendoring
