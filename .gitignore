@@ -154,3 +154,5 @@ rustfmt.toml
 
 # Arquivos de configuração de desenvolvimento
 /development/
+
+/vendor/
