@@ -1,7 +1,7 @@
 // src/metrics.rs
 
 // Licença Apache 2.0
-// Copyright [ANO_ATUAL] [SEU_NOME_OU_ORGANIZACAO]
+// Copyright 2024 Guilherme Leste
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,30 +35,58 @@ use metrics::{
 pub const METRIC_PREFIX: &str = "typedb_mcp_server_";
 
 // --- Nomes de Métricas (Constantes para consistência) ---
+
 // Contadores
+/// Nome da métrica: Contador para o número total de conexões WebSocket estabelecidas.
 pub const WEBSOCKET_CONNECTIONS_TOTAL: &str = "websocket_connections_total";
+/// Nome da métrica: Contador para o número total de chamadas de ferramentas MCP.
+/// Labels: `tool_name`, `status`.
 pub const TOOL_CALLS_TOTAL: &str = "tool_calls_total";
+/// Nome da métrica: Contador para o número total de tokens OAuth2 processados para validação.
+/// Labels: `status`.
 pub const OAUTH_TOKENS_VALIDATED_TOTAL: &str = "oauth_tokens_validated_total";
+/// Nome da métrica: Contador para o número total de requisições diretas ao TypeDB.
+/// Labels: `operation_type`, `status`.
 pub const TYPEDB_REQUESTS_TOTAL: &str = "typedb_requests_total";
+/// Nome da métrica: Contador para o número total de tentativas de buscar o JWKS.
+/// Labels: `status`.
 pub const JWKS_FETCH_TOTAL: &str = "jwks_fetch_total";
+/// Nome da métrica: Contador para o número total de tentativas de carregar a configuração.
+/// Labels: `status` ('success' ou 'failure').
 pub const CONFIG_LOAD_ATTEMPTS_TOTAL: &str = "config_load_attempts_total";
+
 // Gauges
+/// Nome da métrica: Gauge para o número de conexões WebSocket atualmente ativas.
 pub const WEBSOCKET_ACTIVE_CONNECTIONS: &str = "websocket_active_connections";
+/// Nome da métrica: Gauge para o número de chaves atualmente em cache do JWKS.
 pub const JWKS_KEYS_CACHED_COUNT: &str = "jwks_keys_cached_count";
+/// Nome da métrica: Gauge para informações sobre o servidor (versão da app, versão Rust).
+/// Labels: `app_version`, `rust_version`.
 pub const SERVER_INFO_GAUGE: &str = "info";
+/// Nome da métrica: Gauge para o status de prontidão do servidor (1 se pronto, 0 caso contrário).
 pub const SERVER_READY_STATUS: &str = "ready_status";
+
 // Histogramas
+/// Nome da métrica: Histograma para a distribuição da duração das chamadas de ferramentas MCP, em segundos.
 pub const TOOL_CALL_DURATION_SECONDS: &str = "tool_call_duration_seconds";
+/// Nome da métrica: Histograma para a distribuição da duração da validação de tokens OAuth2, em segundos.
 pub const OAUTH_TOKEN_VALIDATION_DURATION_SECONDS: &str =
     "oauth_token_validation_duration_seconds";
+/// Nome da métrica: Histograma para a distribuição da duração das requisições ao TypeDB, em segundos.
 pub const TYPEDB_REQUEST_DURATION_SECONDS: &str = "typedb_request_duration_seconds";
+/// Nome da métrica: Histograma para a distribuição da duração das buscas ao JWKS, em segundos.
 pub const JWKS_FETCH_DURATION_SECONDS: &str = "jwks_fetch_duration_seconds";
 
 // --- Labels Comuns ---
+/// Label para o nome da ferramenta MCP.
 pub const LABEL_TOOL_NAME: &str = "tool_name";
+/// Label para o status de uma operação (ex: "success", "failure").
 pub const LABEL_STATUS: &str = "status";
+/// Label para o tipo de operação (ex: "read", "write", "schema_write").
 pub const LABEL_OPERATION_TYPE: &str = "operation_type";
+/// Label para a versão da aplicação.
 pub const LABEL_VERSION: &str = "app_version";
+/// Label para a versão do compilador Rust.
 pub const LABEL_RUST_VERSION: &str = "rust_version";
 
 /// Registra as descrições de todas as métricas da aplicação.
@@ -70,12 +98,10 @@ pub const LABEL_RUST_VERSION: &str = "rust_version";
 #[tracing::instrument(name = "register_metric_descriptions")]
 pub fn register_metrics_descriptions() {
     // Contadores
-    // metrics v0.24.2: describe_counter!(key_name, unit, description)
-    // Unit e SharedString são usados conforme a API.
     describe_counter!(
         format!("{}{}", METRIC_PREFIX, WEBSOCKET_CONNECTIONS_TOTAL),
-        Unit::Count, // metrics v0.24.2: Unit::Count
-        SharedString::from("Número total de conexões WebSocket estabelecidas desde o início do servidor.") // metrics v0.24.2: SharedString::from
+        Unit::Count,
+        SharedString::from("Número total de conexões WebSocket estabelecidas desde o início do servidor.")
     );
     describe_counter!(
         format!("{}{}", METRIC_PREFIX, TOOL_CALLS_TOTAL),
@@ -104,7 +130,6 @@ pub fn register_metrics_descriptions() {
     );
 
     // Gauges
-    // metrics v0.24.2: describe_gauge!(key_name, unit, description)
     describe_gauge!(
         format!("{}{}", METRIC_PREFIX, WEBSOCKET_ACTIVE_CONNECTIONS),
         Unit::Count,
@@ -117,20 +142,19 @@ pub fn register_metrics_descriptions() {
     );
     describe_gauge!(
         format!("{}{}", METRIC_PREFIX, SERVER_INFO_GAUGE),
-        Unit::Count, // Embora seja 'info', um gauge com valor '1' e labels é uma prática comum.
+        Unit::Count,
         SharedString::from("Informações sobre o servidor, como versão da aplicação e versão do Rust (expostas via labels).")
     );
     describe_gauge!(
         format!("{}{}", METRIC_PREFIX, SERVER_READY_STATUS),
-        Unit::Count, // 1 para pronto, 0 para não pronto.
+        Unit::Count,
         SharedString::from("Status de prontidão do servidor (1 se pronto para receber tráfego, 0 caso contrário).")
     );
 
     // Histogramas
-    // metrics v0.24.2: describe_histogram!(key_name, unit, description)
     describe_histogram!(
         format!("{}{}", METRIC_PREFIX, TOOL_CALL_DURATION_SECONDS),
-        Unit::Seconds, // metrics v0.24.2: Unit::Seconds
+        Unit::Seconds,
         SharedString::from("Distribuição da duração das chamadas de ferramentas MCP.")
     );
     describe_histogram!(
@@ -155,11 +179,10 @@ pub fn register_metrics_descriptions() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use metrics::{Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, Unit, set_global_recorder}; // metrics v0.24.2
-    use serial_test::serial; // serial_test v3.1.1
+    use metrics::{Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, Unit, set_global_recorder};
+    use serial_test::serial;
     use std::sync::{Arc, Mutex};
 
-    // MockRecorder para capturar chamadas de descrição de métricas.
     #[derive(Default, Clone, Debug)]
     struct MockMetricsRecorder {
         descriptions: Arc<Mutex<Vec<MetricDescriptionCall>>>,
@@ -177,7 +200,7 @@ mod tests {
             self.descriptions.lock().unwrap().push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
-                description: description.into_owned(), // SharedString para String
+                description: description.into_owned(),
             });
         }
 
@@ -197,16 +220,12 @@ mod tests {
             });
         }
 
-        // Implementações No-op para os métodos de registro de métricas reais.
         fn register_counter(&self, _key: &Key, _metadata: &Metadata<'_>) -> Counter { Counter::noop() }
         fn register_gauge(&self, _key: &Key, _metadata: &Metadata<'_>) -> Gauge { Gauge::noop() }
         fn register_histogram(&self, _key: &Key, _metadata: &Metadata<'_>) -> Histogram { Histogram::noop() }
     }
     
-    // Helper para instalar o recorder de teste.
-    // Retorna true se foi instalado nesta chamada, false se um recorder já existia.
     fn install_test_recorder(recorder: Arc<MockMetricsRecorder>) -> bool {
-        // metrics v0.24.2: set_global_recorder
         match set_global_recorder(recorder) {
             Ok(_) => {
                 tracing::info!("MockMetricsRecorder instalado globalmente para o teste.");
@@ -221,7 +240,6 @@ mod tests {
 
     #[test]
     fn test_metric_names_are_correct_and_prefixed() {
-        // Verifica se as constantes geram os nomes completos corretamente.
         assert_eq!(
             format!("{}{}", METRIC_PREFIX, WEBSOCKET_CONNECTIONS_TOTAL),
             "typedb_mcp_server_websocket_connections_total"
@@ -281,23 +299,18 @@ mod tests {
     }
 
     #[test]
-    #[serial] // Necessário devido ao set_global_recorder
+    #[serial]
     fn test_register_metrics_descriptions_registers_all_metrics() {
-        // Inicializa o tracing para que os logs dentro da função de teste sejam visíveis.
-        // Isso pode ser configurado globalmente para todos os testes, se desejado.
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
 
         let mock_recorder = Arc::new(MockMetricsRecorder::default());
-        // Tentamos instalar. Se já houver um (de um teste anterior que não limpou ou rodou em paralelo sem #[serial]),
-        // este teste ainda pode funcionar, mas pode ter dados de descrições antigas se o mock não for o global.
         let _installed_this_run = install_test_recorder(mock_recorder.clone());
 
         register_metrics_descriptions();
 
         let descriptions = mock_recorder.descriptions.lock().unwrap();
         
-        // Número total de chamadas describe_* na função
-        let num_expected_metrics = 4 + 4 + 6; // gauges + histogramas + contadores
+        let num_expected_metrics = 4 + 4 + 6;
         
         assert_eq!(
             descriptions.len(),
@@ -308,7 +321,6 @@ mod tests {
             descriptions
         );
 
-        // Verificar algumas descrições específicas
         let expected_websocket_total = MetricDescriptionCall {
             name: format!("{}{}", METRIC_PREFIX, WEBSOCKET_CONNECTIONS_TOTAL),
             unit: Some(Unit::Count),

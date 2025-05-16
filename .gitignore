@@ -1,3 +1,156 @@
-/target
+
+# Diretórios e arquivos de build
+/target/
+**/*.rlib
+**/*.d
+**/*.o
+**/*.so
+**/*.dll
+**/*.dylib
+**/*.exe
+Cargo.lock
+
+# Arquivos temporários e de ambiente
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+*.old
+*.orig
+*.rej
+*.DS_Store
+*.env
+.env
+.env.*
+
+# Configuração local e arquivos de exemplo
+config.toml
+config.local.toml
+*.local.toml
+*.example.toml
+*.example.env
+
+# Arquivos de configuração sensíveis
+typedb_mcp_server_config.toml
+
+# Certificados e chaves privadas
+/certs/
+/certs/*
+!/certs/example-certs/
+
+# Diretórios de IDE/editor
+/.vscode/
+/.idea/
+*.code-workspace
+
+# Arquivos de testes e mocks
+/tests/**/output/
+/tests/**/tmp/
+/tests/**/mock/
+
+# Arquivos de cobertura de testes
+/coverage/
+*.lcov
+
+# Arquivos de benchmark
+/bench/
+
+# Arquivos de documentação gerada
+/target/doc/
+
+# Arquivos de backup do editor
+*~
+
+# Arquivos de lock de dependências duplicados
+Cargo.lock.bak
+
+# Arquivos de build do C/C++ (caso haja)
+*.obj
+*.a
+*.lib
+*.dll
+*.exp
+*.pdb
+*.idb
+*.ilk
+*.aps
+*.ncb
+*.sdf
+*.opensdf
+*.tlog
+*.log
+*.vspscc
+*.vssscc
+*.scc
+
+# Arquivos de cache do Rust
+/.cargo/
+/.rustup/
+
+# Arquivos de cache do Python (caso use scripts auxiliares)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Arquivos de lock de dependências de testes
+/tests/**/Cargo.lock
+
+# Arquivos de saída de integração contínua
+/ci-artifacts/
+
+# Arquivos de saída de scripts
+/scripts/output/
+
+# Arquivos de dump/debug
+*.core
+*.dump
+*.stackdump
+
+# Arquivos de configuração de linter/formatter locais
+clippy.toml
+rustfmt.toml
+
+# Arquivos de configuração de CI/CD locais
+/.github/
+/.github/workflows/*.bak
+
+# Arquivos de configuração de deploy
+/deploy/
+
+# Arquivos de configuração de banco de dados temporários
+*.sqlite
+*.db
+*.db-journal
+
+# Arquivos de lock de dependências de IDE
+/.idea/
+
+# Arquivos de lock de dependências de VSCode
+/.vscode/
+
+# Arquivos de lock de dependências de JetBrains
+/.idea/
+
+# Arquivos de lock de dependências de outros editores
+*.sublime-workspace
+*.sublime-project
+
+# Arquivos de lock de dependências de outros sistemas
 *.lock
-cargo.lock
+
+# Arquivos de configuração de testes
+/tests/**/test-config.toml
+
+# Arquivos de configuração de integração
+/integration/
+
+# Arquivos de configuração de produção
+/production/
+
+# Arquivos de configuração de staging
+/staging/
+
+# Arquivos de configuração de desenvolvimento
+/development/

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021" 
 authors = ["Guilherme Leste <luiz.leste@gmail.com>"]
 description = "Servidor MCP (Model Context Protocol) para interagir com TypeDB, com foco em segurança via TLS/OAuth2 e transporte WebSocket."
-repository = "https://github.com/guilhermeleste/Typedb-MCP-Server" # TODO: Confirmar se este será o repositório final.
+repository = "https://github.com/guilhermeleste/Typedb-MCP-Server" 
 license = "MIT" 
 readme = "README.md"
 keywords = ["mcp", "typedb", "database", "websocket", "oauth2", "server", "rust", "ai", "llm"] # Adicionadas keywords relevantes
@@ -13,6 +13,7 @@ rust-version = "1.86.0"
 
 # As dependências são agrupadas e ordenadas alfabeticamente para melhor legibilidade.
 [dependencies]
+axum-server = { version = "0.6", features = ["tls-rustls"] }
 async-trait = "0.1.88"
 axum = { version = "0.8.4", features = ["ws", "macros", "json"] }
 axum-extra = { version = "0.10.1", features = ["typed-header"] }

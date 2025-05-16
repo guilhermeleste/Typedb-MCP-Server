@@ -1,7 +1,7 @@
 // src/mcp_service_handler.rs
 
 // Licença Apache 2.0
-// Copyright [ANO_ATUAL] [SEU_NOME_OU_ORGANIZACAO]
+// Copyright 2024 Guilherme Leste
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@
 //! Ela define todas as ferramentas MCP disponíveis, lida com suas chamadas (incluindo
 //! verificação de escopos OAuth2), e serve os recursos MCP estáticos e dinâmicos.
 
-use std::borrow::Cow; // Para ErrorData.message
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -31,15 +31,15 @@ use rmcp::{
     model::{
         CallToolRequestParam, CallToolResult, ErrorCode, ErrorData,
         GetPromptRequestParam, GetPromptResult, Implementation, ListPromptsResult,
-        ListResourceTemplatesResult, ListResourcesResult, PaginatedRequestParam,
+        ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParam, // Adicionado ListToolsResult
         ProtocolVersion, ReadResourceRequestParam, ReadResourceResult, ResourceContents,
         ServerCapabilities, ServerInfo,
     },
     service::{RequestContext, RoleServer},
-    tool,     // Para a macro #[tool]
+    tool, // Para a macro #[tool]
+    tool_box, // Importa a macro tool_box corretamente
     ServerHandler,
 };
-use rmcp::tool_box; // Importa a macro tool_box corretamente
 
 // Crates do projeto
 use crate::{
@@ -111,11 +111,9 @@ impl McpServiceHandler {
     /// # Parâmetros
     /// * `driver`: Um `Arc<TypeDBDriver>` para interagir com o TypeDB.
     /// * `settings`: Um `Arc<Settings>` contendo as configurações da aplicação.
+    #[must_use]
     pub fn new(driver: Arc<TypeDBDriver>, settings: Arc<Settings>) -> Self {
         let mut tool_scopes = HashMap::new();
-        // Definição dos escopos para cada ferramenta.
-        // Estes devem ser os mesmos que o Authorization Server emite e que estão
-        // documentados para os clientes.
         tool_scopes.insert("query_read".to_string(), vec!["typedb:read_data".to_string()]);
         tool_scopes.insert("insert_data".to_string(), vec!["typedb:write_data".to_string()]);
         tool_scopes.insert("delete_data".to_string(), vec!["typedb:write_data".to_string()]);
@@ -126,7 +124,7 @@ impl McpServiceHandler {
         tool_scopes.insert("create_database".to_string(), vec!["typedb:manage_databases".to_string()]);
         tool_scopes.insert("database_exists".to_string(), vec!["typedb:manage_databases".to_string()]);
         tool_scopes.insert("list_databases".to_string(), vec!["typedb:manage_databases".to_string()]);
-        tool_scopes.insert("delete_database".to_string(), vec!["typedb:admin_databases".to_string()]); // Escopo mais privilegiado
+        tool_scopes.insert("delete_database".to_string(), vec!["typedb:admin_databases".to_string()]);
         tool_scopes.insert("validate_query".to_string(), vec!["typedb:validate_queries".to_string()]);
 
         Self {
@@ -148,12 +146,11 @@ impl McpServiceHandler {
 
     /// Função acessora para o `ToolBox` estático.
     fn tool_box() -> &'static ToolBox<Self> {
+        // CORREÇÃO: Chamar a função livre gerada pela macro, não um método associado.
         mcp_service_handler_tool_box_accessor()
     }
 
     // --- Definições das Ferramentas MCP ---
-    // Atributo `#[tool(...)]` de `rmcp_macros v0.1.5`
-
     #[tool(name = "query_read", description = "Executa uma consulta TypeQL de leitura (match...get, fetch, aggregate).")]
     async fn tool_query_read(
         &self,
@@ -250,31 +247,25 @@ impl McpServiceHandler {
     }
 }
 
-// O DERIVE DA MACRO DEVE FICAR DENTRO DO IMPL DO TRAIT!
 impl ServerHandler for McpServiceHandler {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
-            server_info: Implementation::from_build_env(), // rmcp v0.1.5: usa env!
+            server_info: Implementation::from_build_env(),
             capabilities: self.build_server_capabilities(),
             instructions: Some(SERVER_INSTRUCTIONS.to_string()),
         }
     }
 
-    // A macro `tool_box!(@derive ...)` gera `list_tools` e uma versão de `call_tool`.
-    // Sobrescrevemos `call_tool` para adicionar a verificação de escopo OAuth2.
     async fn call_tool(
         &self,
-        request_param: CallToolRequestParam, // rmcp v0.1.5
-        context: RequestContext<RoleServer>, // rmcp v0.1.5
+        request_param: CallToolRequestParam,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let tool_name_str = request_param.name.as_ref();
         tracing::debug!(tool.name = %tool_name_str, client.context_extensions = ?context.extensions, "Recebida chamada de ferramenta MCP.");
 
         if self.settings.oauth.enabled {
-            // Tenta extrair o ClientAuthContext das extensões do RequestContext
-            // rmcp v0.1.5: RequestContext.extensions é pub extensions: Extensions
-            // rmcp v0.1.5: Extensions.get()
             match context.extensions.get::<Arc<ClientAuthContext>>() {
                 Some(auth_ctx) => {
                     if let Some(required_scopes) = self.tool_required_scopes.get(tool_name_str) {
@@ -310,9 +301,6 @@ impl ServerHandler for McpServiceHandler {
                         }
                     } else {
                         tracing::warn!(tool.name = %tool_name_str, "Configuração de escopos não encontrada para a ferramenta. Permitindo acesso por padrão, mas isso deve ser revisado.");
-                        // DECISÃO: Se uma ferramenta não está no mapa de escopos, permitir ou negar?
-                        // Por segurança, pode ser melhor negar se não explicitamente permitido.
-                        // Mas para este exemplo, vamos manter como "permitir se não especificado".
                     }
                 }
                 None => {
@@ -320,7 +308,7 @@ impl ServerHandler for McpServiceHandler {
                     return Err(ErrorData {
                         code: ErrorCode(crate::error::MCP_ERROR_CODE_AUTHENTICATION_FAILED),
                         message: Cow::Owned("Falha interna na autenticação: contexto de autenticação ausente no servidor.".to_string()),
-                        data: None,
+                        data: Some(serde_json::json!({"type": "AuthContextMissing"})),
                     });
                 }
             }
@@ -328,14 +316,24 @@ impl ServerHandler for McpServiceHandler {
             tracing::debug!("Autenticação OAuth2 desabilitada, verificação de escopo pulada.");
         }
 
-        // Despacha para a implementação do ToolBox gerada pela macro.
         let tool_call_context =
             rmcp::handler::server::tool::ToolCallContext::new(self, request_param, context);
         Self::tool_box().call(tool_call_context).await
     }
 
-    // --- COLOQUE O DERIVE DA MACRO AQUI ---
-    tool_box!(@derive mcp_service_handler_tool_box_accessor);
+    // CORREÇÃO: Adicionada implementação manual de list_tools.
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult {
+            next_cursor: None,
+            tools: Self::tool_box().list(),
+        })
+    }
+
+    // CORREÇÃO: Removido tool_box!(@derive ...);
 
     async fn list_resources(
         &self,
