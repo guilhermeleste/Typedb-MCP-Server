@@ -33,7 +33,7 @@ O Typedb-MCP-Server é um gateway MCP para TypeDB, implementado em Rust, com foc
 
 ## Requisitos
 
-- **Rust** >= 1.86.0
+- **Rust** >= 1.87.0
 - **TypeDB** (servidor externo)
 - **Tokio** (runtime assíncrono)
 - **Axum** (framework web)
