@@ -21,7 +21,7 @@ COPY src ./src
 RUN cargo build --release --locked
 
 # ----------- FINAL STAGE (RUNTIME) -----------
-FROM debian:12.10-slim AS final
+FROM ubuntu:lates:24.04 AS final
 
 ENV APP_NAME=typedb_mcp_server
 
