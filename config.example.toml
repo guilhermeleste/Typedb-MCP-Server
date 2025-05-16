@@ -1,0 +1,95 @@
+# config.example.toml
+# Exemplo de arquivo de configuração para Typedb-MCP-Server.
+# Copie este arquivo para 'config.toml' e ajuste os valores conforme necessário.
+# Valores aqui podem ser sobrescritos por variáveis de ambiente prefixadas com 'MCP_'.
+
+# Configurações para a conexão com o servidor TypeDB.
+[typedb]
+# Endereço do servidor TypeDB (ex: "localhost:1729" ou "typedb-host:1729").
+address = "localhost:1729"
+# Nome de usuário para autenticação com TypeDB (opcional, default: "admin" se omitido).
+username = "admin"
+# SENHA: A senha do TypeDB (`TYPEDB_PASSWORD`) DEVE ser configurada via variável de ambiente.
+
+# Habilita TLS para a conexão com o TypeDB (true/false).
+tls_enabled = false
+# Caminho para o arquivo PEM do certificado da CA raiz para verificar o servidor TypeDB.
+# Obrigatório se typedb.tls_enabled = true e uma CA customizada/autoassinada for usada.
+# Ex: "/path/to/typedb-ca.pem"
+# tls_ca_path = ""
+
+# Configurações do servidor MCP (onde este servidor irá escutar).
+[server]
+# Endereço (IP:PORTA) para o servidor MCP escutar.
+# Se server.tls_enabled = true, o default em main.rs pode mudar para uma porta HTTPS (ex: 8443).
+bind_address = "0.0.0.0:8787"
+# Habilita TLS (HTTPS/WSS) para o servidor MCP (true/false).
+tls_enabled = false
+# Caminho para o arquivo PEM do certificado do servidor MCP (fullchain).
+# Obrigatório se server.tls_enabled = true.
+# Ex: "/path/to/mcp-server.crt"
+# tls_cert_path = ""
+# Caminho para o arquivo PEM da chave privada do servidor MCP.
+# Obrigatório se server.tls_enabled = true.
+# Ex: "/path/to/mcp-server.key"
+# tls_key_path = ""
+# Endereço (IP:PORTA) para o endpoint de métricas Prometheus.
+metrics_bind_address = "0.0.0.0:9090"
+
+# Configurações para autenticação OAuth 2.0 dos clientes MCP.
+[oauth]
+# Habilita a autenticação OAuth 2.0 (true/false).
+enabled = false
+# URI do endpoint JWKS (JSON Web Key Set) do Authorization Server.
+# Obrigatório se oauth.enabled = true.
+# Ex: "https://my-auth-server.com/.well-known/jwks.json"
+# jwks_uri = ""
+# Issuer(s) esperado(s) no token JWT. Se definido, o token será validado contra este valor.
+# Ex: "https://my-auth-server.com"
+# issuer = ""
+# Audience(s) esperado(s) no token JWT (identificador deste servidor MCP).
+# Ex: "typedb-mcp-api"
+# audience = ""
+# Intervalo para recarregar o JWKS. Formato legível (ex: "1h", "30m", "3600s").
+# Default: "1h" (3600 segundos).
+jwks_refresh_interval = "1h"
+# Lista de escopos OAuth2 que o token DEVE conter para acesso geral a qualquer ferramenta.
+# Autorização mais granular por ferramenta pode ser aplicada internamente.
+# Ex: ["typedb:access", "mcp:use_tools"]
+# required_scopes = []
+
+# Configurações de logging.
+[logging]
+# String de configuração para o filtro de log do `tracing-subscriber`.
+# Formato: "[level],[target=level],[target2=level]"
+# Ex: "warn,typedb_mcp_server_lib=debug,typedb_mcp_server=debug,typedb_driver=info"
+rust_log = "info,typedb_mcp_server_lib=info,typedb_mcp_server=info"
+
+# Configurações de CORS (Cross-Origin Resource Sharing) para o servidor MCP.
+[cors]
+# Lista de origens permitidas para requisições. Usar `["*"]` para permitir todas as origens.
+# Ex: ["http://localhost:8080", "https://my-mcp-client.com"]
+allowed_origins = ["*"]
+
+# Configurações de Limitação de Taxa (Rate Limiting) por IP.
+[rate_limit]
+# Habilita a limitação de taxa (true/false).
+enabled = true
+# Número de requisições permitidas por segundo, por IP.
+requests_per_ip_per_second = 100
+# Número de requisições permitidas em uma rajada (burst), por IP.
+burst_per_ip = 200
+
+# Configurações para Tracing Distribuído (OpenTelemetry).
+[tracing]
+# Habilita o tracing OpenTelemetry (true/false).
+enabled = false
+# Endpoint do coletor OTLP/gRPC (obrigatório se tracing.enabled = true).
+# Ex: "http://localhost:4317"
+# exporter_otlp_endpoint = ""
+# Nome do serviço para OpenTelemetry.
+service_name = "typedb-mcp-server"
+# Tipo de sampler. Pode ser "always_on", "always_off", "traceidratio".
+sampler = "always_on"
+# Argumento para o sampler. Ex: "1.0" para always_on, "0.1" para traceidratio (10% de traces).
+sampler_arg = "1.0"

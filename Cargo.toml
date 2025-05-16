@@ -1,0 +1,164 @@
+[package]
+name = "typedb_mcp_server"
+version = "0.1.0"
+edition = "2021" 
+authors = ["Guilherme Leste <luiz.leste@gmail.com>"]
+description = "Servidor MCP (Model Context Protocol) para interagir com TypeDB, com foco em segurança via TLS/OAuth2 e transporte WebSocket."
+repository = "https://github.com/guilhermeleste/Typedb-MCP-Server" # TODO: Confirmar se este será o repositório final.
+license = "MIT" 
+readme = "README.md"
+keywords = ["mcp", "typedb", "database", "websocket", "oauth2", "server", "rust", "ai", "llm"] # Adicionadas keywords relevantes
+categories = ["database", "network-programming", "web-programming::http-server", "api-bindings"]
+rust-version = "1.86.0"
+
+# As dependências são agrupadas e ordenadas alfabeticamente para melhor legibilidade.
+[dependencies]
+async-trait = "0.1.88"
+axum = { version = "0.8.4", features = ["ws", "macros", "json"] }
+axum-extra = { version = "0.10.1", features = ["typed-header"] }
+bytes = "1.10.1"
+config = { version = "0.15.11", features = ["toml"] }
+dotenvy = "0.15.7"
+futures = "0.3.31"
+futures-util = "0.3.31"
+humantime-serde = "1.1.1" # Para deserializar durações legíveis em config.toml
+hyper = { version = "1.6.0", features = ["server", "http1"] } # Axum roda sobre Hyper
+hyper-util = { version = "0.1.11", features = ["server", "tokio", "server-auto", "server-graceful"] } # Utilitários para Hyper com Tokio
+jsonwebtoken = { version = "9.3.1", features = ["use_pem"] } # Para validação de JWT (OAuth2)
+matchit = "0.8.4"
+metrics = "0.24.2" # Fachada para métricas
+metrics-exporter-prometheus = { version = "0.17.0", features = ["http-listener"] } # Exportador Prometheus com endpoint HTTP
+num_cpus = "1.16.0"
+oauth2 = "5.0.0"
+opentelemetry = { version = "0.29.1", features = ["trace", "tracing"] } # Core OpenTelemetry e integração com tracing
+opentelemetry-otlp = { version = "0.29.0", features = ["tonic", "grpc-tonic"] } # Exportador OTLP para traces
+opentelemetry-semantic-conventions = "0.29.0" # Convenções de nomes para atributos de trace
+opentelemetry_sdk = { version = "0.29.0", features = ["rt-tokio", "trace"] } # SDK OpenTelemetry com suporte a Tokio
+percent-encoding = "2.3.1" # Para encoding/decoding de URIs
+pin-project-lite = "0.2.16" # Usado por dependências async
+reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls"] } # Cliente HTTP para buscar JWKS, etc.
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", version = "0.1.5", features = ["server", "macros", "transport-async-rw", "auth", "macros"] } # TODO: Avaliar necessidade da feature "auth" do rmcp para um Resource Server.
+rustls = "0.23.27" # Implementação TLS
+rustls-pemfile = "2.2.0" # Para carregar certificados/chaves PEM
+serde = { version = "1.0.219", features = ["derive"] } # Serialização/Desserialização
+serde_json = "1.0.140" # Suporte JSON para Serde
+thiserror = "2.0.12" # Para criação de tipos de erro customizados
+tokio = { version = "1.45.0", features = ["full"] } # TODO: Refinar features do tokio para builds de produção.
+tokio-rustls = "0.26.2" # Integração Tokio com Rustls
+tokio-util = { version = "0.7.15", features = ["codec"] } # Utilitários Tokio, codec para frames (pode ser útil para WebSockets)
+toml = "0.8.22" # Parse de arquivos TOML (usado por config-rs)
+tower = { version = "0.5.2", features = ["full"] } # TODO: Refinar features do tower para builds de produção.
+tower-http = { version = "0.6.4", features = ["cors", "trace", "request-id", "sensitive-headers"] } # Middlewares HTTP para Tower/Axum
+tracing = "0.1.41" # Fachada para logging e tracing
+tracing-opentelemetry = "0.30.0" # Integração Tracing com OpenTelemetry
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt", "json", "registry"] } # Subscriber para Tracing
+typedb-driver = "3.2.0" # Driver oficial TypeDB
+uuid = { version = "1.16.0", features = ["v4", "serde"] } # Geração e manipulação de UUIDs
+
+[dev-dependencies]
+assert-json-diff = "2.0.2" # Comparação de JSONs em testes
+chrono = "0.4.41" # Manipulação de data/hora para testes (ex: expiração de JWT)
+# cucumber e cucumber-codegen: Manter se os testes BDD forem adaptados.
+cucumber = "0.21.1"
+cucumber-codegen = "0.21.1"
+mockito = "1.7.0" # Mocking de HTTP endpoints
+mockall = "0.13.1" # Criação de mocks para testes unitários
+predicates = "3.1.3" # Asserções mais expressivas
+rand = "0.9.1" # Geração de dados aleatórios para testes
+reqwest = { version = "0.12.15", default-features = false, features = ["blocking", "json"] } # Cliente HTTP síncrono para testes
+rsa = { version = "0.9.8", features = ["pem"] } # Manipulação de chaves RSA para JWTs de teste
+tempfile = "3.20.0" # Criação de arquivos/diretórios temporários em testes
+tokio-tungstenite = { version = "0.26.2", features = ["rustls-tls-native-roots"] } # Cliente WebSocket para testes de integração
+wiremock = "0.6.3" # Mock de servidor HTTP para testes de integração (ex: Mock Auth Server)
+serial_test = "3.2.0"
+
+
+# Perfis de Compilação
+[profile.dev]
+opt-level = 0      # Otimização mínima para compilação rápida.
+debug = true       # Habilitar símbolos de debug.
+panic = "unwind" # para melhor depuração em dev, mas `abort` é bom para release.
+
+[profile.release]
+opt-level = 3         # Otimização máxima.
+lto = "fat"           # Link Time Optimization para melhor performance.
+codegen-units = 1     # Maximiza otimizações, mas aumenta tempo de compilação.
+panic = "abort"       # Aborta em panic, pode reduzir tamanho do binário e ser mais seguro em alguns contextos.
+strip = true          # Remove símbolos de debug do binário final.
+debug = false         # Sem informações de debug no release.
+
+[profile.test]
+opt-level = 1 # Alguma otimização para testes, mas não tanto quanto release.
+debug = true  # Informações de debug para testes.
+
+# Configurações de Lints (Definitivas)
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"    # Avisar sobre documentação faltando em itens públicos.
+unreachable_pub = "warn" # Avisar sobre itens `pub` que não são exportados ou usados no crate.
+rust_2018_idioms = { level = "warn", priority = -1 } # Usar idioms mais recentes.
+rust_2021_compatibility = { level = "warn", priority = -1 } # Garantir compatibilidade.
+
+[lints.clippy]
+# --- Nível Deny (Erros que DEVEM ser corrigidos) ---
+clone_on_copy = "deny"
+expl_impl_locale_aware_cmp = "deny"
+float_cmp = "deny"
+mutex_integer = "deny"
+unnecessary_unwrap = "deny"
+unwrap_used = "deny" # Proibir `unwrap()` diretamente; usar `expect` ou tratamento de erro.
+
+# --- Nível Warn (Fortemente Recomendados para Correção) ---
+pedantic = { level = "warn", priority = -1 } # Habilita um grande conjunto de lints como aviso.
+# A lista de 'allow' para pedantic será construída iterativamente durante o desenvolvimento.
+# Exemplo de como poderia ser (precisa ser validado com o código real):
+# allow = [
+#    "clippy::module_name_repetitions",
+#    "clippy::missing_errors_doc", # `rust.missing_docs` pode cobrir isso para funções Result.
+#    "clippy::must_use_candidate",
+#    "clippy::implicit_hasher",
+#    "clippy::wildcard_imports", # A ser evitado, exceto em preludes muito bem definidos.
+#    "clippy::cast_possible_truncation",
+#    "clippy::cast_precision_loss",
+#    "clippy::cast_sign_loss",
+#    "clippy::items_after_statements",
+#    "clippy::too_many_lines", # Configurar limite abaixo.
+#    "clippy::cognitive_complexity", # Limite para cyclomatic_complexity pode ser suficiente.
+# ]
+
+# Lints de Estilo/Clareza Adicionais (WARN)
+default_trait_access = "warn"
+filter_map_next = "warn"
+flat_map_option = "warn"
+manual_ok_or = "warn"
+map_unwrap_or = "warn"
+match_same_arms = "warn"
+redundant_else = "warn"
+string_to_string = "warn" # Pode ser útil, mas às vezes `to_string()` é mais claro que `String::from()`.
+
+# Lints de Performance (WARN)
+redundant_clone = "warn"
+
+# Lints de Uso (WARN)
+expect_used = "warn" # Usar `expect` com mensagens claras e apenas quando um panic é o comportamento desejado.
+
+# Lints para código de servidor/biblioteca (WARN)
+print_stdout = "warn" # Usar `tracing` para logs.
+print_stderr = "warn" # Usar `tracing` para logs.
+
+# Limites (Thresholds podem ser ajustados) (WARN)
+too_many_arguments = { level = "warn", priority = 0, args = ["threshold=7"] }
+cyclomatic_complexity = { level = "warn", priority = 0, args = ["threshold=25"] }
+# too_many_lines já foi coberto em allow, se desejado, ou pode ser um warning aqui com um threshold.
+# Por exemplo:
+# too_many_lines = { level = "warn", priority = 0, args = ["threshold=200"] } # Para funções/métodos
+
+# Binário principal
+[[bin]]
+name = "typedb_mcp_server"
+path = "src/main.rs"
+
+# Biblioteca
+[lib]
+name = "typedb_mcp_server_lib"
+path = "src/lib.rs"

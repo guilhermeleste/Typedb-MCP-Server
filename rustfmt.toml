@@ -1,0 +1,68 @@
+# Edição do Rust para parsing e regras de estilo.
+# Alinhado com a edição definida no Cargo.toml para consistência.
+edition = "2021"
+style_edition = "2021"
+
+# Comprimento máximo da linha.
+max_width = 100
+
+# Configurações de indentação.
+hard_tabs = false
+tab_spaces = 4
+
+# Estilo de quebra de linha (Unix: LF).
+newline_style = "Unix"
+
+# Habilita o uso de features instáveis do rustfmt.
+# Necessário para 'imports_granularity' e 'group_imports', e 'format_strings'.
+unstable_features = true
+
+# Gerenciamento de imports.
+reorder_imports = true          # Reordena imports alfabeticamente dentro dos grupos.
+imports_granularity = "Module"  # Agrupa 'use' por módulo. Ex: 'use crate::foo::{bar, baz};'
+                                # Alternativa seria "Crate" ou "Preserve". "Module" oferece bom equilíbrio.
+group_imports = "StdExternalCrate" # Agrupa imports em blocos: std/core/alloc, crates externas, crate local (self, super, crate).
+
+# Gerenciamento de declarações de módulos.
+reorder_modules = true # Reordena declarações `mod` alfabeticamente.
+
+# Comentários.
+wrap_comments = true   # Quebra comentários longos para caber em `comment_width`.
+comment_width = 80     # Largura máxima para comentários.
+
+# Strings.
+format_strings = true  # Formata strings literais longas, quebrando-as se excederem `max_width`.
+
+# Sintaxe e Expressões.
+remove_nested_parens = true      # Remove parênteses desnecessários em expressões.
+use_field_init_shorthand = true  # Usa a forma abreviada `foo` em vez de `foo: foo` na inicialização de structs.
+condense_wildcard_suffixes = true # Usa `..` para múltiplos wildcards no final de desestruturações de tuplas/structs.
+
+# Heurísticas para formatação (ex: para arrays e literais de struct).
+# "Max" tenta usar mais linhas horizontais antes de quebrar verticalmente.
+use_small_heuristics = "Max"
+
+# Opções que podem ser consideradas se o `use_small_heuristics = "Max"` não for suficiente
+# ou para um controle mais fino (manter defaults por enquanto, pois "Max" já influencia):
+# array_width = 60
+# struct_lit_width = 60 # (Valor padrão do rustfmt)
+# short_array_element_width_threshold = 10
+
+# Controla o tratamento de erros de parsing.
+# false (default): mostra erros de parsing. true: esconde. Manter false.
+# hide_parse_errors = false
+
+# Configurações de quebra de linha para itens específicos (deixar defaults por enquanto,
+# pois rustfmt geralmente faz um bom trabalho, e são muitas opções granulares).
+# Ex: chain_width, fn_call_width, etc.
+
+# Evitar formatação de código dentro de comentários de documentação por enquanto,
+# pois pode ser disruptivo se os comentários não estiverem perfeitamente formatados.
+# Pode ser habilitado se desejado e os comentários forem mantidos com rigor.
+# format_code_in_doc_comments = false
+
+# Permitir que o rustfmt formate o corpo de macros.
+# format_macro_bodies = true # (Default)
+
+# Permitir que o rustfmt formate os matchers em macros.
+# format_macro_matchers = true # (Default)

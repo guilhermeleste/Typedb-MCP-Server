@@ -1,0 +1,187 @@
+# -----------------------------------------------------------------------------
+# Arquivo de Configuração Exemplo para Typedb-MCP-Server
+# -----------------------------------------------------------------------------
+# Este arquivo demonstra todas as opções de configuração disponíveis.
+# Descomente e ajuste as seções e campos conforme necessário.
+#
+# Ordem de Precedência da Configuração:
+# 1. Valores padrão codificados na aplicação.
+# 2. Valores deste arquivo (se presente e nomeado corretamente, ou apontado por MCP_CONFIG_PATH).
+# 3. Variáveis de ambiente (prefixo: MCP_, separador de aninhamento: __).
+#    Ex: MCP_TYPEDB__ADDRESS="outra.host:1729" sobrescreverá typedb.address.
+# -----------------------------------------------------------------------------
+
+# =============================================================================
+# Configurações da Conexão com TypeDB
+# =============================================================================
+[typedb]
+# Endereço (host:porta) do servidor TypeDB.
+# Default no código: "localhost:1729"
+address = "localhost:1729"
+
+# Nome de usuário para autenticação com TypeDB.
+# Default no código: "admin"
+# Se omitido ou string vazia, o default do código será usado.
+username = "admin"
+
+# SENHA DO TYPEDB:
+# A senha para o TypeDB DEVE ser fornecida através da variável de ambiente TYPEDB_PASSWORD.
+# Não armazene senhas em arquivos de configuração em plain text.
+# Ex: export TYPEDB_PASSWORD="mypassword"
+
+# Habilita (true) ou desabilita (false) TLS para a conexão com o servidor TypeDB.
+# Default no código: false
+tls_enabled = false
+
+# Caminho para o arquivo PEM do certificado da Autoridade Certificadora (CA) raiz
+# usado para verificar o certificado do servidor TypeDB.
+# Obrigatório se typedb.tls_enabled = true e o servidor TypeDB usa um CA
+# customizado ou autoassinado. Se null e tls_enabled = true, o servidor MCP
+# tentará usar as CAs raiz do sistema, ou falhará se o driver exigir um CA path.
+# O comportamento atual do código exige este path se tls_enabled for true.
+# Default no código: null (None)
+# tls_ca_path = "/path/to/your/typedb_ca.pem"
+
+
+# =============================================================================
+# Configurações do Servidor MCP
+# =============================================================================
+[server]
+# Endereço de bind (IP:PORTA) para o servidor MCP escutar.
+# O default no código é "0.0.0.0:8787" para HTTP/WS.
+# Se server.tls_enabled = true e este valor não for definido,
+# o servidor tentará usar uma porta padrão para HTTPS/WSS (ex: 8443).
+bind_address = "0.0.0.0:8787"
+
+# Habilita (true) ou desabilita (false) TLS (HTTPS/WSS) para o próprio servidor MCP.
+# Se true, server.tls_cert_path e server.tls_key_path são obrigatórios.
+# Default no código: false
+tls_enabled = false
+
+# Caminho para o arquivo PEM do certificado do servidor MCP (fullchain).
+# Obrigatório se server.tls_enabled = true.
+# Default no código: null (None)
+# tls_cert_path = "/path/to/your/mcp_server.crt"
+
+# Caminho para o arquivo PEM da chave privada do servidor MCP.
+# Obrigatório se server.tls_enabled = true.
+# Default no código: null (None)
+# tls_key_path = "/path/to/your/mcp_server.key"
+
+
+# =============================================================================
+# Configurações de Autenticação OAuth 2.0 para Clientes MCP
+# =============================================================================
+[oauth]
+# Habilita (true) ou desabilita (false) a autenticação OAuth2 para os clientes MCP.
+# Default no código: false
+enabled = false
+
+# URI do endpoint JWKS (JSON Web Key Set) do seu Authorization Server.
+# Obrigatório se oauth.enabled = true.
+# Ex: "https://my-auth-server.com/.well-known/jwks.json"
+# Default no código: null (None)
+# jwks_uri = "https://your-auth-server.com/.well-known/jwks.json"
+
+# Issuer(s) esperado(s) no JWT (claim "iss"). Se definido, o token será validado contra estes.
+# Pode ser uma string única ou uma lista de strings.
+# Ex (string única): issuer = "https://my-auth-server.com"
+# Ex (lista): issuer = ["https://my-auth-server.com", "https://another-issuer.com"]
+# Default no código: null (None)
+# issuer = "https://my-auth-server.com"
+
+# Audience(s) esperado(s) no JWT (claim "aud"). O token deve conter um destes.
+# Se definido, o token será validado contra estes.
+# Pode ser uma string única ou uma lista de strings.
+# Ex (string única): audience = "typedb-mcp-api-identifier"
+# Ex (lista): audience = ["api1", "typedb-mcp-api-identifier"]
+# Default no código: null (None)
+# audience = "typedb-mcp-api-identifier"
+
+# Intervalo para recarregar o JWKS do Authorization Server.
+# Formato: string legível por humanos (ex: "1h", "30m", "3600s").
+# Default no código: "1h" (3600 segundos)
+jwks_refresh_interval = "1h"
+
+# Lista de escopos OAuth2 que um token DEVE conter para acesso geral ao servidor.
+# Se não definido, nenhum escopo específico é exigido para funcionalidades básicas.
+# A autorização granular por ferramenta pode impor requisitos de escopo adicionais.
+# Ex: required_scopes = ["mcp:access", "typedb:general_use"]
+# Default no código: null (None)
+# required_scopes = []
+
+
+# =============================================================================
+# Configurações de Logging
+# =============================================================================
+[logging]
+# String de configuração para o `EnvFilter` do `tracing_subscriber`.
+# Controla o nível de log para diferentes módulos.
+# Formato: "[level],[target=level],[target2=level]"
+# Ex: "warn,typedb_mcp_server_lib=debug,typedb_driver=info"
+# Default no código: "info,typedb_mcp_server_lib=info,typedb_driver=info"
+rust_log = "info,typedb_mcp_server_lib=info,typedb_driver=info"
+
+
+# =============================================================================
+# Configurações de CORS (Cross-Origin Resource Sharing)
+# =============================================================================
+[cors]
+# Lista de origens permitidas para acessar o servidor MCP.
+# Necessário se clientes MCP forem baseados em navegador e hospedados em domínios diferentes.
+# Usar `["*"]` para permitir todas as origens (NÃO RECOMENDADO para produção).
+# Ex: allowed_origins = ["https://meufrontend.com", "http://localhost:3000"]
+# Default no código: ["*"]
+allowed_origins = ["*"]
+
+# Outras configurações CORS (allowed_methods, allowed_headers, etc.) podem ser adicionadas
+# se a biblioteca Axum CORS utilizada as suportar via configuração granular.
+# Por enquanto, são usados os defaults da biblioteca ou configurações mais simples.
+
+
+# =============================================================================
+# Configurações de Limitação de Taxa (Rate Limiting)
+# =============================================================================
+[rate_limit]
+# Habilita (true) ou desabilita (false) o rate limiting para conexões/requisições.
+# Default no código: true
+enabled = true
+
+# Número de requisições (ou novas conexões, dependendo da implementação)
+# permitidas por segundo, por IP.
+# Default no código: 100
+requests_per_second = 100
+
+# Número de requisições permitidas em um burst (rajada).
+# Default no código: 200
+burst_size = 200
+
+
+# =============================================================================
+# Configurações de Tracing Distribuído (OpenTelemetry)
+# =============================================================================
+[tracing]
+# Habilita (true) ou desabilita (false) o tracing OpenTelemetry.
+# Default no código: false
+enabled = false
+
+# Endpoint do coletor OTLP (geralmente gRPC).
+# Obrigatório se tracing.enabled = true.
+# Ex: "http://localhost:4317" (para coletor OTLP/gRPC local)
+# Default no código: null (None)
+# exporter_otlp_endpoint = "http://localhost:4317"
+
+# Nome do serviço que aparecerá no sistema de tracing.
+# Default no código: "typedb-mcp-server"
+service_name = "typedb-mcp-server"
+
+# Estratégia de amostragem para traces.
+# Valores comuns: "always_on", "always_off", "traceidratio".
+# Default no código: "always_on"
+sampler = "always_on"
+
+# Argumento para o sampler.
+# Para "traceidratio", é a taxa (ex: "0.1" para 10%).
+# Para "always_on" ou "always_off", geralmente "1.0" ou não é usado.
+# Default no código: "1.0"
+sampler_arg = "1.0"
