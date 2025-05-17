@@ -44,7 +44,8 @@ use axum::{
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
-// TLS agora é feito via axum_server::RustlsConfig
+// axum_server imports (adicionado para clippy::items_after_statements)
+use axum_server::tls_rustls::RustlsConfig;
 
 use typedb_mcp_server_lib::{
     auth::{ClientAuthContext, JwksCache, oauth_middleware},
@@ -80,13 +81,13 @@ struct AppState {
 /// Ponto de entrada principal da aplicação.
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if dotenvy::dotenv().is_err() {
-        println!("Arquivo .env não encontrado ou falha ao carregar. Usando variáveis de ambiente do sistema se disponíveis.");
+        tracing::info!("Arquivo .env não encontrado ou falha ao carregar. Usando variáveis de ambiente do sistema se disponíveis.");
     }
 
     let settings = match Settings::new() {
         Ok(s) => Arc::new(s),
         Err(e) => {
-            eprintln!("Erro fatal ao carregar a configuração: {e}. Encerrando.");
+            tracing::error!("Erro fatal ao carregar a configuração: {e}. Encerrando.");
             return Err(Box::new(std::io::Error::other(e.to_string())));
         }
     };
@@ -242,7 +243,7 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::E
         tracing::info!("Usando certificado: {}", cert_path_str);
         tracing::info!("Usando chave privada: {}", key_path_str);
 
-        use axum_server::tls_rustls::RustlsConfig;
+        // use axum_server::tls_rustls::RustlsConfig; // Movido para o topo do arquivo
         let config = RustlsConfig::from_pem_file(cert_path_str, key_path_str).await
             .map_err(|e| format!("Erro ao carregar certificado/chave PEM: {e}"))?;
         axum_server::bind_rustls(bind_addr, config)
@@ -428,8 +429,20 @@ fn setup_signal_handler(token: CancellationToken) {
         #[cfg(unix)]
         {
             use tokio::signal::unix::{signal, SignalKind};
-            let mut sigint = signal(SignalKind::interrupt()).expect("Falha ao instalar handler SIGINT");
-            let mut sigterm = signal(SignalKind::terminate()).expect("Falha ao instalar handler SIGTERM");
+            let mut sigint = match signal(SignalKind::interrupt()) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!("Falha crítica ao instalar handler SIGINT: {}. Encerrando.", e);
+                    panic!("Falha crítica ao instalar handler SIGINT: {}. Encerrando.", e);
+                }
+            };
+            let mut sigterm = match signal(SignalKind::terminate()) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!("Falha crítica ao instalar handler SIGTERM: {}. Encerrando.", e);
+                    panic!("Falha crítica ao instalar handler SIGTERM: {}. Encerrando.", e);
+                }
+            };
 
             tokio::select! {
                 biased;
