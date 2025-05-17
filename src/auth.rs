@@ -82,7 +82,7 @@ pub struct Claims {
 #[derive(Debug)]
 pub struct JwksCache {
     jwks_uri: String,
-    keys: Arc<RwLock<JwkSet>>,
+    keys: Arc<RwLock<Option<JwkSet>>>, // MODIFICADO para Option<JwkSet>
     last_updated: Arc<RwLock<Option<Instant>>>,
     refresh_interval: Duration,
     http_client: reqwest::Client,
@@ -101,9 +101,9 @@ impl JwksCache {
         refresh_interval: Duration,
         http_client: reqwest::Client,
     ) -> Self {
-        JwksCache {
+        Self {
             jwks_uri,
-            keys: Arc::new(RwLock::new(JwkSet { keys: Vec::new() })),
+            keys: Arc::new(RwLock::new(None)), // MODIFICADO para None
             last_updated: Arc::new(RwLock::new(None)),
             refresh_interval,
             http_client,
@@ -130,7 +130,7 @@ impl JwksCache {
         
         {
             let mut keys_guard = self.keys.write().await;
-            *keys_guard = jwks_data;
+            *keys_guard = Some(jwks_data); // MODIFICADO para Some(jwks_data)
         } 
         
         {
@@ -152,13 +152,10 @@ impl JwksCache {
     /// ou `Err(AuthErrorDetail)` se ocorrer um erro.
     #[tracing::instrument(skip(self), name = "jwks_cache_get_key", fields(token.kid = %kid))]
     pub async fn get_decoding_key_for_kid(&self, kid: &str) -> Result<Option<DecodingKey>, AuthErrorDetail> {
-        let (is_populated_initially, needs_refresh_flag) = {
-            let last_updated_guard = self.last_updated.read().await;
-            match *last_updated_guard {
-                Some(last_update_time) => (true, last_update_time.elapsed() > self.refresh_interval),
-                None => (false, true),
-            }
-        };
+        let (is_populated_initially, needs_refresh_flag) =
+            self.last_updated.read().await.map_or((true, true), |last_update_time| {
+                (false, last_update_time.elapsed() > self.refresh_interval)
+            });
 
         if needs_refresh_flag {
             if let Err(e) = self.refresh_keys().await { 
@@ -170,7 +167,7 @@ impl JwksCache {
         }
         
         let keys_guard = self.keys.read().await;
-        keys_guard.find(kid)
+        keys_guard.as_ref().and_then(|set| set.find(kid)) // MODIFICADO para usar as_ref() e and_then()
             .map(DecodingKey::from_jwk)
             .transpose()
             .map_err(|e| AuthErrorDetail::TokenInvalid(format!("JWK para kid '{kid}' inválido: {e}")))

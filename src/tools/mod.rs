@@ -8,7 +8,6 @@
 //! Este módulo declara os submódulos que contêm a lógica específica para
 //! cada categoria de ferramenta do `Typedb-MCP-Server`. Cada submódulo
 //! é responsável por uma área funcional das ferramentas.
-
 ///
 /// Ferramentas relacionadas à administração de bancos de dados TypeDB
 /// (criar, deletar, listar, verificar existência).
