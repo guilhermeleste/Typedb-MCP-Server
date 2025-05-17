@@ -1,46 +1,27 @@
 // src/tools/mod.rs
 
-// Licença Apache 2.0
-// Copyright [ANO_ATUAL] [SEU_NOME_OU_ORGANIZACAO]
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Copyright (C) 2024 -今日の未来-
+// SPDX-License-Identifier: Apache-2.0
 
-//! Módulo agregador para todas as ferramentas MCP e seus parâmetros.
+//! Módulo agregador para todas as ferramentas MCP disponíveis.
 //!
 //! Este módulo declara os submódulos que contêm a lógica específica para
 //! cada categoria de ferramenta do `Typedb-MCP-Server`. Cada submódulo
 //! é responsável por uma área funcional das ferramentas.
 
+///
 /// Ferramentas relacionadas à administração de bancos de dados TypeDB
 /// (criar, deletar, listar, verificar existência).
-// Validação: `pub mod <nome>;` é a sintaxe padrão para declarar um módulo público
-// que reside em `<nome>.rs` ou `<nome>/mod.rs`.
-// Fonte: https://doc.rust-lang.org/book/ch07-02-defining-modules-to-control-scope-and-privacy.html
 pub mod db_admin;
 
-/// Estruturas de parâmetros de entrada para todas as ferramentas MCP.
-// Validação: Idem acima.
-pub mod params;
-
-/// Ferramentas relacionadas à execução de consultas TypeQL de dados
-/// (leitura, inserção, atualização, deleção, validação).
-// Validação: Idem acima.
+/// Ferramentas relacionadas à execução de consultas TypeQL.
 pub mod query;
 
-/// Ferramentas relacionadas a operações no esquema TypeDB
-/// (definir, remover, obter esquema).
-// Validação: Idem acima.
+/// Ferramentas relacionadas a operações no esquema TypeDB.
 pub mod schema_ops;
+
+/// Módulo para lidar com parâmetros de ferramentas.
+pub mod params;
 
 #[cfg(test)]
 mod tests {

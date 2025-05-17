@@ -15,7 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Biblioteca principal para o `Typedb-MCP-Server`.
+//! Typedb-MCP-Server
 //!
 //! Este crate define a lógica central do servidor, incluindo a manipulação
 //! do protocolo MCP, interação com o `TypeDB`, autenticação, configuração,
@@ -47,7 +47,6 @@ pub mod db;
 pub mod error;
 
 /// Módulo contendo o handler principal do serviço MCP e a lógica de despacho de ferramentas.
-/// (Anteriormente conhecido como `agent`).
 pub mod mcp_service_handler;
 
 /// Módulo para lógica de autenticação OAuth 2.0 e autorização.

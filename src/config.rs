@@ -144,7 +144,7 @@ pub struct OAuth {
     pub required_scopes: Option<Vec<String>>,
 }
 
-fn default_oauth_settings() -> OAuth {
+const fn default_oauth_settings() -> OAuth {
     OAuth {
         enabled: false,
         jwks_uri: None,
@@ -158,7 +158,7 @@ fn default_oauth_settings() -> OAuth {
 
 // Reverte para a assinatura original e adiciona allow para clippy
 #[allow(clippy::unnecessary_wraps)]
-fn default_jwks_refresh_interval() -> Option<Duration> { 
+const fn default_jwks_refresh_interval() -> Option<Duration> { 
     Some(Duration::from_secs(3600))
 }
 
@@ -209,7 +209,7 @@ pub struct RateLimit {
     pub burst_size: Option<u32>,
 }
 
-fn default_rate_limit_settings() -> RateLimit {
+const fn default_rate_limit_settings() -> RateLimit {
     RateLimit {
         enabled: true,
         requests_per_second: Some(100), // Limite generoso
