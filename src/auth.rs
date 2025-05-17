@@ -337,8 +337,8 @@ mod tests {
         -----END PRIVATE KEY-----".to_string().replace("\\n", "\n")
     }
     
-    fn rsa_public_jwk_for_test(_token_algorithm: Algorithm) -> Jwk {
-        let key_alg = match _token_algorithm {
+    fn rsa_public_jwk_for_test(token_algorithm: Algorithm) -> Jwk {
+        let key_alg = match token_algorithm {
             Algorithm::RS256 => Some(KeyAlgorithm::RS256),
             Algorithm::RS384 => Some(KeyAlgorithm::RS384),
             Algorithm::RS512 => Some(KeyAlgorithm::RS512),
@@ -425,9 +425,18 @@ mod tests {
         let now = jsonwebtoken::get_current_timestamp();
         let claims = Claims {
             sub: "user123".to_string(),
-            exp: usize::try_from(now + 3600).expect("timestamp não cabe em usize"),
-            iat: Some(usize::try_from(now).expect("timestamp não cabe em usize")),
-            nbf: Some(usize::try_from(now).expect("timestamp não cabe em usize")),
+            exp: match usize::try_from(now + 3600) {
+                Ok(val) => val,
+                Err(_) => panic!("timestamp não cabe em usize"),
+            },
+            iat: Some(match usize::try_from(now) {
+                Ok(val) => val,
+                Err(_) => panic!("timestamp não cabe em usize"),
+            }),
+            nbf: Some(match usize::try_from(now) {
+                Ok(val) => val,
+                Err(_) => panic!("timestamp não cabe em usize"),
+            }),
             iss: Some("test-issuer".to_string()),
             aud: Some(serde_json::json!(["test-audience"])),
             scope: Some("read write".to_string()),
@@ -537,9 +546,18 @@ mod tests {
         let now = jsonwebtoken::get_current_timestamp();
         let claims = Claims {
             sub: "user123".to_string(),
-            exp: usize::try_from(now + 3600).expect("timestamp não cabe em usize"),
-            iat: Some(usize::try_from(now).expect("timestamp não cabe em usize")),
-            nbf: Some(usize::try_from(now).expect("timestamp não cabe em usize")),
+            exp: match usize::try_from(now + 3600) {
+                Ok(val) => val,
+                Err(_) => panic!("timestamp não cabe em usize"),
+            },
+            iat: Some(match usize::try_from(now) {
+                Ok(val) => val,
+                Err(_) => panic!("timestamp não cabe em usize"),
+            }),
+            nbf: Some(match usize::try_from(now) {
+                Ok(val) => val,
+                Err(_) => panic!("timestamp não cabe em usize"),
+            }),
             iss: Some("test-issuer".to_string()),
             aud: Some(serde_json::json!(["test-audience"])),
             scope: Some("read".to_string()),
@@ -585,9 +603,18 @@ mod tests {
         let now = jsonwebtoken::get_current_timestamp();
         let claims = Claims {
             sub: "user123".to_string(),
-            exp: usize::try_from(now - 3600).expect("timestamp não cabe em usize"),
-            iat: Some(usize::try_from(now - 7200).expect("timestamp não cabe em usize")),
-            nbf: Some(usize::try_from(now - 7200).expect("timestamp não cabe em usize")),
+            exp: match usize::try_from(now - 3600) {
+                Ok(val) => val,
+                Err(_) => panic!("timestamp não cabe em usize"),
+            },
+            iat: Some(match usize::try_from(now - 7200) {
+                Ok(val) => val,
+                Err(_) => panic!("timestamp não cabe em usize"),
+            }),
+            nbf: Some(match usize::try_from(now - 7200) {
+                Ok(val) => val,
+                Err(_) => panic!("timestamp não cabe em usize"),
+            }),
             iss: Some("test-issuer".to_string()),
             aud: Some(serde_json::json!(["test-audience"])),
             scope: Some("read".to_string()),
