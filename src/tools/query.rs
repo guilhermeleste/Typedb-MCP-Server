@@ -457,19 +457,24 @@ mod tests {
 
     #[test]
     fn test_typedb_value_to_json_value_decimal() {
-        let dec_val = TypeDBValue::Decimal(Decimal::new(123456, 3));
-        assert_eq!(typedb_value_to_json_value(&dec_val), serde_json::json!(Decimal::new(123456, 3).to_string()));
+        let dec_val = TypeDBValue::Decimal(Decimal::new(123_456, 3));
+        assert_eq!(typedb_value_to_json_value(&dec_val), serde_json::json!(Decimal::new(123_456, 3).to_string()));
     }
 
     #[test]
     fn test_typedb_value_to_json_value_datetime_types() {
-        let naive_date = NaiveDate::from_ymd_opt(2023, 10, 26).unwrap();
+        let naive_date = NaiveDate::from_ymd_opt(2023, 10, 26)
+            .unwrap_or_else(|| panic!("Data inválida para NaiveDate"));
         assert_eq!(typedb_value_to_json_value(&TypeDBValue::Date(naive_date)), serde_json::json!("2023-10-26"));
 
-        let naive_datetime = NaiveDate::from_ymd_opt(2023, 10, 26).unwrap().and_hms_nano_opt(14, 30, 5, 123456789).unwrap();
+        let naive_datetime = NaiveDate::from_ymd_opt(2023, 10, 26)
+            .unwrap_or_else(|| panic!("Data inválida para NaiveDate"))
+            .and_hms_nano_opt(14, 30, 5, 123_456_789)
+            .unwrap_or_else(|| panic!("Horário inválido para NaiveDateTime"));
         assert_eq!(typedb_value_to_json_value(&TypeDBValue::Datetime(naive_datetime)), serde_json::json!("2023-10-26T14:30:05.123456789"));
 
-        let fixed_offset = FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap();
+        let fixed_offset = FixedOffset::east_opt(5 * 3600 + 30 * 60)
+            .unwrap_or_else(|| panic!("Offset inválido para FixedOffset"));
         let driver_tz = TypeDBTimeZone::Fixed(fixed_offset);
         // Usar o método `from_utc_datetime` do `driver_tz` que implementa `chrono::TimeZone`.
         let datetime_with_typedb_tz: chrono::DateTime<TypeDBTimeZone> = driver_tz.from_utc_datetime(&naive_datetime);
@@ -485,7 +490,7 @@ mod tests {
         let duration_val = TypeDBValue::Duration(TypeDBDuration::new(12 + 2, 3, (4*3600 + 5*60 + 6) * 1_000_000_000));
         // A implementação Display de TypeDBDuration deve ser ISO 8601.
         // Ex: "P14M3DT4H5M6S"
-        assert_eq!(typedb_value_to_json_value(&duration_val), serde_json::json!(TypeDBDuration::new(14, 3, 14706000000000_u64).to_string()));
+        assert_eq!(typedb_value_to_json_value(&duration_val), serde_json::json!(TypeDBDuration::new(14, 3, 14_706_000_000_000_u64).to_string()));
     }
     
     // O teste para TypeDBValue::Struct foi removido porque não podemos construir TypeDBStruct { fields }
