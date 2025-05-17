@@ -1,3 +1,46 @@
+    /// Executa um comando docker-compose com variáveis de ambiente customizadas.
+    ///
+    /// Permite passar envs extras para o processo docker-compose (ex: para parametrizar OAuth/JWKS).
+    pub fn run_command_with_env(&self, args: &[&str], envs: &[(&str, &str)]) -> Result<Output> {
+        let command_str = format!(
+            "docker-compose -f {} -p {} {} (envs: {:?})",
+            self.compose_file_path.to_string_lossy(),
+            self.project_name,
+            args.join(" "),
+            envs
+        );
+        tracing::info!("Executando comando Docker Compose com envs: {}", command_str);
+
+        let mut cmd = Command::new("docker-compose");
+        cmd.arg("-f")
+            .arg(&self.compose_file_path)
+            .arg("-p")
+            .arg(&self.project_name)
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        for (k, v) in envs {
+            cmd.env(k, v);
+        }
+        let output = cmd.output()?;
+        if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            tracing::error!(
+                "Comando Docker Compose falhou. stdout: {}, stderr: {}",
+                stdout,
+                stderr
+            );
+            Err(DockerHelperError::CommandFailed { command: command_str, stdout, stderr })
+        } else {
+            tracing::debug!(
+                "Comando Docker Compose bem-sucedido. stdout: {}, stderr: {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            Ok(output)
+        }
+    }
 // tests/common/docker_helpers.rs
 //! Fornece utilitários para interagir com Docker e Docker Compose em testes.
 
