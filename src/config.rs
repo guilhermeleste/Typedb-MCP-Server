@@ -150,7 +150,7 @@ fn default_oauth_settings() -> OAuth {
         jwks_uri: None,
         issuer: None,
         audience: None,
-        jwks_refresh_interval: Some(Duration::from_secs(3600)), // 1 hora
+        jwks_refresh_interval: default_jwks_refresh_interval(), // 1 hora
         jwks_request_timeout_seconds: Some(30), // 30 segundos de timeout default
         required_scopes: None,
     }
@@ -253,6 +253,11 @@ impl Settings {
     ///
     /// # Retorna
     /// `Result<Self, ConfigError>` contendo as configurações carregadas ou um erro.
+    ///
+    /// # Errors
+    ///
+    /// Retorna `ConfigError` se houver um problema ao construir ou desserializar as configurações,
+    /// como um arquivo de configuração malformado ou variáveis de ambiente inválidas.
     pub fn new() -> Result<Self, ConfigError> {
         let config_file_path = std::env::var("MCP_CONFIG_PATH")
             .unwrap_or_else(|_| DEFAULT_CONFIG_FILENAME.to_string());

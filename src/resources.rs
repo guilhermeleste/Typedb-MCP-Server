@@ -94,7 +94,7 @@ const SCHEMA_TEMPLATE_DESCRIPTION: &str = "Retorna o esquema TypeQL para o banco
             name: QUERY_TYPES_NAME.to_string(),
             description: Some(QUERY_TYPES_DESCRIPTION.to_string()),
             mime_type: Some("text/plain".to_string()),
-            size: Some(QUERY_TYPES_CONTENT.len() as u32),
+            size: Some(QUERY_TYPES_CONTENT.len().try_into().unwrap_or(u32::MAX)),
         }
         .no_annotation(),
         RawResource {
@@ -102,7 +102,7 @@ const SCHEMA_TEMPLATE_DESCRIPTION: &str = "Retorna o esquema TypeQL para o banco
             name: TRANSACTIONS_GUIDE_NAME.to_string(),
             description: Some(TRANSACTIONS_GUIDE_DESCRIPTION.to_string()),
             mime_type: Some("text/plain".to_string()),
-            size: Some(TRANSACTIONS_GUIDE_CONTENT.len() as u32),
+            size: Some(TRANSACTIONS_GUIDE_CONTENT.len().try_into().unwrap_or(u32::MAX)),
         }
         .no_annotation(),
     ]
