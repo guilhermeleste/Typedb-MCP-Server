@@ -157,13 +157,13 @@ mod tests {
         match result {
             Err(sdktrace::TraceError::Other(s)) => {
                 let msg = format!("{s}");
-                assert!(msg.contains("OTEL_EXPORTER_OTLP_ENDPOINT"));
+                assert!(msg.contains("OTEL_EXPORTER_OTLP_ENDPOINT"), "Mensagem de erro inesperada: {msg}");
             }
             Err(e) => {
-                assert!(false, "Erro inesperado para endpoint ausente: {e:?}");
+                panic!("Erro inesperado para endpoint ausente: {e:?}");
             }
             Ok(()) => {
-                assert!(false, "Esperado erro para endpoint ausente, mas obteve Ok");
+                panic!("Esperado erro para endpoint ausente, mas obteve Ok");
             }
         }
     }

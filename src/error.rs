@@ -361,8 +361,14 @@ mod tests {
         );
         assert_eq!(error_data.message.as_ref(), expected_mcp_message);
 
-        let data_json = error_data.data.as_ref().expect("ErrorData deve conter campo data");
-        let data_obj = data_json.as_object().expect("Campo data deve ser um objeto JSON");
+        let data_json = match error_data.data.as_ref() {
+            Some(data) => data,
+            None => panic!("ErrorData deve conter campo data"),
+        };
+        let data_obj = match data_json.as_object() {
+            Some(obj) => obj,
+            None => panic!("Campo data deve ser um objeto JSON"),
+        };
         assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("TypeDBError"));
         assert_eq!(data_obj.get("toolName").and_then(|v| v.as_str()), Some(tool_name));
         // O método `code()` para TypeDBError::Other retorna uma string vazia.
@@ -393,8 +399,14 @@ mod tests {
 
         assert_eq!(error_data.code, ErrorCode(MCP_ERROR_CODE_AUTHENTICATION_FAILED));
         assert_eq!(error_data.message.as_ref(), "Autenticação falhou: Token de autenticação não fornecido ou malformado.");
-        let data_json = error_data.data.as_ref().expect("ErrorData deve conter campo data");
-        let data_obj = data_json.as_object().expect("Campo data deve ser um objeto JSON");
+        let data_json = match error_data.data.as_ref() {
+            Some(data) => data,
+            None => panic!("ErrorData deve conter campo data"),
+        };
+        let data_obj = match data_json.as_object() {
+            Some(obj) => obj,
+            None => panic!("Campo data deve ser um objeto JSON"),
+        };
         assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("AuthError"));
         assert_eq!(data_obj.get("reason").and_then(|v| v.as_str()), Some("Token de autenticação não fornecido ou malformado."));
     }
@@ -413,8 +425,14 @@ mod tests {
         let expected_message_detail = "Escopos OAuth2 insuficientes. Requeridos: [\"write\"], Possuídos: [\"read\"].";
         assert_eq!(error_data.message.as_ref(), format!("Autorização falhou: {expected_message_detail}"));
 
-        let data_json = error_data.data.as_ref().expect("ErrorData deve conter campo data");
-        let data_obj = data_json.as_object().expect("Campo data deve ser um objeto JSON");
+        let data_json = match error_data.data.as_ref() {
+            Some(data) => data,
+            None => panic!("ErrorData deve conter campo data"),
+        };
+        let data_obj = match data_json.as_object() {
+            Some(obj) => obj,
+            None => panic!("Campo data deve ser um objeto JSON"),
+        };
         assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("AuthError"));
         assert_eq!(data_obj.get("reason").and_then(|v| v.as_str()), Some(expected_message_detail));
         assert_eq!(data_obj.get("requiredScopes"), Some(&serde_json::json!(required_scopes)));
@@ -430,8 +448,14 @@ mod tests {
         assert_eq!(error_data.code, ErrorCode::INTERNAL_ERROR);
         assert!(error_data.message.contains("Erro de configuração do servidor"));
         assert!(error_data.message.contains("uma.chave.de.config not found"));
-        let data_json = error_data.data.as_ref().expect("ErrorData deve conter campo data");
-        let data_obj = data_json.as_object().expect("Campo data deve ser um objeto JSON");
+        let data_json = match error_data.data.as_ref() {
+            Some(data) => data,
+            None => panic!("ErrorData deve conter campo data"),
+        };
+        let data_obj = match data_json.as_object() {
+            Some(obj) => obj,
+            None => panic!("Campo data deve ser um objeto JSON"),
+        };
         assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("ConfigurationError"));
         assert!(data_obj.get("detail").and_then(|v| v.as_str()).is_some_and(|s| s.contains("uma.chave.de.config not found")));
     }
@@ -452,8 +476,14 @@ mod tests {
         );
         assert_eq!(error_data.message.as_ref(), format!("Autorização falhou: {expected_message_detail}"));
 
-        let data_json = error_data.data.as_ref().expect("ErrorData deve conter campo data");
-        let data_obj = data_json.as_object().expect("Campo data deve ser um objeto JSON");
+        let data_json = match error_data.data.as_ref() {
+            Some(data) => data,
+            None => panic!("ErrorData deve conter campo data"),
+        };
+        let data_obj = match data_json.as_object() {
+            Some(obj) => obj,
+            None => panic!("Campo data deve ser um objeto JSON"),
+        };
         assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("AuthError"));
         assert_eq!(data_obj.get("reason").and_then(|v| v.as_str()), Some(expected_message_detail.as_str()));
         assert_eq!(data_obj.get("expectedIssuers"), Some(&serde_json::json!(expected)));
