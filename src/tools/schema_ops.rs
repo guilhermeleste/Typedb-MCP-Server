@@ -243,8 +243,14 @@ mod tests {
             Ok(CallToolResult::success(vec![Content::text("OK")]));
 
         assert!(successful_mcp_result.is_ok());
-        let result = successful_mcp_result.unwrap();
-        assert_eq!(result.content[0].as_text().unwrap().text, "OK");
+        let result = match successful_mcp_result {
+            Ok(r) => r,
+            Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
+        };
+        match result.content[0].as_text() {
+            Some(text_content) => assert_eq!(text_content.text, "OK"),
+            None => panic!("Esperado Content::text no índice 0"),
+        }
         assert!(!result.is_error.unwrap_or(false));
     }
 
@@ -256,7 +262,10 @@ mod tests {
         let handler_output: Result<CallToolResult, ErrorData> = Err(expected_mcp_error_data);
 
         assert!(handler_output.is_err());
-        let err_data = handler_output.unwrap_err();
+        let err_data = match handler_output {
+            Err(e) => e,
+            Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
+        };
         assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
         assert!(err_data.message.contains("define_schema (obter banco)"));
     }
@@ -269,7 +278,10 @@ mod tests {
         let handler_output: Result<CallToolResult, ErrorData> = Err(expected_mcp_error_data);
 
         assert!(handler_output.is_err());
-        let err_data = handler_output.unwrap_err();
+        let err_data = match handler_output {
+            Err(e) => e,
+            Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
+        };
         assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
         assert!(err_data.message.contains("define_schema (abrir transação)"));
     }
@@ -282,7 +294,10 @@ mod tests {
         let handler_output: Result<CallToolResult, ErrorData> = Err(expected_mcp_error_data);
 
         assert!(handler_output.is_err());
-        let err_data = handler_output.unwrap_err();
+        let err_data = match handler_output {
+            Err(e) => e,
+            Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
+        };
         assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
         assert!(err_data.message.contains("define_schema (executar query)"));
     }
@@ -295,7 +310,10 @@ mod tests {
         let handler_output: Result<CallToolResult, ErrorData> = Err(expected_mcp_error_data);
 
         assert!(handler_output.is_err());
-        let err_data = handler_output.unwrap_err();
+        let err_data = match handler_output {
+            Err(e) => e,
+            Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
+        };
         assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
         assert!(err_data.message.contains("define_schema (commit)"));
     }
@@ -315,10 +333,16 @@ mod tests {
         };
         let handler_output: Result<CallToolResult, ErrorData> = Err(expected_mcp_error_data);
         assert!(handler_output.is_err());
-        let err_data = handler_output.unwrap_err();
+        let err_data = match handler_output {
+            Err(e) => e,
+            Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
+        };
         assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
         assert!(err_data.message.contains("Resposta inesperada do servidor TypeDB"));
-        assert_eq!(err_data.data.unwrap()["received"], received_type_example);
+        match err_data.data {
+            Some(ref data) => assert_eq!(data["received"], received_type_example),
+            None => panic!("Esperado campo data em ErrorData"),
+        }
     }
 
 
@@ -329,8 +353,14 @@ mod tests {
             Ok(CallToolResult::success(vec![Content::text(schema_content)]));
 
         assert!(successful_mcp_result.is_ok());
-        let result = successful_mcp_result.unwrap();
-        assert_eq!(result.content[0].as_text().unwrap().text, "define person sub entity;");
+        let result = match successful_mcp_result {
+            Ok(r) => r,
+            Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
+        };
+        match result.content[0].as_text() {
+            Some(text_content) => assert_eq!(text_content.text, "define person sub entity;"),
+            None => panic!("Esperado Content::text no índice 0"),
+        }
     }
 
     #[tokio::test]
@@ -341,7 +371,10 @@ mod tests {
         let handler_output: Result<CallToolResult, ErrorData> = Err(expected_mcp_error_data);
 
         assert!(handler_output.is_err());
-        let err_data = handler_output.unwrap_err();
+        let err_data = match handler_output {
+            Err(e) => e,
+            Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
+        };
         assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
         assert!(err_data.message.contains("get_schema (obter banco)"));
     }
@@ -354,7 +387,10 @@ mod tests {
         let handler_output: Result<CallToolResult, ErrorData> = Err(expected_mcp_error_data);
 
         assert!(handler_output.is_err());
-        let err_data = handler_output.unwrap_err();
+        let err_data = match handler_output {
+            Err(e) => e,
+            Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
+        };
         assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
         assert!(err_data.message.contains("get_schema (obter conteúdo do schema)"));
     }

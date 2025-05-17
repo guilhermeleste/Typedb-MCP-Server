@@ -256,7 +256,10 @@ mod tests {
     #[tokio::test]
     async fn test_handle_list_databases_success_flow() {
         let db_names = vec!["db1".to_string(), "db2".to_string()];
-        let json_names = serde_json::to_string(&db_names).unwrap();
+        let json_names = match serde_json::to_string(&db_names) {
+            Ok(s) => s,
+            Err(e) => panic!("Falha ao serializar db_names para JSON: {e}"),
+        };
         let successful_mcp_result: Result<CallToolResult, ErrorData> =
             Ok(CallToolResult::success(vec![Content::text(json_names.clone())]));
 

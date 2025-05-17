@@ -154,13 +154,17 @@ mod tests {
             sampler_arg: "1.0".to_string(),
         };
         let result = init_tracing_pipeline(&config);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            sdktrace::TraceError::Other(s) => {
+        match result {
+            Err(sdktrace::TraceError::Other(s)) => {
                 let msg = format!("{s}");
                 assert!(msg.contains("OTEL_EXPORTER_OTLP_ENDPOINT"));
             }
-            _ => panic!("Erro inesperado para endpoint ausente."),
+            Err(e) => {
+                assert!(false, "Erro inesperado para endpoint ausente: {e:?}");
+            }
+            Ok(_) => {
+                assert!(false, "Esperado erro para endpoint ausente, mas obteve Ok");
+            }
         }
     }
 
