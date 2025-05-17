@@ -113,6 +113,50 @@ pub struct DockerComposeEnv {
 }
 
 impl DockerComposeEnv {
+
+    /// Obtém o código de saída do processo principal do container de um serviço.
+    ///
+    /// Retorna Ok(i32) com o ExitCode, ou erro se não for possível determinar.
+    #[tracing::instrument(skip(self), name="get_service_exit_code", fields(project=%self.project_name, service=%service_name))]
+    pub fn get_service_exit_code(&self, service_name: &str) -> Result<i32> {
+        // Obtém o container_id do serviço
+        let output = self.run_command(&["ps", "-q", service_name])?;
+        let container_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if container_id.is_empty() {
+            tracing::warn!("Serviço '{}' não encontrado ou não está rodando sob o projeto '{}'.", service_name, self.project_name);
+            return Err(DockerHelperError::ServiceNotFound(service_name.to_string()));
+        }
+
+        // Executa docker inspect para obter o ExitCode
+        let inspect_output = std::process::Command::new("docker")
+            .args(["inspect", "--format={{.State.ExitCode}}", &container_id])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()?;
+
+        if !inspect_output.status.success() {
+            let stderr = String::from_utf8_lossy(&inspect_output.stderr).into_owned();
+            tracing::error!("Falha ao inspecionar ExitCode do container '{}' (serviço '{}'): {}", container_id, service_name, stderr);
+            return Err(DockerHelperError::CommandFailed {
+                command: format!("docker inspect --format={{.State.ExitCode}} {}", container_id),
+                stdout: String::from_utf8_lossy(&inspect_output.stdout).into_owned(),
+                stderr,
+            });
+        }
+
+        let exit_code_str = String::from_utf8_lossy(&inspect_output.stdout).trim().to_string();
+        match exit_code_str.parse::<i32>() {
+            Ok(code) => Ok(code),
+            Err(e) => {
+                tracing::error!("Falha ao converter ExitCode '{}' para i32: {}", exit_code_str, e);
+                Err(DockerHelperError::CommandFailed {
+                    command: format!("docker inspect --format={{.State.ExitCode}} {}", container_id),
+                    stdout: exit_code_str,
+                    stderr: format!("Erro de parse: {}", e),
+                })
+            }
+        }
+    }
     /// Cria uma nova instância para gerenciar um arquivo docker-compose específico.
     ///
     /// `compose_file` é o caminho para o arquivo `docker-compose.yml`.
