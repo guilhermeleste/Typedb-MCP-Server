@@ -85,8 +85,8 @@ const SCHEMA_TEMPLATE_DESCRIPTION: &str = "Retorna o esquema TypeQL para o banco
 
 /// Retorna uma lista de `Resource` para os recursos estáticos definidos.
 ///
-/// Estes recursos fornecem informações gerais sobre TypeQL e o uso do servidor.
-pub fn list_static_resources() -> Vec<Resource> {
+/// Estes recursos fornecem informações gerais sobre `TypeQL` e o uso do servidor.
+#[must_use] pub fn list_static_resources() -> Vec<Resource> {
     // Campos de RawResource (uri, name, description, mime_type) são String em rmcp 0.1.5
     vec![
         RawResource {
@@ -111,7 +111,7 @@ pub fn list_static_resources() -> Vec<Resource> {
 /// Retorna uma lista de `ResourceTemplate` para os recursos dinâmicos.
 ///
 /// Atualmente, inclui um template para obter o esquema de um banco de dados.
-pub fn list_resource_templates() -> Vec<ResourceTemplate> {
+#[must_use] pub fn list_resource_templates() -> Vec<ResourceTemplate> {
     // Campos de RawResourceTemplate são String em rmcp 0.1.5
     vec![RawResourceTemplate {
         uri_template: SCHEMA_TEMPLATE_URI_TEMPLATE.to_string(),
@@ -146,7 +146,7 @@ pub fn read_static_resource(uri_str: &str) -> Option<String> {
 /// Extrai o nome do banco de dados e o tipo de esquema solicitado (full/types).
 ///
 /// # Parâmetros
-/// * `uri_str`: A URI do recurso de esquema (ex: "schema://current/my_db?type=types").
+/// * `uri_str`: A URI do recurso de esquema (ex: "<schema://current/my_db?type=types>").
 ///
 /// # Retorna
 /// `Ok((database_name, schema_type_param))` ou `Err(ErrorData)` se a URI for malformada.
@@ -155,8 +155,7 @@ fn parse_schema_uri(uri_str: &str) -> Result<(String, String), ErrorData> {
         return Err(ErrorData {
             code: ErrorCode::RESOURCE_NOT_FOUND,
             message: Cow::Owned(format!( // Cow::Owned para String dinâmica
-                "URI de esquema inválida: '{}'. Deve começar com 'schema://current/'.",
-                uri_str
+                "URI de esquema inválida: '{uri_str}'. Deve começar com 'schema://current/'."
             )),
             data: None,
         });
@@ -179,8 +178,7 @@ fn parse_schema_uri(uri_str: &str) -> Result<(String, String), ErrorData> {
         .map_err(|e| ErrorData {
             code: ErrorCode::INVALID_PARAMS,
             message: Cow::Owned(format!(
-                "Nome do banco de dados malformado na URI do esquema (erro de decodificação UTF-8 '{}'): {}",
-                db_name_encoded, e
+                "Nome do banco de dados malformado na URI do esquema (erro de decodificação UTF-8 '{db_name_encoded}'): {e}"
             )),
             data: None,
         })?
@@ -237,8 +235,7 @@ pub async fn read_dynamic_schema_resource(
                     ErrorData {
                         code: ErrorCode::RESOURCE_NOT_FOUND,
                         message: Cow::Owned(format!(
-                            "Banco de dados '{}' não encontrado ou inacessível para obter esquema.",
-                            db_name // db_name já é possuída aqui
+                            "Banco de dados '{db_name}' não encontrado ou inacessível para obter esquema." // db_name já é possuída aqui
                         )),
                         data: Some(serde_json::json!({"originalError": e.to_string()})),
                     }

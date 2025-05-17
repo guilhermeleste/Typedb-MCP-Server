@@ -51,7 +51,7 @@ use tokio::sync::RwLock;
 pub struct ClientAuthContext {
     /// Identificador do usuário (geralmente o `sub` do token JWT).
     pub user_id: String,
-    /// Conjunto de escopos OAuth2 concedidos ao cliente.
+    /// Conjunto de escopos `OAuth2` concedidos ao cliente.
     pub scopes: HashSet<String>,
     /// O token JWT bruto, como uma string.
     pub raw_token: String,
@@ -123,10 +123,10 @@ impl JwksCache {
         if !response.status().is_success() {
             let status = response.status();
             let err_body = response.text().await.unwrap_or_else(|_| String::from("<corpo do erro ilegível>"));
-            return Err(AuthErrorDetail::JwksFetchFailed(format!("Status {} ao buscar JWKS: {}", status, err_body)));
+            return Err(AuthErrorDetail::JwksFetchFailed(format!("Status {status} ao buscar JWKS: {err_body}")));
         }
 
-        let jwks_data: JwkSet = response.json().await.map_err(|e| AuthErrorDetail::JwksFetchFailed(format!("JWKS JSON inválido: {}", e)))?;
+        let jwks_data: JwkSet = response.json().await.map_err(|e| AuthErrorDetail::JwksFetchFailed(format!("JWKS JSON inválido: {e}")))?;
         
         {
             let mut keys_guard = self.keys.write().await;
@@ -173,7 +173,7 @@ impl JwksCache {
         keys_guard.find(kid)
             .map(DecodingKey::from_jwk)
             .transpose()
-            .map_err(|e| AuthErrorDetail::TokenInvalid(format!("JWK para kid '{}' inválido: {}", kid, e)))
+            .map_err(|e| AuthErrorDetail::TokenInvalid(format!("JWK para kid '{kid}' inválido: {e}")))
     }
 
     /// Verifica se o cache JWKS já foi populado alguma vez.
@@ -204,7 +204,7 @@ async fn validate_and_decode_token(
     jwks_cache: &JwksCache,
     oauth_config: &config::OAuth,
 ) -> Result<TokenData<Claims>, AuthErrorDetail> {
-    let header: Header = decode_header(token_str).map_err(|e| AuthErrorDetail::TokenInvalid(format!("Header do token inválido: {}", e)))?;
+    let header: Header = decode_header(token_str).map_err(|e| AuthErrorDetail::TokenInvalid(format!("Header do token inválido: {e}")))?;
     let kid = header.kid.as_deref().ok_or(AuthErrorDetail::KidNotFoundInJwks)?;
     let alg: Algorithm = header.alg;
 
@@ -224,7 +224,7 @@ async fn validate_and_decode_token(
         JwtErrorKind::InvalidIssuer => AuthErrorDetail::IssuerMismatch { expected: oauth_config.issuer.clone().unwrap_or_default(), found: None },
         JwtErrorKind::InvalidAudience => AuthErrorDetail::AudienceMismatch { expected: oauth_config.audience.clone().unwrap_or_default(), found: None },
         JwtErrorKind::ImmatureSignature => AuthErrorDetail::TokenInvalid("Token ainda não é válido (nbf)".to_string()),
-        _ => AuthErrorDetail::TokenInvalid(format!("Erro de validação não especificado: {}", e)),
+        _ => AuthErrorDetail::TokenInvalid(format!("Erro de validação não especificado: {e}")),
     })?;
 
     if let Some(ref expected_audiences) = oauth_config.audience {

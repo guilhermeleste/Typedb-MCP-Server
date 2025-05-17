@@ -78,7 +78,7 @@ pub async fn handle_define_schema(
             Ok(CallToolResult::success(vec![Content::text("OK")]))
         }
         Ok(other_answer) => {
-            let response_type_str = format!("{:?}", other_answer);
+            let response_type_str = format!("{other_answer:?}");
             tracing::error!(db.name = %params.database_name, response.type = %response_type_str,"Resposta inesperada para query define_schema.");
             Err(ErrorData {
                 code: ErrorCode::INTERNAL_ERROR,
@@ -149,7 +149,7 @@ pub async fn handle_undefine_schema(
             Ok(CallToolResult::success(vec![Content::text("OK")]))
         }
         Ok(other_answer) => {
-            let response_type_str = format!("{:?}", other_answer);
+            let response_type_str = format!("{other_answer:?}");
             tracing::error!(db.name = %params.database_name, response.type = %response_type_str, "Resposta inesperada para query undefine_schema.");
             Err(ErrorData {
                 code: ErrorCode::INTERNAL_ERROR,

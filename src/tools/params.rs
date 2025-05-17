@@ -35,10 +35,10 @@ use rmcp::{
 #[derive(Deserialize, JsonSchema, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryReadParams {
-    /// O nome do banco de dados TypeDB alvo para a consulta.
+    /// O nome do banco de dados `TypeDB` alvo para a consulta.
     #[schemars(description = "O nome do banco de dados TypeDB alvo para a consulta.")]
     pub database_name: String,
-    /// A consulta TypeQL completa de leitura.
+    /// A consulta `TypeQL` completa de leitura.
     /// Exemplos: `match $x isa person; get;`, `match $p isa person; fetch $p { name, age };`, `match $p isa person; aggregate count;`.
     #[schemars(description = "A consulta TypeQL completa de leitura (ex: `match $x isa person; get;`, `match $p isa person; fetch $p { name, age };`, `match $p isa person; aggregate count;`).")]
     pub query: String,
@@ -48,10 +48,10 @@ pub struct QueryReadParams {
 #[derive(Deserialize, JsonSchema, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct InsertDataParams {
-    /// O nome do banco de dados TypeDB alvo para a inserção.
+    /// O nome do banco de dados `TypeDB` alvo para a inserção.
     #[schemars(description = "O nome do banco de dados TypeDB alvo para a inserção.")]
     pub database_name: String,
-    /// A consulta TypeQL de inserção completa.
+    /// A consulta `TypeQL` de inserção completa.
     /// Exemplos: `insert $x isa person, has name 'Alice';`, `match $p isa person, has name 'Bob'; insert $p has age 30;`.
     #[schemars(description = "A consulta TypeQL de inserção completa (ex: `insert $x isa person, has name 'Alice';` ou `match $p isa person, has name 'Bob'; insert $p has age 30;`).")]
     pub query: String,
@@ -61,10 +61,10 @@ pub struct InsertDataParams {
 #[derive(Deserialize, JsonSchema, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteDataParams {
-    /// O nome do banco de dados TypeDB alvo para a deleção.
+    /// O nome do banco de dados `TypeDB` alvo para a deleção.
     #[schemars(description = "O nome do banco de dados TypeDB alvo para a deleção.")]
     pub database_name: String,
-    /// A consulta TypeQL de deleção completa.
+    /// A consulta `TypeQL` de deleção completa.
     /// Exemplo: `match $p isa person, has name 'Alice'; delete $p;`.
     #[schemars(description = "A consulta TypeQL de deleção completa (ex: `match $p isa person, has name 'Alice'; delete $p;`).")]
     pub query: String,
@@ -74,10 +74,10 @@ pub struct DeleteDataParams {
 #[derive(Deserialize, JsonSchema, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateDataParams {
-    /// O nome do banco de dados TypeDB alvo para a atualização.
+    /// O nome do banco de dados `TypeDB` alvo para a atualização.
     #[schemars(description = "O nome do banco de dados TypeDB alvo para a atualização.")]
     pub database_name: String,
-    /// A consulta TypeQL de atualização completa.
+    /// A consulta `TypeQL` de atualização completa.
     /// Exemplo: `match $p isa person, has name 'Alice', has age $a; delete $p has age $a; insert $p has age 31;`.
     #[schemars(description = "A consulta TypeQL de atualização completa (ex: `match $p isa person, has name 'Alice', has age $a; delete $p has age $a; insert $p has age 31;`).")]
     pub query: String,
@@ -87,10 +87,10 @@ pub struct UpdateDataParams {
 #[derive(Deserialize, JsonSchema, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DefineSchemaParams {
-    /// O nome do banco de dados TypeDB cujo esquema será modificado.
+    /// O nome do banco de dados `TypeDB` cujo esquema será modificado.
     #[schemars(description = "O nome do banco de dados TypeDB cujo esquema será modificado.")]
     pub database_name: String,
-    /// Uma string contendo uma ou mais declarações TypeQL `define` válidas.
+    /// Uma string contendo uma ou mais declarações `TypeQL` `define` válidas.
     /// Exemplo: `define person sub entity, owns name; name sub attribute, value string;`.
     #[schemars(description = "Uma string contendo uma ou mais declarações TypeQL `define` válidas (ex: `define person sub entity, owns name; name sub attribute, value string;`).")]
     pub schema_definition: String,
@@ -100,10 +100,10 @@ pub struct DefineSchemaParams {
 #[derive(Deserialize, JsonSchema, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct UndefineSchemaParams {
-    /// O nome do banco de dados TypeDB cujo esquema será modificado.
+    /// O nome do banco de dados `TypeDB` cujo esquema será modificado.
     #[schemars(description = "O nome do banco de dados TypeDB cujo esquema será modificado.")]
     pub database_name: String,
-    /// Uma string contendo uma ou mais declarações TypeQL `undefine` válidas.
+    /// Uma string contendo uma ou mais declarações `TypeQL` `undefine` válidas.
     /// Exemplo: `undefine person plays employment;`.
     #[schemars(description = "Uma string contendo uma ou mais declarações TypeQL `undefine` válidas (ex: `undefine person plays employment;`).")]
     pub schema_undefinition: String,
@@ -113,7 +113,7 @@ pub struct UndefineSchemaParams {
 #[derive(Deserialize, JsonSchema, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSchemaParams {
-    /// O nome do banco de dados TypeDB do qual o esquema será recuperado.
+    /// O nome do banco de dados `TypeDB` do qual o esquema será recuperado.
     #[schemars(description = "O nome do banco de dados TypeDB do qual o esquema será recuperado.")]
     pub database_name: String,
     /// Especifica o tipo de esquema a ser retornado: "full" para o esquema completo
@@ -156,11 +156,11 @@ pub struct DeleteDatabaseParams {
 #[derive(Deserialize, JsonSchema, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidateQueryParams {
-    /// O nome de um banco de dados TypeDB existente.
+    /// O nome de um banco de dados `TypeDB` existente.
     /// O esquema deste banco será usado como contexto para a validação.
     #[schemars(description = "O nome de um banco de dados TypeDB existente. O esquema deste banco será usado como contexto para a validação.")]
     pub database_name: String,
-    /// A consulta TypeQL a ser validada.
+    /// A consulta `TypeQL` a ser validada.
     #[schemars(description = "A consulta TypeQL a ser validada.")]
     pub query: String,
     /// O tipo de transação para o qual esta consulta se destina.

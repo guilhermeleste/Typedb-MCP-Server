@@ -135,7 +135,7 @@ impl Sink<ServerJsonRpcMessage> for WebSocketTransport {
             }
             Err(e) => {
                 tracing::error!("WebSocketTransport: Falha ao serializar ServerJsonRpcMessage para JSON: {}", e);
-                Err(io::Error::new(io::ErrorKind::InvalidInput, format!("Falha ao serializar JSON-RPC para envio: {}", e)))
+                Err(io::Error::new(io::ErrorKind::InvalidInput, format!("Falha ao serializar JSON-RPC para envio: {e}")))
             }
         }
     }

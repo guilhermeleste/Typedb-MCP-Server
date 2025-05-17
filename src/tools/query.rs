@@ -25,7 +25,7 @@ use super::params;
 
 // --- Funções Utilitárias Privadas para Serialização JSON ---
 
-/// Converte um `typedb_driver::concept::Value` (TypeDBValue) em um `serde_json::Value`.
+/// Converte um `typedb_driver::concept::Value` (`TypeDBValue`) em um `serde_json::Value`.
 fn typedb_value_to_json_value(value: &TypeDBValue) -> serde_json::Value {
     match value {
         TypeDBValue::Boolean(b) => serde_json::json!(b),
@@ -167,7 +167,7 @@ pub async fn handle_query_read(
                                         tracing::error!(error.message = %e, "Falha ao serializar valor agregado para JSON.");
                                         ErrorData {
                                             code: ErrorCode::INTERNAL_ERROR,
-                                            message: Cow::Owned(format!("Falha ao serializar valor agregado para JSON: {}", e)),
+                                            message: Cow::Owned(format!("Falha ao serializar valor agregado para JSON: {e}")),
                                             data: None,
                                         }
                                     })?
@@ -189,7 +189,7 @@ pub async fn handle_query_read(
                              tracing::error!(error.message = %e, "Falha ao serializar ConceptRows para JSON.");
                             ErrorData {
                                 code: ErrorCode::INTERNAL_ERROR,
-                                message: Cow::Owned(format!("Falha ao serializar linhas de conceito para JSON: {}", e)),
+                                message: Cow::Owned(format!("Falha ao serializar linhas de conceito para JSON: {e}")),
                                 data: None,
                             }
                         })?
@@ -210,7 +210,7 @@ pub async fn handle_query_read(
                                     tracing::error!(error.message = %e, typedb_json = %typedb_json_string, "Falha ao converter typedb_driver::JSON para serde_json::Value.");
                                     ErrorData {
                                         code: ErrorCode::INTERNAL_ERROR,
-                                        message: Cow::Owned(format!("Falha ao converter JSON interno para JSON de saída: {}", e)),
+                                        message: Cow::Owned(format!("Falha ao converter JSON interno para JSON de saída: {e}")),
                                         data: None,
                                     }
                                 })
@@ -219,7 +219,7 @@ pub async fn handle_query_read(
                             tracing::error!(error.message = %e, "Falha ao serializar ConceptDocuments para JSON.");
                             ErrorData {
                                 code: ErrorCode::INTERNAL_ERROR,
-                                message: Cow::Owned(format!("Falha ao serializar documentos para JSON: {}", e)),
+                                message: Cow::Owned(format!("Falha ao serializar documentos para JSON: {e}")),
                                 data: None,
                             }
                         })?
@@ -275,7 +275,7 @@ pub async fn handle_insert_data(
                         tracing::error!(error.message = %e, "Falha ao serializar resultados de insert_data para JSON.");
                         ErrorData {
                             code: ErrorCode::INTERNAL_ERROR,
-                            message: Cow::Owned(format!("Falha ao serializar resultados de inserção para JSON: {}", e)),
+                            message: Cow::Owned(format!("Falha ao serializar resultados de inserção para JSON: {e}")),
                             data: None,
                         }
                     })?
@@ -324,11 +324,11 @@ pub async fn handle_delete_data(
             Ok(CallToolResult::success(vec![Content::text("OK")]))
         }
         Ok(other_answer) => {
-            let response_type_str = format!("{:?}", other_answer);
+            let response_type_str = format!("{other_answer:?}");
             tracing::warn!(response.type = %response_type_str, "delete_data recebeu resposta inesperada. Prosseguindo com commit.");
             transaction.commit().await.map_err(|e| typedb_error_to_mcp_error_data(&e, "delete_data (commit com resposta inesperada)"))?;
             Ok(CallToolResult::success(vec![Content::text(
-                format!("OK (com aviso: tipo de resposta inesperado da query: {})", response_type_str)
+                format!("OK (com aviso: tipo de resposta inesperado da query: {response_type_str})")
             )]))
         }
         Err(e) => Err(typedb_error_to_mcp_error_data(&e, "delete_data (executar query)")),
@@ -358,7 +358,7 @@ pub async fn handle_update_data(
                     let json_rows: Vec<serde_json::Value> = rows.iter().map(concept_row_to_json_value).collect();
                     serde_json::to_string(&json_rows).map_err(|e| ErrorData {
                         code: ErrorCode::INTERNAL_ERROR,
-                        message: Cow::Owned(format!("Falha ao serializar resultados de update para JSON: {}", e)),
+                        message: Cow::Owned(format!("Falha ao serializar resultados de update para JSON: {e}")),
                         data: None,
                     })?
                 }
@@ -398,7 +398,7 @@ pub async fn handle_validate_query(
     let query_options = TypeDBQueryOptions::default();
 
     let intended_type_str = params.intended_transaction_type.as_deref().unwrap_or("read");
-    let query_context_msg = format!("Validação da query (destinada a transação '{}')", intended_type_str);
+    let query_context_msg = format!("Validação da query (destinada a transação '{intended_type_str}')");
 
     match transaction.query_with_options(&params.query, query_options).await {
         Ok(query_answer) => {
@@ -427,8 +427,7 @@ pub async fn handle_validate_query(
             }
             Ok(CallToolResult::success(vec![Content::text("valid")]))
         }
-        Err(e @ TypeDBDriverError::Server(_)) 
-        | Err(e @ TypeDBDriverError::Concept(_)) => {
+        Err(e @ (TypeDBDriverError::Server(_) | TypeDBDriverError::Concept(_))) => {
             Ok(CallToolResult::success(vec![Content::text(
                 typedb_error_to_user_string(&e, &query_context_msg),
             )]))

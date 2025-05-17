@@ -51,7 +51,7 @@ pub enum McpServerError {
     #[error("Erro de configuração: {0}")]
     Configuration(#[from] config::ConfigError), // Crate `config`
 
-    /// Erro relacionado à autenticação ou autorização OAuth2.
+    /// Erro relacionado à autenticação ou autorização `OAuth2`.
     #[error("Erro de autenticação/autorização: {0}")]
     Auth(#[from] AuthErrorDetail),
 
@@ -84,7 +84,7 @@ pub enum McpServerError {
 #[error("{0}")]
 pub struct TypeDBErrorWrapper(#[from] TypeDBError);
 
-/// Detalhes específicos para erros de autenticação e autorização OAuth2.
+/// Detalhes específicos para erros de autenticação e autorização `OAuth2`.
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum AuthErrorDetail {
     /// Token de autenticação não fornecido ou malformado.
@@ -131,7 +131,7 @@ pub enum AuthErrorDetail {
         found: Option<Vec<String>>,
     },
 
-    /// Escopos OAuth2 insuficientes para a operação solicitada.
+    /// Escopos `OAuth2` insuficientes para a operação solicitada.
     #[error("Escopos OAuth2 insuficientes. Requeridos: {required:?}, Possuídos: {possessed:?}.")]
     InsufficientScope {
         /// Lista de escopos requeridos.
@@ -153,14 +153,13 @@ pub enum AuthErrorDetail {
 /// * `tool_name`: O nome da ferramenta MCP que estava em execução.
 ///
 /// # Retorna
-/// Uma `ErrorData` configurada com `ErrorCode::INTERNAL_ERROR` e detalhes do erro TypeDB.
+/// Uma `ErrorData` configurada com `ErrorCode::INTERNAL_ERROR` e detalhes do erro `TypeDB`.
 pub fn typedb_error_to_mcp_error_data(err: &TypeDBError, tool_name: &str) -> ErrorData {
     let typedb_message = err.message();
     let typedb_code = err.code(); // Este é o código de erro string do TypeDB, ex: "[DBS06]"
 
     let mcp_message = format!(
-        "Erro na ferramenta MCP '{}' ao interagir com TypeDB: {}",
-        tool_name, typedb_message
+        "Erro na ferramenta MCP '{tool_name}' ao interagir com TypeDB: {typedb_message}"
     );
 
     tracing::error!(
@@ -206,7 +205,7 @@ pub fn app_error_to_mcp_error_data(
         }
         McpServerError::Configuration(config_err) => {
             mcp_code_val = ErrorCode::INTERNAL_ERROR.0;
-            mcp_message_str = format!("Erro de configuração do servidor: {}", config_err);
+            mcp_message_str = format!("Erro de configuração do servidor: {config_err}");
             error_data_json_map.insert("type".to_string(), JsonValue::String("ConfigurationError".to_string()));
             error_data_json_map.insert("detail".to_string(), JsonValue::String(config_err.to_string()));
         }
@@ -214,17 +213,17 @@ pub fn app_error_to_mcp_error_data(
             error_data_json_map.insert("type".to_string(), JsonValue::String("AuthError".to_string()));
             let (base_message, detail_message_str) = match auth_err_detail {
                 AuthErrorDetail::TokenMissingOrMalformed => ("Autenticação falhou".to_string(), "Token de autenticação não fornecido ou malformado.".to_string()),
-                AuthErrorDetail::TokenInvalid(reason) => ("Autenticação falhou".to_string(), format!("Token de autenticação inválido: {}", reason)),
-                AuthErrorDetail::JwksFetchFailed(reason) => ("Erro interno do servidor de autenticação".to_string(), format!("Falha ao buscar chaves JWKS: {}", reason)),
+                AuthErrorDetail::TokenInvalid(reason) => ("Autenticação falhou".to_string(), format!("Token de autenticação inválido: {reason}")),
+                AuthErrorDetail::JwksFetchFailed(reason) => ("Erro interno do servidor de autenticação".to_string(), format!("Falha ao buscar chaves JWKS: {reason}")),
                 AuthErrorDetail::KidNotFoundInJwks => ("Autenticação falhou".to_string(), "Chave de identificação do token (kid) não encontrada no JWKS.".to_string()),
                 AuthErrorDetail::SignatureInvalid => ("Autenticação falhou".to_string(), "Assinatura do token inválida.".to_string()),
                 AuthErrorDetail::TokenExpired => ("Autenticação falhou".to_string(), "Token expirado.".to_string()),
-                AuthErrorDetail::IssuerMismatch { expected, found } => ("Autorização falhou".to_string(), format!("Claim 'issuer' do token não corresponde. Esperado um de: {:?}, Obtido: {:?}.", expected, found)),
-                AuthErrorDetail::AudienceMismatch { expected, found } => ("Autorização falhou".to_string(), format!("Claim 'audience' do token não corresponde. Esperado um de: {:?}, Token não continha o audience requerido. Audiences encontrados no token: {:?}.", expected, found)),
-                AuthErrorDetail::InsufficientScope { required, possessed } => ("Autorização falhou".to_string(), format!("Escopos OAuth2 insuficientes. Requeridos: {:?}, Possuídos: {:?}.", required, possessed)),
-                AuthErrorDetail::InvalidAuthConfig(reason) => ("Erro interno do servidor de autenticação".to_string(), format!("Configuração de autenticação inválida: {}", reason)),
+                AuthErrorDetail::IssuerMismatch { expected, found } => ("Autorização falhou".to_string(), format!("Claim 'issuer' do token não corresponde. Esperado um de: {expected:?}, Obtido: {found:?}.")),
+                AuthErrorDetail::AudienceMismatch { expected, found } => ("Autorização falhou".to_string(), format!("Claim 'audience' do token não corresponde. Esperado um de: {expected:?}, Token não continha o audience requerido. Audiences encontrados no token: {found:?}.")),
+                AuthErrorDetail::InsufficientScope { required, possessed } => ("Autorização falhou".to_string(), format!("Escopos OAuth2 insuficientes. Requeridos: {required:?}, Possuídos: {possessed:?}.")),
+                AuthErrorDetail::InvalidAuthConfig(reason) => ("Erro interno do servidor de autenticação".to_string(), format!("Configuração de autenticação inválida: {reason}")),
             };
-            mcp_message_str = format!("{}: {}", base_message, detail_message_str);
+            mcp_message_str = format!("{base_message}: {detail_message_str}");
             error_data_json_map.insert("reason".to_string(), JsonValue::String(detail_message_str));
 
             match auth_err_detail {
@@ -253,17 +252,17 @@ pub fn app_error_to_mcp_error_data(
                     error_data_json_map.insert("requiredScopes".to_string(), serde_json::json!(required));
                     error_data_json_map.insert("possessedScopes".to_string(), serde_json::json!(possessed));
                 }
-            };
+            }
         }
         McpServerError::Io(io_err) => {
             mcp_code_val = ErrorCode::INTERNAL_ERROR.0;
-            mcp_message_str = format!("Erro de I/O: {}", io_err);
+            mcp_message_str = format!("Erro de I/O: {io_err}");
             error_data_json_map.insert("type".to_string(), JsonValue::String("IoError".to_string()));
             error_data_json_map.insert("detail".to_string(), JsonValue::String(io_err.to_string()));
         }
         McpServerError::HttpClient(http_err_msg) => {
             mcp_code_val = ErrorCode::INTERNAL_ERROR.0;
-            mcp_message_str = format!("Erro no cliente HTTP: {}", http_err_msg);
+            mcp_message_str = format!("Erro no cliente HTTP: {http_err_msg}");
             error_data_json_map.insert("type".to_string(), JsonValue::String("HttpClientError".to_string()));
             error_data_json_map.insert("detail".to_string(), JsonValue::String(http_err_msg.clone()));
         }
@@ -277,11 +276,11 @@ pub fn app_error_to_mcp_error_data(
         }
         McpServerError::Internal(msg) => {
             mcp_code_val = ErrorCode::INTERNAL_ERROR.0;
-            mcp_message_str = format!("Erro interno do servidor: {}", msg);
+            mcp_message_str = format!("Erro interno do servidor: {msg}");
             error_data_json_map.insert("type".to_string(), JsonValue::String("InternalServerError".to_string()));
             error_data_json_map.insert("detail".to_string(), JsonValue::String(msg.clone()));
         }
-    };
+    }
 
     let mcp_error_code = ErrorCode(mcp_code_val);
     tracing::error!(
@@ -313,7 +312,7 @@ pub fn app_error_to_mcp_error_data(
 pub fn typedb_error_to_user_string(err: &TypeDBError, query_context_msg: &str) -> String {
     let typedb_full_message = err.message();
 
-    let formatted_error = format!("ERRO: {}: {}", query_context_msg, typedb_full_message);
+    let formatted_error = format!("ERRO: {query_context_msg}: {typedb_full_message}");
 
     tracing::warn!(
         context_message = query_context_msg,

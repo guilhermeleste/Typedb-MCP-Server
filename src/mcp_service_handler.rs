@@ -82,11 +82,11 @@ DIRETRIZES: Especifique `database_name`. Cuidado com `delete_database`. Autentic
 /// Estrutura principal que implementa `ServerHandler` e mantém o estado do servidor MCP.
 #[derive(Clone, Debug)]
 pub struct McpServiceHandler {
-    /// Driver TypeDB para interação com o banco de dados.
+    /// Driver `TypeDB` para interação com o banco de dados.
     pub driver: Arc<TypeDBDriver>,
     /// Configurações globais da aplicação.
     pub settings: Arc<Settings>,
-    /// Mapeia nome da ferramenta para a lista de escopos OAuth2 necessários.
+    /// Mapeia nome da ferramenta para a lista de escopos `OAuth2` necessários.
     tool_required_scopes: Arc<HashMap<String, Vec<String>>>,
 }
 
@@ -109,7 +109,7 @@ impl McpServiceHandler {
     /// Cria uma nova instância do `McpServiceHandler`.
     ///
     /// # Parâmetros
-    /// * `driver`: Um `Arc<TypeDBDriver>` para interagir com o TypeDB.
+    /// * `driver`: Um `Arc<TypeDBDriver>` para interagir com o `TypeDB`.
     /// * `settings`: Um `Arc<Settings>` contendo as configurações da aplicação.
     #[must_use]
     pub fn new(driver: Arc<TypeDBDriver>, settings: Arc<Settings>) -> Self {
@@ -266,51 +266,47 @@ impl ServerHandler for McpServiceHandler {
         tracing::debug!(tool.name = %tool_name_str, client.context_extensions = ?context.extensions, "Recebida chamada de ferramenta MCP.");
 
         if self.settings.oauth.enabled {
-            match context.extensions.get::<Arc<ClientAuthContext>>() {
-                Some(auth_ctx) => {
-                    if let Some(required_scopes) = self.tool_required_scopes.get(tool_name_str) {
-                        if !required_scopes.is_empty() {
-                            let client_has_all_required_scopes = required_scopes
-                                .iter()
-                                .all(|req_scope| auth_ctx.scopes.contains(req_scope));
-
-                            if !client_has_all_required_scopes {
-                                tracing::warn!(
-                                    tool.name = %tool_name_str,
-                                    client.user_id = %auth_ctx.user_id,
-                                    scopes.required = ?required_scopes,
-                                    scopes.possessed = ?auth_ctx.scopes,
-                                    "Autorização falhou: escopos insuficientes."
-                                );
-                                return Err(ErrorData {
-                                    code: ErrorCode(crate::error::MCP_ERROR_CODE_AUTHORIZATION_FAILED),
-                                    message: Cow::Owned(format!(
-                                        "Escopos OAuth2 insuficientes para executar a ferramenta '{}'. Requer: {:?}.",
-                                        tool_name_str, required_scopes
-                                    )),
-                                    data: Some(serde_json::json!({
-                                        "type": "InsufficientScope",
-                                        "requiredScopes": required_scopes,
-                                        "possessedScopes": auth_ctx.scopes.iter().collect::<Vec<_>>(),
-                                    })),
-                                });
-                            }
-                            tracing::debug!(tool.name = %tool_name_str, client.user_id = %auth_ctx.user_id, scopes = ?auth_ctx.scopes, "Autorização de escopo bem-sucedida.");
-                        } else {
-                             tracing::debug!(tool.name = %tool_name_str, "Nenhum escopo específico requerido para esta ferramenta, acesso permitido.");
-                        }
+            if let Some(auth_ctx) = context.extensions.get::<Arc<ClientAuthContext>>() {
+                if let Some(required_scopes) = self.tool_required_scopes.get(tool_name_str) {
+                    if required_scopes.is_empty() {
+                         tracing::debug!(tool.name = %tool_name_str, "Nenhum escopo específico requerido para esta ferramenta, acesso permitido.");
                     } else {
-                        tracing::warn!(tool.name = %tool_name_str, "Configuração de escopos não encontrada para a ferramenta. Permitindo acesso por padrão, mas isso deve ser revisado.");
+                        let client_has_all_required_scopes = required_scopes
+                            .iter()
+                            .all(|req_scope| auth_ctx.scopes.contains(req_scope));
+
+                        if !client_has_all_required_scopes {
+                            tracing::warn!(
+                                tool.name = %tool_name_str,
+                                client.user_id = %auth_ctx.user_id,
+                                scopes.required = ?required_scopes,
+                                scopes.possessed = ?auth_ctx.scopes,
+                                "Autorização falhou: escopos insuficientes."
+                            );
+                            return Err(ErrorData {
+                                code: ErrorCode(crate::error::MCP_ERROR_CODE_AUTHORIZATION_FAILED),
+                                message: Cow::Owned(format!(
+                                    "Escopos OAuth2 insuficientes para executar a ferramenta '{tool_name_str}'. Requer: {required_scopes:?}."
+                                )),
+                                data: Some(serde_json::json!({
+                                    "type": "InsufficientScope",
+                                    "requiredScopes": required_scopes,
+                                    "possessedScopes": auth_ctx.scopes.iter().collect::<Vec<_>>(),
+                                })),
+                            });
+                        }
+                        tracing::debug!(tool.name = %tool_name_str, client.user_id = %auth_ctx.user_id, scopes = ?auth_ctx.scopes, "Autorização de escopo bem-sucedida.");
                     }
+                } else {
+                    tracing::warn!(tool.name = %tool_name_str, "Configuração de escopos não encontrada para a ferramenta. Permitindo acesso por padrão, mas isso deve ser revisado.");
                 }
-                None => {
-                    tracing::error!(tool.name = %tool_name_str, "OAuth habilitado, mas ClientAuthContext não encontrado nas extensões da requisição do RMCP. Isso indica uma falha na propagação do contexto de autenticação.");
-                    return Err(ErrorData {
-                        code: ErrorCode(crate::error::MCP_ERROR_CODE_AUTHENTICATION_FAILED),
-                        message: Cow::Owned("Falha interna na autenticação: contexto de autenticação ausente no servidor.".to_string()),
-                        data: Some(serde_json::json!({"type": "AuthContextMissing"})),
-                    });
-                }
+            } else {
+                tracing::error!(tool.name = %tool_name_str, "OAuth habilitado, mas ClientAuthContext não encontrado nas extensões da requisição do RMCP. Isso indica uma falha na propagação do contexto de autenticação.");
+                return Err(ErrorData {
+                    code: ErrorCode(crate::error::MCP_ERROR_CODE_AUTHENTICATION_FAILED),
+                    message: Cow::Owned("Falha interna na autenticação: contexto de autenticação ausente no servidor.".to_string()),
+                    data: Some(serde_json::json!({"type": "AuthContextMissing"})),
+                });
             }
         } else {
             tracing::debug!("Autenticação OAuth2 desabilitada, verificação de escopo pulada.");
@@ -397,7 +393,7 @@ impl ServerHandler for McpServiceHandler {
             tracing::warn!("Recurso com URI '{}' não encontrado.", uri_str);
             Err(ErrorData {
                 code: ErrorCode::RESOURCE_NOT_FOUND,
-                message: Cow::Owned(format!("Recurso com URI '{}' não encontrado.", uri_str)),
+                message: Cow::Owned(format!("Recurso com URI '{uri_str}' não encontrado.")),
                 data: None,
             })
         }

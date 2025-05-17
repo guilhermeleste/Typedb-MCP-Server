@@ -22,7 +22,7 @@ const ENV_SEPARATOR: &str = "__";
 /// Estrutura principal que agrupa todas as configurações da aplicação.
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
-    /// Configurações relacionadas à conexão com o TypeDB.
+    /// Configurações relacionadas à conexão com o `TypeDB`.
     #[serde(default = "default_typedb_settings")]
     pub typedb: TypeDB,
 
@@ -30,7 +30,7 @@ pub struct Settings {
     #[serde(default = "default_server_settings")]
     pub server: Server,
 
-    /// Configurações de autenticação OAuth2 para clientes MCP.
+    /// Configurações de autenticação `OAuth2` para clientes MCP.
     #[serde(default = "default_oauth_settings")]
     pub oauth: OAuth,
 
@@ -51,20 +51,20 @@ pub struct Settings {
     pub tracing: TracingConfig,
 }
 
-/// Configurações para a conexão com o servidor TypeDB.
+/// Configurações para a conexão com o servidor `TypeDB`.
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")] // Para o arquivo TOML
 pub struct TypeDB {
-    /// Endereço (host:porta) do servidor TypeDB.
+    /// Endereço (host:porta) do servidor `TypeDB`.
     pub address: String,
-    /// Nome de usuário para autenticação com TypeDB. Opcional.
+    /// Nome de usuário para autenticação com `TypeDB`. Opcional.
     pub username: Option<String>,
     // A senha (TYPEDB_PASSWORD) é lida diretamente de variável de ambiente em main.rs
     // e não é armazenada nesta struct ou no arquivo de configuração por segurança.
-    /// Habilita TLS para a conexão com TypeDB.
+    /// Habilita TLS para a conexão com `TypeDB`.
     pub tls_enabled: bool,
-    /// Caminho para o arquivo PEM do certificado CA raiz para TypeDB TLS.
-    /// Obrigatório se `tls_enabled` for true e o servidor TypeDB usar um CA não padrão.
+    /// Caminho para o arquivo PEM do certificado CA raiz para `TypeDB` TLS.
+    /// Obrigatório se `tls_enabled` for true e o servidor `TypeDB` usar um CA não padrão.
     pub tls_ca_path: Option<String>,
 }
 
@@ -116,11 +116,11 @@ fn default_server_settings() -> Server {
     }
 }
 
-/// Configurações de autenticação OAuth2 para clientes MCP.
+/// Configurações de autenticação `OAuth2` para clientes MCP.
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuth {
-    /// Habilita a autenticação OAuth2.
+    /// Habilita a autenticação `OAuth2`.
     pub enabled: bool,
     /// URI do endpoint JWKS (JSON Web Key Set) do Authorization Server.
     /// Obrigatório se `enabled` for true.
@@ -138,7 +138,7 @@ pub struct OAuth {
     pub jwks_refresh_interval: Option<Duration>,
     /// Timeout para a requisição HTTP ao buscar o JWKS. Em segundos.
     pub jwks_request_timeout_seconds: Option<u64>,
-    /// Escopos OAuth2 que o token DEVE conter para acesso geral.
+    /// Escopos `OAuth2` que o token DEVE conter para acesso geral.
     /// Ex: `required_scopes = ["mcp:access", "typedb:read"]` no TOML.
     #[serde(default)]
     pub required_scopes: Option<Vec<String>>,
@@ -165,7 +165,7 @@ fn default_jwks_refresh_interval() -> Option<Duration> {
 #[serde(rename_all = "camelCase")]
 pub struct Logging {
     /// String de configuração para o `EnvFilter` do `tracing_subscriber`.
-    /// Ex: "info,typedb_mcp_server=debug,typedb_driver=warn"
+    /// Ex: "`info,typedb_mcp_server=debug,typedb_driver=warn`"
     pub rust_log: String,
 }
 
@@ -221,14 +221,14 @@ fn default_rate_limit_settings() -> RateLimit {
 pub struct TracingConfig {
     /// Habilita o tracing OpenTelemetry.
     pub enabled: bool,
-    /// Endpoint do coletor OTLP (gRPC). Ex: "http://localhost:4317".
+    /// Endpoint do coletor OTLP (gRPC). Ex: "<http://localhost:4317>".
     /// Obrigatório se `enabled` for true.
     pub exporter_otlp_endpoint: Option<String>,
     /// Nome do serviço para OpenTelemetry.
     pub service_name: String,
-    /// Estratégia de amostragem. Ex: "always_on", "always_off", "traceidratio".
+    /// Estratégia de amostragem. Ex: "`always_on`", "`always_off`", "traceidratio".
     pub sampler: String,
-    /// Argumento para o sampler. Ex: "1.0" para always_on, "0.1" para traceidratio.
+    /// Argumento para o sampler. Ex: "1.0" para `always_on`, "0.1" para traceidratio.
     pub sampler_arg: String,
 }
 

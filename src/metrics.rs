@@ -42,10 +42,10 @@ pub const WEBSOCKET_CONNECTIONS_TOTAL: &str = "websocket_connections_total";
 /// Nome da métrica: Contador para o número total de chamadas de ferramentas MCP.
 /// Labels: `tool_name`, `status`.
 pub const TOOL_CALLS_TOTAL: &str = "tool_calls_total";
-/// Nome da métrica: Contador para o número total de tokens OAuth2 processados para validação.
+/// Nome da métrica: Contador para o número total de tokens `OAuth2` processados para validação.
 /// Labels: `status`.
 pub const OAUTH_TOKENS_VALIDATED_TOTAL: &str = "oauth_tokens_validated_total";
-/// Nome da métrica: Contador para o número total de requisições diretas ao TypeDB.
+/// Nome da métrica: Contador para o número total de requisições diretas ao `TypeDB`.
 /// Labels: `operation_type`, `status`.
 pub const TYPEDB_REQUESTS_TOTAL: &str = "typedb_requests_total";
 /// Nome da métrica: Contador para o número total de tentativas de buscar o JWKS.
@@ -69,10 +69,10 @@ pub const SERVER_READY_STATUS: &str = "ready_status";
 // Histogramas
 /// Nome da métrica: Histograma para a distribuição da duração das chamadas de ferramentas MCP, em segundos.
 pub const TOOL_CALL_DURATION_SECONDS: &str = "tool_call_duration_seconds";
-/// Nome da métrica: Histograma para a distribuição da duração da validação de tokens OAuth2, em segundos.
+/// Nome da métrica: Histograma para a distribuição da duração da validação de tokens `OAuth2`, em segundos.
 pub const OAUTH_TOKEN_VALIDATION_DURATION_SECONDS: &str =
     "oauth_token_validation_duration_seconds";
-/// Nome da métrica: Histograma para a distribuição da duração das requisições ao TypeDB, em segundos.
+/// Nome da métrica: Histograma para a distribuição da duração das requisições ao `TypeDB`, em segundos.
 pub const TYPEDB_REQUEST_DURATION_SECONDS: &str = "typedb_request_duration_seconds";
 /// Nome da métrica: Histograma para a distribuição da duração das buscas ao JWKS, em segundos.
 pub const JWKS_FETCH_DURATION_SECONDS: &str = "jwks_fetch_duration_seconds";
@@ -82,7 +82,7 @@ pub const JWKS_FETCH_DURATION_SECONDS: &str = "jwks_fetch_duration_seconds";
 pub const LABEL_TOOL_NAME: &str = "tool_name";
 /// Label para o status de uma operação (ex: "success", "failure").
 pub const LABEL_STATUS: &str = "status";
-/// Label para o tipo de operação (ex: "read", "write", "schema_write").
+/// Label para o tipo de operação (ex: "read", "write", "`schema_write`").
 pub const LABEL_OPERATION_TYPE: &str = "operation_type";
 /// Label para a versão da aplicação.
 pub const LABEL_VERSION: &str = "app_version";

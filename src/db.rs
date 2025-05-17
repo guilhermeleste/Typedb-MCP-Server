@@ -88,41 +88,37 @@ pub async fn connect(
     let credentials = Credentials::new(&username, &password);
 
     let driver_options = if tls_enabled {
-        match tls_ca_path_opt {
-            Some(ca_path_str) => {
-                if ca_path_str.is_empty() {
-                    tracing::error!(
-                        "Conexão TLS com TypeDB habilitada, mas TYPEDB_TLS_CA_PATH está vazio."
-                    );
-                    return Err(TypeDBError::Other(
-                        "TYPEDB_TLS_CA_PATH é obrigatório e não pode ser vazio quando TLS para TypeDB está habilitado."
-                            .to_string(),
-                    ));
-                }
-                let ca_path = Path::new(&ca_path_str);
-                if !ca_path.exists() {
-                    tracing::error!(
-                        "Arquivo CA especificado para TypeDB TLS não encontrado: {}",
-                        ca_path_str
-                    );
-                    return Err(TypeDBError::Other(format!(
-                        "Arquivo CA para TypeDB TLS não encontrado em: {}",
-                        ca_path_str
-                    )));
-                }
-                tracing::info!(
-                    "Tentando conexão TLS com TypeDB usando CA customizado: {}",
-                    ca_path_str
+        if let Some(ca_path_str) = tls_ca_path_opt {
+            if ca_path_str.is_empty() {
+                tracing::error!(
+                    "Conexão TLS com TypeDB habilitada, mas TYPEDB_TLS_CA_PATH está vazio."
                 );
-                DriverOptions::new(true, Some(ca_path))?
-            }
-            None => {
-                tracing::error!("Conexão TLS com TypeDB habilitada, mas TYPEDB_TLS_CA_PATH não foi fornecido.");
                 return Err(TypeDBError::Other(
-                    "TYPEDB_TLS_CA_PATH é obrigatório quando TLS para TypeDB está habilitado."
+                    "TYPEDB_TLS_CA_PATH é obrigatório e não pode ser vazio quando TLS para TypeDB está habilitado."
                         .to_string(),
                 ));
             }
+            let ca_path = Path::new(&ca_path_str);
+            if !ca_path.exists() {
+                tracing::error!(
+                    "Arquivo CA especificado para TypeDB TLS não encontrado: {}",
+                    ca_path_str
+                );
+                return Err(TypeDBError::Other(format!(
+                    "Arquivo CA para TypeDB TLS não encontrado em: {ca_path_str}"
+                )));
+            }
+            tracing::info!(
+                "Tentando conexão TLS com TypeDB usando CA customizado: {}",
+                ca_path_str
+            );
+            DriverOptions::new(true, Some(ca_path))?
+        } else {
+            tracing::error!("Conexão TLS com TypeDB habilitada, mas TYPEDB_TLS_CA_PATH não foi fornecido.");
+            return Err(TypeDBError::Other(
+                "TYPEDB_TLS_CA_PATH é obrigatório quando TLS para TypeDB está habilitado."
+                    .to_string(),
+            ));
         }
     } else {
         tracing::info!("Conexão TLS com TypeDB desabilitada.");

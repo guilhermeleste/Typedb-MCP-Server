@@ -118,8 +118,7 @@ pub async fn handle_list_databases(
                     Err(ErrorData {
                         code: ErrorCode::INTERNAL_ERROR,
                         message: Cow::Owned(format!(
-                            "Falha ao serializar lista de bancos para JSON: {}",
-                            e
+                            "Falha ao serializar lista de bancos para JSON: {e}"
                         )),
                         data: Some(serde_json::json!({
                             "type": "SerializationError",
