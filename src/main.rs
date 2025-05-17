@@ -412,7 +412,7 @@ fn setup_metrics(metrics_bind_address_str: &str) -> Result<PrometheusHandle, Box
     PrometheusBuilder::new()
         .with_http_listener(metrics_socket_addr)
         .install_recorder()
-        .inspect(|handle| {
+        .inspect(|_handle| { // Adicionado sublinhado para indicar variável não utilizada
             tracing::info!("Servidor de métricas Prometheus escutando em {}", metrics_socket_addr);
         })
         .map_err(|e| {
