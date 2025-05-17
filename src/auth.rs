@@ -628,20 +628,25 @@ mod tests {
         assert!(!cache.is_cache_ever_populated().await);
 
         let refresh_result = cache.refresh_keys().await;
-        assert!(refresh_result.is_ok(), "Falha ao atualizar chaves JWKS: {:?}", refresh_result.err());
+        match refresh_result {
+            Ok(()) => {},
+            Err(e) => panic!("Falha ao atualizar chaves JWKS: {e:?}"),
+        }
         assert!(cache.is_cache_ever_populated().await);
 
         let decoding_key_result = cache.get_decoding_key_for_kid(TEST_KID_RS256).await;
-        if let Err(e) = &decoding_key_result {
-            panic!("Erro ao obter chave de decodificação: {e:?}");
+        match decoding_key_result {
+            Ok(Some(_)) => { /* ok */ },
+            Ok(None) => panic!("Chave de decodificação não encontrada para kid conhecido"),
+            Err(e) => panic!("Erro ao obter chave de decodificação: {e:?}"),
         }
-        assert!(matches!(decoding_key_result, Ok(Some(_))), "Chave de decodificação não encontrada para kid conhecido");
 
         let decoding_key_result_unknown = cache.get_decoding_key_for_kid("unknown-kid").await;
-        if let Err(e) = &decoding_key_result_unknown {
-            panic!("Erro ao obter chave para KID desconhecido: {e:?}");
+        match decoding_key_result_unknown {
+            Ok(None) => { /* ok */ },
+            Ok(Some(_)) => panic!("Chave encontrada para kid desconhecido, esperado None"),
+            Err(e) => panic!("Erro ao obter chave para KID desconhecido: {e:?}"),
         }
-        assert!(matches!(decoding_key_result_unknown, Ok(None)), "Chave encontrada para kid desconhecido, esperado None");
     }
 
     #[tokio::test]

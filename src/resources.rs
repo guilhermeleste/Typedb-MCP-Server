@@ -88,13 +88,29 @@ const SCHEMA_TEMPLATE_DESCRIPTION: &str = "Retorna o esquema TypeQL para o banco
 /// Estes recursos fornecem informações gerais sobre `TypeQL` e o uso do servidor.
 #[must_use] pub fn list_static_resources() -> Vec<Resource> {
     // Campos de RawResource (uri, name, description, mime_type) são String em rmcp 0.1.5
+    // Conversão explícita de usize para u32 para o campo size.
+    // Se o conteúdo exceder u32::MAX, loga warning e omite o campo size (None).
+    let query_types_size = u32::try_from(QUERY_TYPES_CONTENT.len()).map_or_else(
+        |_| {
+            tracing::warn!("Conteúdo QUERY_TYPES_CONTENT excede u32::MAX, omitindo campo size.");
+            None
+        },
+        Some,
+    );
+    let tx_guide_size = u32::try_from(TRANSACTIONS_GUIDE_CONTENT.len()).map_or_else(
+        |_| {
+            tracing::warn!("Conteúdo TRANSACTIONS_GUIDE_CONTENT excede u32::MAX, omitindo campo size.");
+            None
+        },
+        Some,
+    );
     vec![
         RawResource {
             uri: QUERY_TYPES_URI.to_string(),
             name: QUERY_TYPES_NAME.to_string(),
             description: Some(QUERY_TYPES_DESCRIPTION.to_string()),
             mime_type: Some("text/plain".to_string()),
-            size: Some(QUERY_TYPES_CONTENT.len().try_into().unwrap_or(u32::MAX)),
+            size: query_types_size,
         }
         .no_annotation(),
         RawResource {
@@ -102,7 +118,7 @@ const SCHEMA_TEMPLATE_DESCRIPTION: &str = "Retorna o esquema TypeQL para o banco
             name: TRANSACTIONS_GUIDE_NAME.to_string(),
             description: Some(TRANSACTIONS_GUIDE_DESCRIPTION.to_string()),
             mime_type: Some("text/plain".to_string()),
-            size: Some(TRANSACTIONS_GUIDE_CONTENT.len().try_into().unwrap_or(u32::MAX)),
+            size: tx_guide_size,
         }
         .no_annotation(),
     ]
@@ -267,15 +283,18 @@ mod tests {
         assert_eq!(resources.len(), 2);
 
         let query_types_res_opt = resources.iter().find(|r| r.uri == QUERY_TYPES_URI);
-        assert!(query_types_res_opt.is_some(), "Recurso QUERY_TYPES_URI não encontrado.");
-        let query_types_res = query_types_res_opt.unwrap();
-        assert_eq!(query_types_res.name, QUERY_TYPES_NAME);
-        assert_eq!(
-            query_types_res.description.as_deref(),
-            Some(QUERY_TYPES_DESCRIPTION)
-        );
-        assert_eq!(query_types_res.mime_type.as_deref(), Some("text/plain"));
-        assert_eq!(query_types_res.size, Some(QUERY_TYPES_CONTENT.len() as u32));
+        match query_types_res_opt {
+            Some(query_types_res) => {
+                assert_eq!(query_types_res.name, QUERY_TYPES_NAME);
+                assert_eq!(
+                    query_types_res.description.as_deref(),
+                    Some(QUERY_TYPES_DESCRIPTION)
+                );
+                assert_eq!(query_types_res.mime_type.as_deref(), Some("text/plain"));
+                assert_eq!(query_types_res.size, u32::try_from(QUERY_TYPES_CONTENT.len()).ok());
+            },
+            None => panic!("Recurso QUERY_TYPES_URI não encontrado."),
+        }
     }
 
     #[test]
@@ -297,39 +316,51 @@ mod tests {
     #[test]
     fn test_parse_schema_uri_valid_cases() {
         let result1 = parse_schema_uri("schema://current/my_db");
-        assert!(result1.is_ok(), "Esperado Ok para schema://current/my_db, obteve: {result1:?}");
-        let (db, stype) = result1.unwrap();
-        assert_eq!(db, "my_db");
-        assert_eq!(stype, "full");
+        match result1 {
+            Ok((db, stype)) => {
+                assert_eq!(db, "my_db");
+                assert_eq!(stype, "full");
+            },
+            Err(e) => panic!("Esperado Ok para schema://current/my_db, obteve Err: {e:?}"),
+        }
 
         let result2 = parse_schema_uri("schema://current/db%20with%20spaces?type=types");
-        assert!(result2.is_ok(), "Esperado Ok para schema://current/db%20with%20spaces?type=types, obteve: {result2:?}");
-        let (db, stype) = result2.unwrap();
-        assert_eq!(db, "db with spaces");
-        assert_eq!(stype, "types");
+        match result2 {
+            Ok((db, stype)) => {
+                assert_eq!(db, "db with spaces");
+                assert_eq!(stype, "types");
+            },
+            Err(e) => panic!("Esperado Ok para schema://current/db%20with%20spaces?type=types, obteve Err: {e:?}"),
+        }
 
         let result3 = parse_schema_uri("schema://current/mydb?type=invalid_type_value");
-        assert!(result3.is_ok(), "Esperado Ok para schema://current/mydb?type=invalid_type_value, obteve: {result3:?}");
-        let (db, stype) = result3.unwrap();
-        assert_eq!(db, "mydb");
-        assert_eq!(stype, "full");
+        match result3 {
+            Ok((db, stype)) => {
+                assert_eq!(db, "mydb");
+                assert_eq!(stype, "full");
+            },
+            Err(e) => panic!("Esperado Ok para schema://current/mydb?type=invalid_type_value, obteve Err: {e:?}"),
+        }
     }
 
     #[test]
     fn test_parse_schema_uri_invalid_cases() {
         let result1 = parse_schema_uri("invalid://current/my_db");
-        assert!(result1.is_err(), "Esperado Err para invalid://current/my_db, obteve: {result1:?}");
-        let err1 = result1.unwrap_err();
-        assert_eq!(err1.code, ErrorCode::RESOURCE_NOT_FOUND);
+        match result1 {
+            Err(err1) => assert_eq!(err1.code, ErrorCode::RESOURCE_NOT_FOUND),
+            Ok(val) => panic!("Esperado Err para invalid://current/my_db, obteve Ok: {val:?}"),
+        }
 
         let result2 = parse_schema_uri("schema://current/");
-        assert!(result2.is_err(), "Esperado Err para schema://current/, obteve: {result2:?}");
-        let err2 = result2.unwrap_err();
-        assert_eq!(err2.code, ErrorCode::RESOURCE_NOT_FOUND);
+        match result2 {
+            Err(err2) => assert_eq!(err2.code, ErrorCode::RESOURCE_NOT_FOUND),
+            Ok(val) => panic!("Esperado Err para schema://current/, obteve Ok: {val:?}"),
+        }
 
         let result3 = parse_schema_uri("schema://current/%?type=full");
-        assert!(result3.is_err(), "Esperado Err para schema://current/%?type=full, obteve: {result3:?}");
-        let err3 = result3.unwrap_err();
-        assert_eq!(err3.code, ErrorCode::INVALID_PARAMS);
+        match result3 {
+            Err(err3) => assert_eq!(err3.code, ErrorCode::INVALID_PARAMS),
+            Ok(val) => panic!("Esperado Err para schema://current/%?type=full, obteve Ok: {val:?}"),
+        }
     }
 }

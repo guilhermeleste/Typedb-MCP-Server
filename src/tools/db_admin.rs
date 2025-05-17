@@ -188,10 +188,17 @@ mod tests {
             Ok(CallToolResult::success(vec![Content::text("OK")]));
 
         assert!(successful_mcp_result.is_ok());
-        let result_content = successful_mcp_result.unwrap();
-        assert_eq!(result_content.content.len(), 1);
-        assert_eq!(result_content.content[0].as_text().unwrap().text, "OK");
-        assert!(!result_content.is_error.unwrap_or(false));
+        match successful_mcp_result {
+            Ok(result_content) => {
+                assert_eq!(result_content.content.len(), 1);
+                match result_content.content[0].as_text() {
+                    Some(text_content) => assert_eq!(text_content.text, "OK"),
+                    None => panic!("Esperado Content::text no índice 0"),
+                }
+                assert!(!result_content.is_error.unwrap_or(false));
+            },
+            Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
+        }
     }
 
     #[tokio::test]
@@ -202,10 +209,14 @@ mod tests {
         let handler_output: Result<CallToolResult, ErrorData> = Err(expected_mcp_error_data);
 
         assert!(handler_output.is_err());
-        let err_data = handler_output.unwrap_err();
-        assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
-        assert!(err_data.message.contains("Erro na ferramenta MCP 'create_database'"));
-        assert!(err_data.message.contains("Erro ao criar banco de dados"));
+        match handler_output {
+            Err(err_data) => {
+                assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
+                assert!(err_data.message.contains("Erro na ferramenta MCP 'create_database'"));
+                assert!(err_data.message.contains("Erro ao criar banco de dados"));
+            },
+            Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
+        }
     }
 
     #[tokio::test]
@@ -214,8 +225,15 @@ mod tests {
             Ok(CallToolResult::success(vec![Content::text("true")]));
 
         assert!(successful_mcp_result.is_ok());
-        let result_content = successful_mcp_result.unwrap();
-        assert_eq!(result_content.content[0].as_text().unwrap().text, "true");
+        match successful_mcp_result {
+            Ok(result_content) => {
+                match result_content.content[0].as_text() {
+                    Some(text_content) => assert_eq!(text_content.text, "true"),
+                    None => panic!("Esperado Content::text no índice 0"),
+                }
+            },
+            Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
+        }
     }
 
     #[tokio::test]
@@ -224,8 +242,15 @@ mod tests {
             Ok(CallToolResult::success(vec![Content::text("false")]));
 
         assert!(successful_mcp_result.is_ok());
-        let result_content = successful_mcp_result.unwrap();
-        assert_eq!(result_content.content[0].as_text().unwrap().text, "false");
+        match successful_mcp_result {
+            Ok(result_content) => {
+                match result_content.content[0].as_text() {
+                    Some(text_content) => assert_eq!(text_content.text, "false"),
+                    None => panic!("Esperado Content::text no índice 0"),
+                }
+            },
+            Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
+        }
     }
 
     #[tokio::test]
@@ -236,10 +261,15 @@ mod tests {
             Ok(CallToolResult::success(vec![Content::text(json_names.clone())]));
 
         assert!(successful_mcp_result.is_ok());
-        assert_eq!(
-            successful_mcp_result.unwrap().content[0].as_text().unwrap().text,
-            json_names
-        );
+        match successful_mcp_result {
+            Ok(result_content) => {
+                match result_content.content[0].as_text() {
+                    Some(text_content) => assert_eq!(text_content.text, json_names),
+                    None => panic!("Esperado Content::text no índice 0"),
+                }
+            },
+            Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
+        }
     }
 
     #[tokio::test]
@@ -253,13 +283,17 @@ mod tests {
         let handler_output: Result<CallToolResult, ErrorData> = Err(expected_mcp_error_data);
 
         assert!(handler_output.is_err());
-        let err_data = handler_output.unwrap_err();
-        assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
-        assert!(err_data.message.contains("mock serde error"));
-        assert_eq!(
-            err_data.data.unwrap()["type"],
-            "SerializationError"
-        );
+        match handler_output {
+            Err(err_data) => {
+                assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
+                assert!(err_data.message.contains("mock serde error"));
+                match err_data.data {
+                    Some(data) => assert_eq!(data["type"], "SerializationError"),
+                    None => panic!("Esperado campo data no erro"),
+                }
+            },
+            Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
+        }
     }
 
     #[tokio::test]
@@ -268,10 +302,15 @@ mod tests {
             Ok(CallToolResult::success(vec![Content::text("OK")]));
 
         assert!(successful_mcp_result.is_ok());
-        assert_eq!(
-            successful_mcp_result.unwrap().content[0].as_text().unwrap().text,
-            "OK"
-        );
+        match successful_mcp_result {
+            Ok(result_content) => {
+                match result_content.content[0].as_text() {
+                    Some(text_content) => assert_eq!(text_content.text, "OK"),
+                    None => panic!("Esperado Content::text no índice 0"),
+                }
+            },
+            Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
+        }
     }
 
     #[tokio::test]
@@ -282,9 +321,11 @@ mod tests {
         let handler_output: Result<CallToolResult, ErrorData> = Err(expected_mcp_error_data);
 
         assert!(handler_output.is_err());
-        assert!(handler_output
-            .unwrap_err()
-            .message
-            .contains("DB não encontrado para deleção"));
+        match handler_output {
+            Err(err_data) => {
+                assert!(err_data.message.contains("DB não encontrado para deleção"));
+            },
+            Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
+        }
     }
 }
