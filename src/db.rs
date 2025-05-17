@@ -165,18 +165,20 @@ mod tests {
     #[ignore]
     async fn test_connect_default_no_tls_success() -> Result<(), Box<dyn std::error::Error>> {
         let driver_result = connect(None, None, None, false, None).await;
-        assert!(
-            driver_result.is_ok(),
-            "Falha ao conectar com credenciais e endereço default (sem TLS): {:?}",
-            driver_result.err()
-        );
-        if let Ok(driver) = driver_result {
-            assert!(driver.is_open());
-            // Não é ideal chamar force_close em um teste unitário que verifica a conexão,
-            // pois o drop do driver já faz isso. Mas para garantir, podemos manter.
-            driver.force_close()?;
+        match driver_result {
+            Ok(driver) => {
+                assert!(driver.is_open(), "Driver deveria estar aberto após conexão bem-sucedida");
+                // Não é ideal chamar force_close em um teste unitário que verifica a conexão,
+                // pois o drop do driver já faz isso. Mas para garantir, podemos manter.
+                driver.force_close()?;
+                Ok(())
+            }
+            Err(e) => {
+                Err(format!(
+                    "Falha ao conectar com credenciais e endereço default (sem TLS): {e:?}"
+                ).into())
+            }
         }
-        Ok(())
     }
 
     // Similar ao anterior, mas com endereço explícito.
@@ -190,16 +192,18 @@ mod tests {
             false,
             None,
         ).await;
-        assert!(
-            driver_result.is_ok(),
-            "Falha ao conectar com endereço específico (sem TLS): {:?}",
-            driver_result.err()
-        );
-        if let Ok(driver) = driver_result {
-            assert!(driver.is_open());
-            driver.force_close()?;
+        match driver_result {
+            Ok(driver) => {
+                assert!(driver.is_open(), "Driver deveria estar aberto após conexão bem-sucedida");
+                driver.force_close()?;
+                Ok(())
+            }
+            Err(e) => {
+                Err(format!(
+                    "Falha ao conectar com endereço específico (sem TLS): {e:?}"
+                ).into())
+            }
         }
-        Ok(())
     }
 
     #[tokio::test]
@@ -217,8 +221,8 @@ mod tests {
             "Conexão com endereço inválido (sem TLS) deveria falhar."
         );
         // Verifica o tipo de erro, se possível e estável
-        if let Err(e) = driver_result {
-            match e {
+        match driver_result {
+            Err(e) => match e {
                 TypeDBDriverError::Connection(
                     typedb_driver::error::ConnectionError::ServerConnectionFailed { .. }
                     | typedb_driver::error::ConnectionError::ConnectionFailed
@@ -226,10 +230,24 @@ mod tests {
                 ) => {
                     // Erro esperado
                 }
-                TypeDBDriverError::Other(s) if s.contains("dns error") || s.contains("failed to lookup address information") || s.contains("address resolve") || s.contains("connection refused") => {
+                TypeDBDriverError::Other(ref s)
+                    if s.contains("dns error")
+                        || s.contains("failed to lookup address information")
+                        || s.contains("address resolve")
+                        || s.contains("connection refused") =>
+                {
                     // Erro esperado (depende do SO e da rede)
                 }
-                _ => panic!("Erro inesperado para endereço inválido: {e:?}. Esperado um ConnectionError ou Other relacionado a DNS/conexão."),
+                _ => {
+                    panic!(
+                        "Erro inesperado para endereço inválido: {e:?}. Esperado um ConnectionError ou Other relacionado a DNS/conexão."
+                    );
+                }
+            },
+            Ok(_) => {
+                panic!(
+                    "Esperado erro ao conectar com endereço inválido, mas a conexão retornou Ok()"
+                );
             }
         }
     }
@@ -238,14 +256,22 @@ mod tests {
     async fn test_connect_tls_enabled_ca_path_is_none_fails() {
         let result = connect(None, None, None, true, None).await;
         assert!(result.is_err());
-        if let Err(TypeDBDriverError::Other(msg)) = result {
-            assert!(msg.contains(
-                "TYPEDB_TLS_CA_PATH é obrigatório quando TLS para TypeDB está habilitado."
-            ));
-        } else {
-            panic!(
-                "Esperado erro de CA path obrigatório, obteve: {result:?}"
-            );
+        match result {
+            Err(TypeDBDriverError::Other(msg)) => {
+                assert!(msg.contains(
+                    "TYPEDB_TLS_CA_PATH é obrigatório quando TLS para TypeDB está habilitado."
+                ));
+            }
+            Err(e) => {
+                panic!(
+                    "Esperado erro de CA path obrigatório (TypeDBDriverError::Other), obteve outro erro: {e:?}"
+                );
+            }
+            Ok(_) => {
+                panic!(
+                    "Esperado erro de CA path obrigatório, mas a conexão retornou Ok()"
+                );
+            }
         }
     }
 
@@ -253,14 +279,22 @@ mod tests {
     async fn test_connect_tls_enabled_ca_path_is_empty_string_fails() {
         let result = connect(None, None, None, true, Some(String::new())).await;
         assert!(result.is_err());
-        if let Err(TypeDBDriverError::Other(msg)) = result {
-            assert!(msg.contains(
-                "TYPEDB_TLS_CA_PATH é obrigatório e não pode ser vazio quando TLS para TypeDB está habilitado."
-            ));
-        } else {
-            panic!(
-                "Esperado erro de CA path obrigatório e não vazio, obteve: {result:?}"
-            );
+        match result {
+            Err(TypeDBDriverError::Other(msg)) => {
+                assert!(msg.contains(
+                    "TYPEDB_TLS_CA_PATH é obrigatório e não pode ser vazio quando TLS para TypeDB está habilitado."
+                ));
+            }
+            Err(e) => {
+                panic!(
+                    "Esperado erro de CA path obrigatório e não vazio (TypeDBDriverError::Other), obteve outro erro: {e:?}"
+                );
+            }
+            Ok(_) => {
+                panic!(
+                    "Esperado erro de CA path obrigatório e não vazio, mas a conexão retornou Ok()"
+                );
+            }
         }
     }
 
@@ -273,14 +307,22 @@ mod tests {
         let result =
             connect(None, None, None, true, Some(non_existent_path.to_string())).await;
         assert!(result.is_err());
-        if let Err(TypeDBDriverError::Other(msg)) = result {
-            assert!(msg.contains(&format!(
-                "Arquivo CA para TypeDB TLS não encontrado em: {non_existent_path}"
-            )));
-        } else {
-            panic!(
-                "Esperado erro de arquivo CA não encontrado, obteve: {result:?}"
-            );
+        match result {
+            Err(TypeDBDriverError::Other(msg)) => {
+                assert!(msg.contains(&format!(
+                    "Arquivo CA para TypeDB TLS não encontrado em: {non_existent_path}"
+                )));
+            }
+            Err(e) => {
+                panic!(
+                    "Esperado erro de arquivo CA não encontrado (TypeDBDriverError::Other), obteve outro erro: {e:?}"
+                );
+            }
+            Ok(_) => {
+                panic!(
+                    "Esperado erro de arquivo CA não encontrado, mas a conexão retornou Ok()"
+                );
+            }
         }
     }
 

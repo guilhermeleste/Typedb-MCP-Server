@@ -388,10 +388,16 @@ mod tests {
 
     fn generate_test_jwt(claims: &Claims, kid: &str, alg: Algorithm) -> String {
         let private_key_pem = rsa_private_key_pem_for_test();
-        let encoding_key = EncodingKey::from_rsa_pem(private_key_pem.as_bytes()).unwrap();
+        let encoding_key = match EncodingKey::from_rsa_pem(private_key_pem.as_bytes()) {
+            Ok(key) => key,
+            Err(e) => panic!("Falha ao criar EncodingKey a partir do PEM de teste: {e:?}"),
+        };
         let mut header = JwtHeader::new(alg);
         header.kid = Some(kid.to_string());
-        encode(&header, claims, &encoding_key).unwrap()
+        match encode(&header, claims, &encoding_key) {
+            Ok(token) => token,
+            Err(e) => panic!("Falha ao gerar JWT de teste: {e:?}"),
+        }
     }
 
     #[tokio::test]
@@ -412,7 +418,8 @@ mod tests {
         let http_client = reqwest::Client::new();
         let jwks_cache = Arc::new(test_jwks_cache(jwks_uri, http_client));
 
-        jwks_cache.refresh_keys().await.expect("Falha ao popular o cache JWKS antes do teste");
+        let refresh_result = jwks_cache.refresh_keys().await;
+        assert!(refresh_result.is_ok(), "Falha ao popular o cache JWKS antes do teste: {:?}", refresh_result.err());
         assert!(jwks_cache.is_cache_ever_populated().await, "Cache JWKS não foi populado após refresh");
 
         let now = jsonwebtoken::get_current_timestamp();
@@ -436,17 +443,19 @@ mod tests {
             }))
             .layer(middleware::from_fn_with_state((jwks_cache.clone(), oauth_config.clone()), oauth_middleware));
 
-        let response = app
-            .oneshot(
-                axum::http::Request::builder()
-                    .uri("/")
-                    .header("Authorization", format!("Bearer {token}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
+        let request = axum::http::Request::builder()
+            .uri("/")
+            .header("Authorization", format!("Bearer {token}"))
+            .body(Body::empty());
+        let request = match request {
+            Ok(req) => req,
+            Err(e) => panic!("Falha ao construir request: {e:?}"),
+        };
+        let response = app.oneshot(request).await;
+        let response = match response {
+            Ok(resp) => resp,
+            Err(e) => panic!("Falha ao executar oneshot: {e:?}"),
+        };
         assert_eq!(response.status(), StatusCode::OK);
     }
 
@@ -460,15 +469,18 @@ mod tests {
             .route("/", get(|| async { StatusCode::OK }))
             .layer(middleware::from_fn_with_state((jwks_cache, oauth_config), oauth_middleware));
 
-        let response = app
-            .oneshot(
-                axum::http::Request::builder()
-                    .uri("/")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let request = axum::http::Request::builder()
+            .uri("/")
+            .body(Body::empty());
+        let request = match request {
+            Ok(req) => req,
+            Err(e) => panic!("Falha ao construir request: {e:?}"),
+        };
+        let response = app.oneshot(request).await;
+        let response = match response {
+            Ok(resp) => resp,
+            Err(e) => panic!("Falha ao executar oneshot: {e:?}"),
+        };
         assert_eq!(response.status(), StatusCode::OK);
     }
 
@@ -484,15 +496,18 @@ mod tests {
             .route("/", get(|| async { StatusCode::OK })) 
             .layer(middleware::from_fn_with_state((jwks_cache, oauth_config), oauth_middleware));
 
-        let response = app
-            .oneshot(
-                axum::http::Request::builder()
-                    .uri("/")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let request = axum::http::Request::builder()
+            .uri("/")
+            .body(Body::empty());
+        let request = match request {
+            Ok(req) => req,
+            Err(e) => panic!("Falha ao construir request: {e:?}"),
+        };
+        let response = app.oneshot(request).await;
+        let response = match response {
+            Ok(resp) => resp,
+            Err(e) => panic!("Falha ao executar oneshot: {e:?}"),
+        };
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
@@ -516,7 +531,8 @@ mod tests {
         let oauth_config = Arc::new(test_oauth_config(jwks_uri.clone(), true));
         let http_client = reqwest::Client::new();
         let jwks_cache = Arc::new(test_jwks_cache(jwks_uri, http_client));
-        jwks_cache.refresh_keys().await.unwrap(); 
+        let refresh_result = jwks_cache.refresh_keys().await;
+        assert!(refresh_result.is_ok(), "Falha ao popular o cache JWKS antes do teste: {:?}", refresh_result.err());
 
         let now = jsonwebtoken::get_current_timestamp();
         let claims = Claims {
@@ -530,16 +546,19 @@ mod tests {
             .route("/", get(|| async { StatusCode::OK }))
             .layer(middleware::from_fn_with_state((jwks_cache, oauth_config), oauth_middleware));
 
-        let response = app
-            .oneshot(
-                axum::http::Request::builder()
-                    .uri("/")
-                    .header("Authorization", format!("Bearer {token}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let request = axum::http::Request::builder()
+            .uri("/")
+            .header("Authorization", format!("Bearer {token}"))
+            .body(Body::empty());
+        let request = match request {
+            Ok(req) => req,
+            Err(e) => panic!("Falha ao construir request: {e:?}"),
+        };
+        let response = app.oneshot(request).await;
+        let response = match response {
+            Ok(resp) => resp,
+            Err(e) => panic!("Falha ao executar oneshot: {e:?}"),
+        };
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
@@ -556,7 +575,8 @@ mod tests {
         let oauth_config = Arc::new(test_oauth_config(jwks_uri.clone(), true));
         let http_client = reqwest::Client::new();
         let jwks_cache = Arc::new(test_jwks_cache(jwks_uri, http_client));
-        jwks_cache.refresh_keys().await.unwrap();
+        let refresh_result = jwks_cache.refresh_keys().await;
+        assert!(refresh_result.is_ok(), "Falha ao popular o cache JWKS antes do teste: {:?}", refresh_result.err());
 
         let now = jsonwebtoken::get_current_timestamp();
         let claims = Claims {
@@ -571,9 +591,19 @@ mod tests {
         let app = Router::new().route("/", get(|| async { StatusCode::OK }))
             .layer(middleware::from_fn_with_state((jwks_cache, oauth_config), oauth_middleware));
 
-        let response = app.oneshot(axum::http::Request::builder().uri("/")
-            .header("Authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()
-        ).await.unwrap();
+        let request = axum::http::Request::builder()
+            .uri("/")
+            .header("Authorization", format!("Bearer {token}"))
+            .body(Body::empty());
+        let request = match request {
+            Ok(req) => req,
+            Err(e) => panic!("Falha ao construir request: {e:?}"),
+        };
+        let response = app.oneshot(request).await;
+        let response = match response {
+            Ok(resp) => resp,
+            Err(e) => panic!("Falha ao executar oneshot: {e:?}"),
+        };
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
@@ -602,12 +632,16 @@ mod tests {
         assert!(cache.is_cache_ever_populated().await);
 
         let decoding_key_result = cache.get_decoding_key_for_kid(TEST_KID_RS256).await;
-        assert!(decoding_key_result.is_ok(), "Erro ao obter chave de decodificação: {:?}", decoding_key_result.err());
-        assert!(decoding_key_result.unwrap().is_some());
+        if let Err(e) = &decoding_key_result {
+            panic!("Erro ao obter chave de decodificação: {e:?}");
+        }
+        assert!(matches!(decoding_key_result, Ok(Some(_))), "Chave de decodificação não encontrada para kid conhecido");
 
         let decoding_key_result_unknown = cache.get_decoding_key_for_kid("unknown-kid").await;
-        assert!(decoding_key_result_unknown.is_ok(), "Erro ao obter chave para KID desconhecido: {:?}", decoding_key_result_unknown.err());
-        assert!(decoding_key_result_unknown.unwrap().is_none());
+        if let Err(e) = &decoding_key_result_unknown {
+            panic!("Erro ao obter chave para KID desconhecido: {e:?}");
+        }
+        assert!(matches!(decoding_key_result_unknown, Ok(None)), "Chave encontrada para kid desconhecido, esperado None");
     }
 
     #[tokio::test]
