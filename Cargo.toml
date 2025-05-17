@@ -111,7 +111,13 @@ unreachable_pub = "warn"
 # Removido rust_2018_idioms e rust_2021_compatibility pois podem ser gerenciados pela edition ou causar ruído.
 
 [lints.clippy]
-# Lints para negar (produzir erro)
+# Ativar todos os lints pedantic como avisos por padrão.
+# Isso nos força a ser muito explícitos sobre o código.
+# Lints individuais podem ser permitidos ou negados abaixo, conforme necessário.
+pedantic = { level = "warn", priority = -1 } # Modificado para definir prioridade
+
+# Lints específicos para permitir (allow), avisar (warn), ou negar (deny).
+# Permissões (allow):
 clone_on_copy = "deny"
 # expl_impl_locale_aware_cmp = "deny" # Lint desconhecido ou obsoleto
 float_cmp = "deny"
@@ -120,7 +126,6 @@ unnecessary_unwrap = "deny"
 unwrap_used = "deny" # Manter como deny para produção
 
 # Lints para avisar
-pedantic = "warn"
 default_trait_access = "warn"
 filter_map_next = "warn"
 flat_map_option = "warn"

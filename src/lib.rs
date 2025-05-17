@@ -18,16 +18,16 @@
 //! Biblioteca principal para o `Typedb-MCP-Server`.
 //!
 //! Este crate define a lógica central do servidor, incluindo a manipulação
-//! do protocolo MCP, interação com o TypeDB, autenticação, configuração,
+//! do protocolo MCP, interação com o `TypeDB`, autenticação, configuração,
 //! e as ferramentas expostas. O binário em `src/main.rs` utiliza esta
 //! biblioteca para construir e executar o servidor.
 //!
 //! Módulos expostos:
 //! - `config`: Carregamento e gerenciamento de configurações.
-//! - `db`: Conectividade com o banco de dados TypeDB.
+//! - `db`: Conectividade com o banco de dados `TypeDB`.
 //! - `error`: Tipos de erro customizados e utilitários.
 //! - `mcp_service_handler`: Implementação do `ServerHandler` do RMCP e lógica das ferramentas.
-//! - `auth`: Autenticação OAuth2.
+//! - `auth`: Autenticação `OAuth2`.
 //! - `metrics`: Definição de métricas.
 //! - `telemetry`: Configuração de tracing OpenTelemetry.
 //! - `resources`: Gerenciamento de recursos MCP.
