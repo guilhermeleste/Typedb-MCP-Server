@@ -433,14 +433,14 @@ fn setup_signal_handler(token: CancellationToken) {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!("Falha crítica ao instalar handler SIGINT: {}. Encerrando.", e);
-                    panic!("Falha crítica ao instalar handler SIGINT: {}. Encerrando.", e);
+                    panic!("Falha crítica ao instalar handler SIGINT: {e}. Encerrando.");
                 }
             };
             let mut sigterm = match signal(SignalKind::terminate()) {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::error!("Falha crítica ao instalar handler SIGTERM: {}. Encerrando.", e);
-                    panic!("Falha crítica ao instalar handler SIGTERM: {}. Encerrando.", e);
+                    panic!("Falha crítica ao instalar handler SIGTERM: {e}. Encerrando.");
                 }
             };
 
