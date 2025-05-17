@@ -221,12 +221,28 @@ mod tests {
     ) {
         let (socket_tx, mut socket_rx) = tokio::sync::mpsc::channel::<WebSocket>(1);
         let app = Router::new().route("/ws_test", get(test_ws_handler)).with_state(socket_tx);
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app.into_make_service()).await.unwrap(); });
+        let listener = match TcpListener::bind("127.0.0.1:0").await {
+            Ok(l) => l,
+            Err(e) => panic!("Falha ao fazer bind do TcpListener: {e}"),
+        };
+        let addr = match listener.local_addr() {
+            Ok(a) => a,
+            Err(e) => panic!("Falha ao obter local_addr do listener: {e}"),
+        };
+        tokio::spawn(async move {
+            if let Err(e) = axum::serve(listener, app.into_make_service()).await {
+                panic!("Falha ao rodar axum::serve: {e}");
+            }
+        });
         let client_uri = format!("ws://{addr}/ws_test");
-        let (client_socket, _) = connect_async(&client_uri).await.expect("Falha ao conectar cliente WebSocket de teste");
-        let server_ws_from_handler = socket_rx.recv().await.expect("Servidor de teste não recebeu o WebSocket do handler Axum");
+        let (client_socket, _) = match connect_async(&client_uri).await {
+            Ok(res) => res,
+            Err(e) => panic!("Falha ao conectar cliente WebSocket de teste: {e}"),
+        };
+        let server_ws_from_handler = match socket_rx.recv().await {
+            Some(ws) => ws,
+            None => panic!("Servidor de teste não recebeu o WebSocket do handler Axum"),
+        };
         (WebSocketTransport::new(server_ws_from_handler), client_socket)
     }
 
@@ -243,13 +259,26 @@ mod tests {
         });
 
         // Usar SinkExt::send para o transport_server_side
-        transport_server_side.send(server_msg.clone()).await.expect("Envio do servidor falhou");
+        if let Err(e) = transport_server_side.send(server_msg.clone()).await {
+            panic!("Envio do servidor falhou: {e}");
+        }
 
         match FuturesStreamExt::next(&mut client_socket).await {
             Some(Ok(TungsteniteMessage::Text(text_bytes))) => {
                 let text = text_bytes;
-                let received_msg_on_client: ServerJsonRpcMessage = serde_json::from_str(&text).expect("Cliente falhou ao desserializar mensagem do servidor");
-                assert_eq!(serde_json::to_string(&received_msg_on_client).unwrap(), serde_json::to_string(&server_msg).unwrap());
+                let received_msg_on_client: ServerJsonRpcMessage = match serde_json::from_str(&text) {
+                    Ok(msg) => msg,
+                    Err(e) => panic!("Cliente falhou ao desserializar mensagem do servidor: {e}"),
+                };
+                let received_str = match serde_json::to_string(&received_msg_on_client) {
+                    Ok(s) => s,
+                    Err(e) => panic!("Falha ao serializar received_msg_on_client: {e}"),
+                };
+                let expected_str = match serde_json::to_string(&server_msg) {
+                    Ok(s) => s,
+                    Err(e) => panic!("Falha ao serializar server_msg: {e}"),
+                };
+                assert_eq!(received_str, expected_str);
             }
             other => panic!("Cliente não recebeu mensagem de texto ou recebeu tipo de frame inesperado: {other:?}"),
         }
@@ -261,14 +290,24 @@ mod tests {
             jsonrpc: rmcp::model::JsonRpcVersion2_0,
             notification: client_msg_payload,
         });
-        let client_msg_str = serde_json::to_string(&client_rpc_msg).unwrap();
-        
-        // Usar SinkExt::send para o client_socket (que é um WebSocketStream de tokio-tungstenite)
-        client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str.as_str()))).await.expect("Envio do cliente falhou");
-
+        let client_msg_str = match serde_json::to_string(&client_rpc_msg) {
+            Ok(s) => s,
+            Err(e) => panic!("Falha ao serializar client_rpc_msg: {e}"),
+        };
+        if let Err(e) = client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str.as_str()))).await {
+            panic!("Envio do cliente falhou: {e}");
+        }
         match FuturesStreamExt::next(&mut transport_server_side).await {
             Some(received_on_server) => {
-                 assert_eq!(serde_json::to_string(&received_on_server).unwrap(), serde_json::to_string(&client_rpc_msg).unwrap());
+                let received_str = match serde_json::to_string(&received_on_server) {
+                    Ok(s) => s,
+                    Err(e) => panic!("Falha ao serializar received_on_server: {e}"),
+                };
+                let expected_str = match serde_json::to_string(&client_rpc_msg) {
+                    Ok(s) => s,
+                    Err(e) => panic!("Falha ao serializar client_rpc_msg: {e}"),
+                };
+                assert_eq!(received_str, expected_str);
             }
             other => panic!("Servidor não recebeu mensagem de texto ou stream terminou prematuramente: {other:?}"),
         }
@@ -277,14 +316,18 @@ mod tests {
     #[tokio::test]
     async fn test_websocket_transport_handles_client_close() {
         let (mut transport_server_side, mut client_socket) = connected_pair().await;
-        client_socket.close(None).await.expect("Cliente falhou ao fechar conexão");
+        if let Err(e) = client_socket.close(None).await {
+            panic!("Cliente falhou ao fechar conexão: {e}");
+        }
         assert!(FuturesStreamExt::next(&mut transport_server_side).await.is_none(), "Stream do servidor deveria terminar após o cliente fechar");
     }
 
     #[tokio::test]
     async fn test_websocket_transport_handles_server_initiated_close() {
         let (mut transport_server_side, mut client_socket) = connected_pair().await;
-        transport_server_side.close().await.expect("Servidor falhou ao fechar o Sink do transporte");
+        if let Err(e) = transport_server_side.close().await {
+            panic!("Servidor falhou ao fechar o Sink do transporte: {e}");
+        }
         
         match FuturesStreamExt::next(&mut client_socket).await {
             Some(Ok(TungsteniteMessage::Close(_))) => { /* esperado */ }
@@ -297,7 +340,9 @@ mod tests {
         let (mut transport_server_side, mut client_socket) = connected_pair().await;
         
         let invalid_json = "{\"jsonrpc\": \"2.0\", \"method\": \"foo\", \"params\": {"; 
-        client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(invalid_json))).await.expect("Envio do cliente (JSON inválido) falhou");
+        if let Err(e) = client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(invalid_json))).await {
+            panic!("Envio do cliente (JSON inválido) falhou: {e}");
+        }
         
         let client_msg_payload = rmcp::model::ClientNotification::InitializedNotification(
             NotificationNoParam { method: InitializedNotificationMethod, extensions: Default::default() }
@@ -306,12 +351,20 @@ mod tests {
             jsonrpc: rmcp::model::JsonRpcVersion2_0,
             notification: client_msg_payload,
         });
-        let client_msg_str_valid = serde_json::to_string(&client_rpc_msg_valid).unwrap();
-        client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str_valid.as_str()))).await.expect("Envio do cliente (JSON válido) falhou");
-
+        let client_msg_str_valid = match serde_json::to_string(&client_rpc_msg_valid) {
+            Ok(s) => s,
+            Err(e) => panic!("Falha ao serializar client_rpc_msg_valid: {e}"),
+        };
+        if let Err(e) = client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str_valid.as_str()))).await {
+            panic!("Envio do cliente (JSON válido) falhou: {e}");
+        }
         match FuturesStreamExt::next(&mut transport_server_side).await {
             Some(received_on_server) => {
-                 assert_eq!(serde_json::to_string(&received_on_server).unwrap(), client_msg_str_valid);
+                let received_str = match serde_json::to_string(&received_on_server) {
+                    Ok(s) => s,
+                    Err(e) => panic!("Falha ao serializar received_on_server: {e}"),
+                };
+                assert_eq!(received_str, client_msg_str_valid);
             }
             other => panic!("Esperava uma mensagem válida após JSON inválido, obteve {other:?}"),
         }
@@ -321,7 +374,9 @@ mod tests {
     async fn test_websocket_transport_ignores_binary_message_from_client() {
         let (mut transport_server_side, mut client_socket) = connected_pair().await;
         
-        client_socket.send(TungsteniteMessage::Binary(Bytes::from(vec![1u8,2u8,3u8]))).await.expect("Envio binário do cliente falhou");
+        if let Err(e) = client_socket.send(TungsteniteMessage::Binary(Bytes::from(vec![1u8,2u8,3u8]))).await {
+            panic!("Envio binário do cliente falhou: {e}");
+        }
         
         let client_msg_payload = rmcp::model::ClientNotification::InitializedNotification(
             NotificationNoParam { method: InitializedNotificationMethod, extensions: Default::default() }
@@ -330,12 +385,20 @@ mod tests {
             jsonrpc: rmcp::model::JsonRpcVersion2_0,
             notification: client_msg_payload,
         });
-        let client_msg_str_valid = serde_json::to_string(&client_rpc_msg_valid).unwrap();
-        client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str_valid.as_str()))).await.expect("Envio de texto do cliente falhou");
-
+        let client_msg_str_valid = match serde_json::to_string(&client_rpc_msg_valid) {
+            Ok(s) => s,
+            Err(e) => panic!("Falha ao serializar client_rpc_msg_valid: {e}"),
+        };
+        if let Err(e) = client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str_valid.as_str()))).await {
+            panic!("Envio de texto do cliente falhou: {e}");
+        }
         match FuturesStreamExt::next(&mut transport_server_side).await {
             Some(received_on_server) => {
-                 assert_eq!(serde_json::to_string(&received_on_server).unwrap(), client_msg_str_valid);
+                let received_str = match serde_json::to_string(&received_on_server) {
+                    Ok(s) => s,
+                    Err(e) => panic!("Falha ao serializar received_on_server: {e}"),
+                };
+                assert_eq!(received_str, client_msg_str_valid);
             }
             other => panic!("Esperava uma mensagem de texto válida após mensagem binária, obteve {other:?}"),
         }
