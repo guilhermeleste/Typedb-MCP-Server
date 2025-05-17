@@ -177,36 +177,37 @@ mod tests {
     use rmcp::schemars::schema_for; // Para gerar o schema JSON
 
     #[test]
-    fn test_query_read_params_deserialize_and_schema() {
+    fn test_query_read_params_deserialize_and_schema() -> Result<(), Box<dyn std::error::Error>> {
         let json_data = r#"
         {
             "databaseName": "my_db",
             "query": "match $x isa person; get;"
         }
         "#;
-        let params: QueryReadParams = serde_json::from_str(json_data).expect("Desserialização falhou");
+        let params: QueryReadParams = serde_json::from_str(json_data)?;
         assert_eq!(params.database_name, "my_db");
         assert_eq!(params.query, "match $x isa person; get;");
 
         let schema = schema_for!(QueryReadParams);
-        let schema_json = serde_json::to_value(&schema).unwrap();
-        // println!("{}", serde_json::to_string_pretty(&schema_json).unwrap()); // Para debug visual
+        let schema_json = serde_json::to_value(&schema)?;
         assert_eq!(schema_json["type"], "object");
         assert!(schema_json["properties"]["databaseName"]["description"].is_string());
         assert!(schema_json["properties"]["query"]["description"].is_string());
-        assert!(schema_json["required"].as_array().unwrap().contains(&serde_json::Value::String("databaseName".to_string())));
-        assert!(schema_json["required"].as_array().unwrap().contains(&serde_json::Value::String("query".to_string())));
+        let required = schema_json["required"].as_array().ok_or("required não é array")?;
+        assert!(required.contains(&serde_json::Value::String("databaseName".to_string())));
+        assert!(required.contains(&serde_json::Value::String("query".to_string())));
+        Ok(())
     }
 
     #[test]
-    fn test_get_schema_params_deserialize_optional() {
+    fn test_get_schema_params_deserialize_optional() -> Result<(), Box<dyn std::error::Error>> {
         let json_data_full = r#"
         {
             "databaseName": "my_db",
             "schemaType": "full"
         }
         "#;
-        let params_full: GetSchemaParams = serde_json::from_str(json_data_full).unwrap();
+        let params_full: GetSchemaParams = serde_json::from_str(json_data_full)?;
         assert_eq!(params_full.database_name, "my_db");
         assert_eq!(params_full.schema_type, Some("full".to_string()));
 
@@ -215,20 +216,21 @@ mod tests {
             "databaseName": "my_other_db"
         }
         "#;
-        let params_none: GetSchemaParams = serde_json::from_str(json_data_none).unwrap();
+        let params_none: GetSchemaParams = serde_json::from_str(json_data_none)?;
         assert_eq!(params_none.database_name, "my_other_db");
         assert_eq!(params_none.schema_type, None);
 
         let schema = schema_for!(GetSchemaParams);
-        let schema_json = serde_json::to_value(&schema).unwrap();
-        // println!("{}", serde_json::to_string_pretty(&schema_json).unwrap()); // Para debug visual
+        let schema_json = serde_json::to_value(&schema)?;
         assert!(schema_json["properties"]["schemaType"]["description"].is_string());
         // "schemaType" não deve estar na lista de "required"
-        assert!(!schema_json["required"].as_array().unwrap().iter().any(|v| v.as_str().unwrap_or("") == "schemaType"));
+        let required = schema_json["required"].as_array().ok_or("required não é array")?;
+        assert!(!required.iter().any(|v| v.as_str().unwrap_or("") == "schemaType"));
+        Ok(())
     }
 
     #[test]
-    fn test_validate_query_params_deserialize_optional() {
+    fn test_validate_query_params_deserialize_optional() -> Result<(), Box<dyn std::error::Error>> {
         let json_data_full = r#"
         {
             "databaseName": "my_db",
@@ -236,15 +238,16 @@ mod tests {
             "intendedTransactionType": "write"
         }
         "#;
-        let params_full: ValidateQueryParams = serde_json::from_str(json_data_full).unwrap();
+        let params_full: ValidateQueryParams = serde_json::from_str(json_data_full)?;
         assert_eq!(params_full.database_name, "my_db");
         assert_eq!(params_full.query, "match $x isa person; get;");
         assert_eq!(params_full.intended_transaction_type, Some("write".to_string()));
+        Ok(())
     }
 
     // Teste de falha na desserialização se um campo obrigatório estiver faltando
     #[test]
-    fn test_query_read_params_missing_required_field() {
+    fn test_query_read_params_missing_required_field() -> Result<(), Box<dyn std::error::Error>> {
         let json_data = r#"
         {
             "query": "match $x isa person; get;"
@@ -252,23 +255,24 @@ mod tests {
         "#; // Falta databaseName
         let result: Result<QueryReadParams, _> = serde_json::from_str(json_data);
         assert!(result.is_err(), "Desserialização deveria falhar por campo obrigatório ausente");
+        Ok(())
     }
 
     // Teste para verificar se camelCase está funcionando
-     #[test]
-    fn test_camel_case_deserialization_for_all_structs() {
+    #[test]
+    fn test_camel_case_deserialization_for_all_structs() -> Result<(), Box<dyn std::error::Error>> {
         // Define um macro para reduzir a repetição
         macro_rules! test_camel_case {
             ($struct_type:ty, $json_field_name:expr, $rust_field_name:ident, $sample_value_json:expr, $sample_value_rust:expr) => {
                 let json_data = format!(r#"{{ "{}": {} }}"#, $json_field_name, $sample_value_json);
-                let params: $struct_type = serde_json::from_str(&json_data).expect(&format!("Desserialização de {} falhou para {}", stringify!($struct_type), json_data));
+                let params: $struct_type = serde_json::from_str(&json_data)?;
                 assert_eq!(params.$rust_field_name, $sample_value_rust, "Campo {} não correspondeu para {}", stringify!($rust_field_name), stringify!($struct_type));
             };
             // Variante para quando todos os campos são obrigatórios e precisam ser fornecidos
-             ($struct_type:ty, $json_field_name1:expr, $rust_field_name1:ident, $sample_value_json1:expr, $sample_value_rust1:expr,
+            ($struct_type:ty, $json_field_name1:expr, $rust_field_name1:ident, $sample_value_json1:expr, $sample_value_rust1:expr,
                                 $json_field_name2:expr, $rust_field_name2:ident, $sample_value_json2:expr, $sample_value_rust2:expr) => {
                 let json_data = format!(r#"{{ "{}": {}, "{}": {} }}"#, $json_field_name1, $sample_value_json1, $json_field_name2, $sample_value_json2);
-                let params: $struct_type = serde_json::from_str(&json_data).expect(&format!("Desserialização de {} falhou para {}", stringify!($struct_type), json_data));
+                let params: $struct_type = serde_json::from_str(&json_data)?;
                 assert_eq!(params.$rust_field_name1, $sample_value_rust1, "Campo {} não correspondeu para {}", stringify!($rust_field_name1), stringify!($struct_type));
                 assert_eq!(params.$rust_field_name2, $sample_value_rust2, "Campo {} não correspondeu para {}", stringify!($rust_field_name2), stringify!($struct_type));
             };
@@ -285,5 +289,6 @@ mod tests {
         test_camel_case!(DatabaseExistsParams, "name", name, r#""check_db""#, "check_db".to_string());
         test_camel_case!(DeleteDatabaseParams, "name", name, r#""del_db""#, "del_db".to_string());
         test_camel_case!(ValidateQueryParams, "databaseName", database_name, r#""valid_db""#, "valid_db".to_string(), "query", query, r#""validate;""#, "validate;".to_string()); // intended_transaction_type é opcional
+        Ok(())
     }
 }

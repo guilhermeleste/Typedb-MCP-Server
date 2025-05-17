@@ -197,7 +197,8 @@ mod tests {
 
     impl Recorder for MockMetricsRecorder {
         fn describe_counter(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            self.descriptions.lock().unwrap().push(MetricDescriptionCall {
+            let mut guard = self.descriptions.lock().expect("Falha ao adquirir lock do descriptions (describe_counter)");
+            guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
                 description: description.into_owned(),
@@ -205,7 +206,8 @@ mod tests {
         }
 
         fn describe_gauge(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            self.descriptions.lock().unwrap().push(MetricDescriptionCall {
+            let mut guard = self.descriptions.lock().expect("Falha ao adquirir lock do descriptions (describe_gauge)");
+            guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
                 description: description.into_owned(),
@@ -213,7 +215,8 @@ mod tests {
         }
 
         fn describe_histogram(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            self.descriptions.lock().unwrap().push(MetricDescriptionCall {
+            let mut guard = self.descriptions.lock().expect("Falha ao adquirir lock do descriptions (describe_histogram)");
+            guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
                 description: description.into_owned(),
@@ -308,7 +311,7 @@ mod tests {
 
         register_metrics_descriptions();
 
-        let descriptions = mock_recorder.descriptions.lock().unwrap();
+        let descriptions = mock_recorder.descriptions.lock().expect("Falha ao adquirir lock do descriptions no teste");
         
         let num_expected_metrics = 4 + 4 + 6;
         

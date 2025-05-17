@@ -163,7 +163,7 @@ mod tests {
     // Deve ser executado com `cargo test -- --ignored` ou configurado para rodar em CI.
     #[tokio::test]
     #[ignore]
-    async fn test_connect_default_no_tls_success() {
+    async fn test_connect_default_no_tls_success() -> Result<(), Box<dyn std::error::Error>> {
         let driver_result = connect(None, None, None, false, None).await;
         assert!(
             driver_result.is_ok(),
@@ -174,22 +174,22 @@ mod tests {
             assert!(driver.is_open());
             // Não é ideal chamar force_close em um teste unitário que verifica a conexão,
             // pois o drop do driver já faz isso. Mas para garantir, podemos manter.
-            driver.force_close().expect("Falha ao fechar driver");
+            driver.force_close()?;
         }
+        Ok(())
     }
 
     // Similar ao anterior, mas com endereço explícito.
     #[tokio::test]
     #[ignore]
-    async fn test_connect_specific_address_no_tls_success() {
+    async fn test_connect_specific_address_no_tls_success() -> Result<(), Box<dyn std::error::Error>> {
         let driver_result = connect(
             Some(TypeDBDriver::DEFAULT_ADDRESS.to_string()),
             None,
             None,
             false,
             None,
-        )
-        .await;
+        ).await;
         assert!(
             driver_result.is_ok(),
             "Falha ao conectar com endereço específico (sem TLS): {:?}",
@@ -197,8 +197,9 @@ mod tests {
         );
         if let Ok(driver) = driver_result {
             assert!(driver.is_open());
-            driver.force_close().expect("Falha ao fechar driver");
+            driver.force_close()?;
         }
+        Ok(())
     }
 
     #[tokio::test]

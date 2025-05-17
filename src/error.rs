@@ -361,16 +361,13 @@ mod tests {
         );
         assert_eq!(error_data.message.as_ref(), expected_mcp_message);
 
-        let data_json = error_data.data.expect("ErrorData should have data field");
-        assert_eq!(data_json.get("type").and_then(|v| v.as_str()), Some("TypeDBError"));
-        assert_eq!(data_json.get("toolName").and_then(|v| v.as_str()), Some(tool_name));
-        
+        let data_json = error_data.data.as_ref().expect("ErrorData deve conter campo data");
+        let data_obj = data_json.as_object().expect("Campo data deve ser um objeto JSON");
+        assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("TypeDBError"));
+        assert_eq!(data_obj.get("toolName").and_then(|v| v.as_str()), Some(tool_name));
         // O método `code()` para TypeDBError::Other retorna uma string vazia.
-        // Para ter um código mais específico, precisaríamos simular um erro mais estruturado do driver,
-        // o que é complexo sem instanciar conexões reais.
-        // Por agora, verificamos que o `typedbErrorMessage` contém a mensagem completa.
-        assert_eq!(data_json.get("typedbErrorCode").and_then(|v| v.as_str()), Some(""));
-        assert_eq!(data_json.get("typedbErrorMessage").and_then(|v| v.as_str()), Some(expected_typedb_err_message.as_str()));
+        assert_eq!(data_obj.get("typedbErrorCode").and_then(|v| v.as_str()), Some(""));
+        assert_eq!(data_obj.get("typedbErrorMessage").and_then(|v| v.as_str()), Some(expected_typedb_err_message.as_str()));
     }
 
     #[test]
@@ -396,9 +393,10 @@ mod tests {
 
         assert_eq!(error_data.code, ErrorCode(MCP_ERROR_CODE_AUTHENTICATION_FAILED));
         assert_eq!(error_data.message.as_ref(), "Autenticação falhou: Token de autenticação não fornecido ou malformado.");
-        let data_json = error_data.data.as_ref().unwrap().as_object().unwrap();
-        assert_eq!(data_json.get("type").and_then(|v| v.as_str()), Some("AuthError"));
-        assert_eq!(data_json.get("reason").unwrap().as_str().unwrap(), "Token de autenticação não fornecido ou malformado.");
+        let data_json = error_data.data.as_ref().expect("ErrorData deve conter campo data");
+        let data_obj = data_json.as_object().expect("Campo data deve ser um objeto JSON");
+        assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("AuthError"));
+        assert_eq!(data_obj.get("reason").and_then(|v| v.as_str()), Some("Token de autenticação não fornecido ou malformado."));
     }
 
     #[test]
@@ -415,11 +413,12 @@ mod tests {
         let expected_message_detail = "Escopos OAuth2 insuficientes. Requeridos: [\"write\"], Possuídos: [\"read\"].";
         assert_eq!(error_data.message.as_ref(), format!("Autorização falhou: {expected_message_detail}"));
 
-        let data_json = error_data.data.as_ref().unwrap().as_object().unwrap();
-        assert_eq!(data_json.get("type").and_then(|v| v.as_str()), Some("AuthError"));
-        assert_eq!(data_json.get("reason").unwrap().as_str().unwrap(), expected_message_detail);
-        assert_eq!(data_json.get("requiredScopes").unwrap(), &serde_json::json!(required_scopes));
-        assert_eq!(data_json.get("possessedScopes").unwrap(), &serde_json::json!(possessed_scopes));
+        let data_json = error_data.data.as_ref().expect("ErrorData deve conter campo data");
+        let data_obj = data_json.as_object().expect("Campo data deve ser um objeto JSON");
+        assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("AuthError"));
+        assert_eq!(data_obj.get("reason").and_then(|v| v.as_str()), Some(expected_message_detail));
+        assert_eq!(data_obj.get("requiredScopes"), Some(&serde_json::json!(required_scopes)));
+        assert_eq!(data_obj.get("possessedScopes"), Some(&serde_json::json!(possessed_scopes)));
     }
 
     #[test]
@@ -431,9 +430,10 @@ mod tests {
         assert_eq!(error_data.code, ErrorCode::INTERNAL_ERROR);
         assert!(error_data.message.contains("Erro de configuração do servidor"));
         assert!(error_data.message.contains("uma.chave.de.config not found"));
-        let data_json = error_data.data.as_ref().unwrap().as_object().unwrap();
-        assert_eq!(data_json.get("type").and_then(|v| v.as_str()), Some("ConfigurationError"));
-        assert!(data_json.get("detail").unwrap().as_str().unwrap().contains("uma.chave.de.config not found"));
+        let data_json = error_data.data.as_ref().expect("ErrorData deve conter campo data");
+        let data_obj = data_json.as_object().expect("Campo data deve ser um objeto JSON");
+        assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("ConfigurationError"));
+        assert!(data_obj.get("detail").and_then(|v| v.as_str()).map(|s| s.contains("uma.chave.de.config not found")).unwrap_or(false));
     }
 
     #[test]
@@ -452,10 +452,11 @@ mod tests {
         );
         assert_eq!(error_data.message.as_ref(), format!("Autorização falhou: {expected_message_detail}"));
 
-        let data_json = error_data.data.as_ref().unwrap().as_object().unwrap();
-        assert_eq!(data_json.get("type").and_then(|v| v.as_str()), Some("AuthError"));
-        assert_eq!(data_json.get("reason").unwrap().as_str().unwrap(), expected_message_detail);
-        assert_eq!(data_json.get("expectedIssuers").unwrap(), &serde_json::json!(expected));
-        assert_eq!(data_json.get("foundIssuer").unwrap(), &serde_json::json!(found));
+        let data_json = error_data.data.as_ref().expect("ErrorData deve conter campo data");
+        let data_obj = data_json.as_object().expect("Campo data deve ser um objeto JSON");
+        assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("AuthError"));
+        assert_eq!(data_obj.get("reason").and_then(|v| v.as_str()), Some(expected_message_detail.as_str()));
+        assert_eq!(data_obj.get("expectedIssuers"), Some(&serde_json::json!(expected)));
+        assert_eq!(data_obj.get("foundIssuer"), Some(&serde_json::json!(found)));
     }
 }

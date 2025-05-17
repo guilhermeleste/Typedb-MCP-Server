@@ -266,10 +266,9 @@ mod tests {
         let resources: Vec<Resource> = list_static_resources();
         assert_eq!(resources.len(), 2);
 
-        let query_types_res = resources
-            .iter()
-            .find(|r| r.uri == QUERY_TYPES_URI) // uri é String, não Cow
-            .expect("Recurso QUERY_TYPES_URI não encontrado.");
+        let query_types_res_opt = resources.iter().find(|r| r.uri == QUERY_TYPES_URI);
+        assert!(query_types_res_opt.is_some(), "Recurso QUERY_TYPES_URI não encontrado.");
+        let query_types_res = query_types_res_opt.unwrap();
         assert_eq!(query_types_res.name, QUERY_TYPES_NAME);
         assert_eq!(
             query_types_res.description.as_deref(),
@@ -297,28 +296,40 @@ mod tests {
 
     #[test]
     fn test_parse_schema_uri_valid_cases() {
-        let (db, stype) = parse_schema_uri("schema://current/my_db").unwrap();
+        let result1 = parse_schema_uri("schema://current/my_db");
+        assert!(result1.is_ok(), "Esperado Ok para schema://current/my_db, obteve: {result1:?}");
+        let (db, stype) = result1.unwrap();
         assert_eq!(db, "my_db");
         assert_eq!(stype, "full");
 
-        let (db, stype) = parse_schema_uri("schema://current/db%20with%20spaces?type=types").unwrap();
+        let result2 = parse_schema_uri("schema://current/db%20with%20spaces?type=types");
+        assert!(result2.is_ok(), "Esperado Ok para schema://current/db%20with%20spaces?type=types, obteve: {result2:?}");
+        let (db, stype) = result2.unwrap();
         assert_eq!(db, "db with spaces");
         assert_eq!(stype, "types");
 
-        let (db, stype) = parse_schema_uri("schema://current/mydb?type=invalid_type_value").unwrap();
+        let result3 = parse_schema_uri("schema://current/mydb?type=invalid_type_value");
+        assert!(result3.is_ok(), "Esperado Ok para schema://current/mydb?type=invalid_type_value, obteve: {result3:?}");
+        let (db, stype) = result3.unwrap();
         assert_eq!(db, "mydb");
         assert_eq!(stype, "full");
     }
 
     #[test]
     fn test_parse_schema_uri_invalid_cases() {
-        let err1 = parse_schema_uri("invalid://current/my_db").unwrap_err();
+        let result1 = parse_schema_uri("invalid://current/my_db");
+        assert!(result1.is_err(), "Esperado Err para invalid://current/my_db, obteve: {result1:?}");
+        let err1 = result1.unwrap_err();
         assert_eq!(err1.code, ErrorCode::RESOURCE_NOT_FOUND);
 
-        let err2 = parse_schema_uri("schema://current/").unwrap_err();
+        let result2 = parse_schema_uri("schema://current/");
+        assert!(result2.is_err(), "Esperado Err para schema://current/, obteve: {result2:?}");
+        let err2 = result2.unwrap_err();
         assert_eq!(err2.code, ErrorCode::RESOURCE_NOT_FOUND);
 
-        let err3 = parse_schema_uri("schema://current/%?type=full").unwrap_err();
+        let result3 = parse_schema_uri("schema://current/%?type=full");
+        assert!(result3.is_err(), "Esperado Err para schema://current/%?type=full, obteve: {result3:?}");
+        let err3 = result3.unwrap_err();
         assert_eq!(err3.code, ErrorCode::INVALID_PARAMS);
     }
 }
