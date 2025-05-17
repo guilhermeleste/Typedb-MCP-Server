@@ -48,6 +48,7 @@ pin_project! {
 
 impl WebSocketTransport {
     /// Cria um novo `WebSocketTransport` a partir de um `axum::extract::ws::WebSocket`.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn new(ws_socket: WebSocket) -> Self {
         Self { ws_socket }
     }
@@ -62,33 +63,23 @@ impl Stream for WebSocketTransport {
             match Stream::poll_next(this.ws_socket.as_mut(), cx) {
                 Poll::Ready(Some(Ok(axum_message))) => {
                     match axum_message {
-                        AxumMessage::Text(text_bytes) => {
-                            // Utf8Bytes -> &str (via as_str()), ou para String: to_string()
-                            let text = text_bytes.as_str();
-                            tracing::trace!("WebSocketTransport: Recebido frame Text de {} bytes.", text.len());
-                            match serde_json::from_str::<ClientJsonRpcMessage>(text) {
-                                Ok(mcp_message) => return Poll::Ready(Some(mcp_message)),
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "WebSocketTransport: Falha ao desserializar ClientJsonRpcMessage: {}. Payload: '{}'. Mensagem ignorada.",
-                                        e,
-                                        text
-                                    );
-                                    // continue no loop para a próxima mensagem
-                                }
+                        AxumMessage::Text(ref text_bytes) => {
+                            if let Some(msg) = Self::handle_text(text_bytes) {
+                                return Poll::Ready(Some(msg));
                             }
+                            // Se inválido, continua o loop
                         }
-                        AxumMessage::Binary(bin) => {
-                            tracing::warn!("WebSocketTransport: Recebido frame Binary ({} bytes), que não é suportado e será ignorado.", bin.len());
+                        AxumMessage::Binary(ref bin) => {
+                            Self::handle_binary(bin);
                         }
-                        AxumMessage::Ping(ping_data) => {
-                            tracing::trace!("WebSocketTransport: Recebido Ping WebSocket.");
-                            let _ = ping_data;
+                        AxumMessage::Ping(ref ping_data) => {
+                            Self::handle_ping(ping_data);
                         }
-                        AxumMessage::Pong(_) => tracing::trace!("WebSocketTransport: Recebido Pong WebSocket."),
-                        AxumMessage::Close(close_frame) => {
-                            tracing::debug!("WebSocketTransport: Recebido frame Close WebSocket do peer: {:?}. Encerrando stream.", close_frame);
-                            return Poll::Ready(None);
+                        AxumMessage::Pong(_) => {
+                            Self::handle_pong();
+                        }
+                        AxumMessage::Close(ref close_frame) => {
+                            return Self::handle_close(close_frame.as_ref());
                         }
                     }
                 }
@@ -103,6 +94,41 @@ impl Stream for WebSocketTransport {
                 Poll::Pending => return Poll::Pending,
             }
         }
+    }
+}
+
+impl WebSocketTransport {
+    fn handle_text(text_bytes: &axum::extract::ws::Utf8Bytes) -> Option<ClientJsonRpcMessage> {
+        let text = text_bytes.as_str();
+        tracing::trace!("WebSocketTransport: Recebido frame Text de {} bytes.", text.len());
+        match serde_json::from_str::<ClientJsonRpcMessage>(text) {
+            Ok(mcp_message) => Some(mcp_message),
+            Err(e) => {
+                tracing::warn!(
+                    "WebSocketTransport: Falha ao desserializar ClientJsonRpcMessage: {}. Payload: '{}'. Mensagem ignorada.",
+                    e,
+                    text
+                );
+                None
+            }
+        }
+    }
+
+    fn handle_binary(bin: &bytes::Bytes) {
+        tracing::warn!("WebSocketTransport: Recebido frame Binary ({} bytes), que não é suportado e será ignorado.", bin.len());
+    }
+
+    fn handle_ping(_ping_data: &bytes::Bytes) {
+        tracing::trace!("WebSocketTransport: Recebido Ping WebSocket.");
+    }
+
+    fn handle_pong() {
+        tracing::trace!("WebSocketTransport: Recebido Pong WebSocket.");
+    }
+
+    fn handle_close(close_frame: Option<&axum::extract::ws::CloseFrame>) -> Poll<Option<ClientJsonRpcMessage>> {
+        tracing::debug!("WebSocketTransport: Recebido frame Close WebSocket do peer: {:?}. Encerrando stream.", close_frame);
+        Poll::Ready(None)
     }
 }
 

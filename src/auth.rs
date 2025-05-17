@@ -227,7 +227,7 @@ async fn validate_and_decode_token(
     if let Some(ref expected_audiences) = oauth_config.audience {
         if !expected_audiences.is_empty() {
             let token_audiences_set: HashSet<String> = match &token_data.claims.aud {
-                Some(JsonValue::String(s)) => [s.clone()].into_iter().collect(),
+                Some(JsonValue::String(s)) => std::iter::once(s.clone()).collect(),
                 Some(JsonValue::Array(arr)) => arr.iter().filter_map(|v| v.as_str().map(String::from)).collect(),
                 _ => HashSet::new(),
             };

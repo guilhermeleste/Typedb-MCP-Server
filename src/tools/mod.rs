@@ -1,3 +1,4 @@
+#![allow(clippy::too_long_first_doc_paragraph)]
 // src/tools/mod.rs
 
 // Copyright (C) 2024 -今日の未来-
@@ -5,12 +6,13 @@
 
 //! Módulo agregador para todas as ferramentas MCP disponíveis.
 //!
-//! Este módulo declara os submódulos que contêm a lógica específica para
-//! cada categoria de ferramenta do `Typedb-MCP-Server`. Cada submódulo
-//! é responsável por uma área funcional das ferramentas.
+//! Este módulo declara os submódulos que contêm a lógica específica para cada categoria de ferramenta do `Typedb-MCP-Server`.
+//!
+//! Cada submódulo é responsável por uma área funcional das ferramentas.
 ///
-/// Ferramentas relacionadas à administração de bancos de dados TypeDB
-/// (criar, deletar, listar, verificar existência).
+/// Ferramentas relacionadas à administração de bancos de dados TypeDB.
+///
+/// Inclui criar, deletar, listar e verificar existência de bancos.
 pub mod db_admin;
 
 /// Ferramentas relacionadas à execução de consultas TypeQL.
