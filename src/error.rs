@@ -339,7 +339,7 @@ mod tests {
     fn create_mock_typedb_server_error(code: &str, message: &str) -> TypeDBError {
         // Usar um tipo de erro que não dependa de um ServerConnection real para ser construído.
         // TypeDBError::Other é uma boa opção para simular um erro genérico do driver.
-        TypeDBError::Other(format!("[{}] {}", code, message))
+        TypeDBError::Other(format!("[{code}] {message}"))
     }
 
     #[test]
@@ -355,11 +355,9 @@ mod tests {
         assert_eq!(error_data.code, ErrorCode::INTERNAL_ERROR);
 
         // A mensagem do TypeDBError::Other será exatamente o que foi passado.
-        let expected_typedb_err_message = format!("[{}] {}", original_typedb_code_mock, original_message);
+        let expected_typedb_err_message = format!("[{original_typedb_code_mock}] {original_message}");
         let expected_mcp_message = format!(
-            "Erro na ferramenta MCP '{}' ao interagir com TypeDB: {}",
-            tool_name,
-            expected_typedb_err_message 
+            "Erro na ferramenta MCP '{tool_name}' ao interagir com TypeDB: {expected_typedb_err_message}" 
         );
         assert_eq!(error_data.message.as_ref(), expected_mcp_message);
 
@@ -384,11 +382,9 @@ mod tests {
 
         let user_string = typedb_error_to_user_string(&typedb_err, context_msg);
 
-        let expected_typedb_err_message = format!("[{}] {}", original_typedb_code_mock, original_message);
+        let expected_typedb_err_message = format!("[{original_typedb_code_mock}] {original_message}");
         let expected_string = format!(
-            "ERRO: {}: {}",
-            context_msg,
-            expected_typedb_err_message
+            "ERRO: {context_msg}: {expected_typedb_err_message}"
         );
         assert_eq!(user_string, expected_string);
     }
@@ -417,7 +413,7 @@ mod tests {
 
         assert_eq!(error_data.code, ErrorCode(MCP_ERROR_CODE_AUTHORIZATION_FAILED));
         let expected_message_detail = "Escopos OAuth2 insuficientes. Requeridos: [\"write\"], Possuídos: [\"read\"].";
-        assert_eq!(error_data.message.as_ref(), format!("Autorização falhou: {}", expected_message_detail));
+        assert_eq!(error_data.message.as_ref(), format!("Autorização falhou: {expected_message_detail}"));
 
         let data_json = error_data.data.as_ref().unwrap().as_object().unwrap();
         assert_eq!(data_json.get("type").and_then(|v| v.as_str()), Some("AuthError"));
@@ -452,10 +448,9 @@ mod tests {
 
         assert_eq!(error_data.code, ErrorCode(MCP_ERROR_CODE_AUTHORIZATION_FAILED));
         let expected_message_detail = format!(
-            "Claim 'issuer' do token não corresponde. Esperado um de: {:?}, Obtido: {:?}.",
-            expected, found
+            "Claim 'issuer' do token não corresponde. Esperado um de: {expected:?}, Obtido: {found:?}."
         );
-        assert_eq!(error_data.message.as_ref(), format!("Autorização falhou: {}", expected_message_detail));
+        assert_eq!(error_data.message.as_ref(), format!("Autorização falhou: {expected_message_detail}"));
 
         let data_json = error_data.data.as_ref().unwrap().as_object().unwrap();
         assert_eq!(data_json.get("type").and_then(|v| v.as_str()), Some("AuthError"));

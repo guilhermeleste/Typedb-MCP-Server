@@ -443,7 +443,7 @@ mod tests {
             .oneshot(
                 axum::http::Request::builder()
                     .uri("/")
-                    .header("Authorization", format!("Bearer {}", token))
+                    .header("Authorization", format!("Bearer {token}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -455,7 +455,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_oauth_middleware_disabled() {
-        let oauth_config = Arc::new(test_oauth_config("".to_string(), false)); 
+        let oauth_config = Arc::new(test_oauth_config(String::new(), false)); 
         let http_client = reqwest::Client::new();
         let jwks_cache = Arc::new(test_jwks_cache("http://localhost/jwks".to_string(), http_client));
 
@@ -537,7 +537,7 @@ mod tests {
             .oneshot(
                 axum::http::Request::builder()
                     .uri("/")
-                    .header("Authorization", format!("Bearer {}", token))
+                    .header("Authorization", format!("Bearer {token}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -575,7 +575,7 @@ mod tests {
             .layer(middleware::from_fn_with_state((jwks_cache, oauth_config), oauth_middleware));
 
         let response = app.oneshot(axum::http::Request::builder().uri("/")
-            .header("Authorization", format!("Bearer {}", token)).body(Body::empty()).unwrap()
+            .header("Authorization", format!("Bearer {token}")).body(Body::empty()).unwrap()
         ).await.unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
@@ -632,7 +632,7 @@ mod tests {
         if let Err(AuthErrorDetail::JwksFetchFailed(_)) = refresh_result {
             // Correto
         } else {
-            panic!("Erro inesperado: {:?}", refresh_result);
+            panic!("Erro inesperado: {refresh_result:?}");
         }
         assert!(!cache.is_cache_ever_populated().await);
     }

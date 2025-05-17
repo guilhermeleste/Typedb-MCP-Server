@@ -18,7 +18,7 @@
 //! Ponto de entrada principal para o Typedb-MCP-Server.
 //!
 //! Configura e inicia o servidor MCP, que escuta por conexões WebSocket,
-//! lida com autenticação OAuth2, e despacha requisições de ferramentas
+//! lida com autenticação `OAuth2`, e despacha requisições de ferramentas
 //! para o `McpServiceHandler`. Também configura logging, métricas e tracing.
 
 // std imports
@@ -86,8 +86,8 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let settings = match Settings::new() {
         Ok(s) => Arc::new(s),
         Err(e) => {
-            eprintln!("Erro fatal ao carregar a configuração: {}. Encerrando.", e);
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())));
+            eprintln!("Erro fatal ao carregar a configuração: {e}. Encerrando.");
+            return Err(Box::new(std::io::Error::other(e.to_string())));
         }
     };
 
@@ -227,7 +227,7 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::E
 
     let bind_address_str = settings.server.bind_address.clone();
     let bind_addr: SocketAddr = bind_address_str.parse().map_err(|e| {
-        format!("Endereço de bind inválido '{}': {}", bind_address_str, e)
+        format!("Endereço de bind inválido '{bind_address_str}': {e}")
     })?;
 
     if settings.server.tls_enabled {
@@ -244,7 +244,7 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::E
 
         use axum_server::tls_rustls::RustlsConfig;
         let config = RustlsConfig::from_pem_file(cert_path_str, key_path_str).await
-            .map_err(|e| format!("Erro ao carregar certificado/chave PEM: {}", e))?;
+            .map_err(|e| format!("Erro ao carregar certificado/chave PEM: {e}"))?;
         axum_server::bind_rustls(bind_addr, config)
             .serve(final_router.into_make_service())
             .await?;
@@ -316,11 +316,9 @@ async fn websocket_handler(
     maybe_auth_context: Option<Extension<Arc<ClientAuthContext>>>,
 ) -> impl IntoResponse {
     let user_id_for_log = maybe_auth_context
-        .as_ref()
-        .map(|Extension(ctx)| ctx.user_id.clone())
-        .unwrap_or_else(|| "não_autenticado".to_string());
+        .as_ref().map_or_else(|| "não_autenticado".to_string(), |Extension(ctx)| ctx.user_id.clone());
     
-    tracing::Span::current().record("client.user_id", &tracing::field::display(&user_id_for_log));
+    tracing::Span::current().record("client.user_id", tracing::field::display(&user_id_for_log));
     tracing::info!("Nova tentativa de conexão WebSocket MCP.");
 
     if app_state.settings.oauth.enabled && maybe_auth_context.is_none() {
@@ -341,17 +339,16 @@ async fn websocket_handler(
         tokio::spawn(async move {
             if let Err(e) = mcp_handler_instance.serve_with_ct(adapter, service_shutdown_token).await { 
                 let error_string = e.to_string();
-                if !(error_string.contains("operação cancelada") || 
+                if error_string.contains("operação cancelada") || 
                      error_string.contains("Connection reset by peer") ||
                      error_string.contains("Broken pipe") ||
                      error_string.to_lowercase().contains("connection closed") ||
                      error_string.to_lowercase().contains("channel closed") ||
                      error_string.contains("IO error: Connection reset by peer") ||
-                     error_string.contains("IO error: Broken pipe") 
-                    ) {
-                    tracing::error!(client.user_id = %user_id_for_log, error.message = %e, "Erro no serviço MCP para a conexão WebSocket.");
-                } else {
+                     error_string.contains("IO error: Broken pipe") {
                     tracing::info!(client.user_id = %user_id_for_log, "Serviço MCP para conexão WebSocket encerrado (cancelado ou desconectado): {}", e);
+                } else {
+                    tracing::error!(client.user_id = %user_id_for_log, error.message = %e, "Erro no serviço MCP para a conexão WebSocket.");
                 }
             }
             tracing::info!(client.user_id = %user_id_for_log, "Serviço MCP para conexão WebSocket finalizado.");
@@ -409,20 +406,19 @@ fn setup_metrics(metrics_bind_address_str: &str) -> Result<PrometheusHandle, Box
     metrics::register_metrics_descriptions();
 
     let metrics_socket_addr: SocketAddr = metrics_bind_address_str.parse().map_err(|e| {
-        format!("Endereço de bind inválido para métricas '{}': {}", metrics_bind_address_str, e)
+        format!("Endereço de bind inválido para métricas '{metrics_bind_address_str}': {e}")
     })?;
 
     PrometheusBuilder::new()
         .with_http_listener(metrics_socket_addr)
         .install_recorder()
-        .map(|handle| {
+        .inspect(|handle| {
             tracing::info!("Servidor de métricas Prometheus escutando em {}", metrics_socket_addr);
-            handle
         })
         .map_err(|e| {
-            let err_msg = format!("Não foi possível iniciar o servidor de métricas Prometheus em {}: {}. As métricas não estarão disponíveis.", metrics_socket_addr, e);
+            let err_msg = format!("Não foi possível iniciar o servidor de métricas Prometheus em {metrics_socket_addr}: {e}. As métricas não estarão disponíveis.");
             tracing::error!("{}", err_msg);
-            Box::new(std::io::Error::new(std::io::ErrorKind::Other, err_msg)) as Box<dyn std::error::Error + Send + Sync>
+            Box::new(std::io::Error::other(err_msg)) as Box<dyn std::error::Error + Send + Sync>
         })
 }
 
@@ -437,7 +433,7 @@ fn setup_signal_handler(token: CancellationToken) {
 
             tokio::select! {
                 biased;
-                _ = token.cancelled() => {},
+                () = token.cancelled() => {},
                 _ = sigint.recv() => tracing::info!("Recebido SIGINT, iniciando desligamento..."),
                 _ = sigterm.recv() => tracing::info!("Recebido SIGTERM, iniciando desligamento..."),
             }

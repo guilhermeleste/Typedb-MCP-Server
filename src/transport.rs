@@ -198,7 +198,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app.into_make_service()).await.unwrap(); });
-        let client_uri = format!("ws://{}/ws_test", addr);
+        let client_uri = format!("ws://{addr}/ws_test");
         let (client_socket, _) = connect_async(&client_uri).await.expect("Falha ao conectar cliente WebSocket de teste");
         let server_ws_from_handler = socket_rx.recv().await.expect("Servidor de teste não recebeu o WebSocket do handler Axum");
         (WebSocketTransport::new(server_ws_from_handler), client_socket)
@@ -225,7 +225,7 @@ mod tests {
                 let received_msg_on_client: ServerJsonRpcMessage = serde_json::from_str(&text).expect("Cliente falhou ao desserializar mensagem do servidor");
                 assert_eq!(serde_json::to_string(&received_msg_on_client).unwrap(), serde_json::to_string(&server_msg).unwrap());
             }
-            other => panic!("Cliente não recebeu mensagem de texto ou recebeu tipo de frame inesperado: {:?}", other),
+            other => panic!("Cliente não recebeu mensagem de texto ou recebeu tipo de frame inesperado: {other:?}"),
         }
 
         let client_msg_payload = rmcp::model::ClientNotification::InitializedNotification(
@@ -244,7 +244,7 @@ mod tests {
             Some(received_on_server) => {
                  assert_eq!(serde_json::to_string(&received_on_server).unwrap(), serde_json::to_string(&client_rpc_msg).unwrap());
             }
-            other => panic!("Servidor não recebeu mensagem de texto ou stream terminou prematuramente: {:?}", other),
+            other => panic!("Servidor não recebeu mensagem de texto ou stream terminou prematuramente: {other:?}"),
         }
     }
 
@@ -262,7 +262,7 @@ mod tests {
         
         match FuturesStreamExt::next(&mut client_socket).await {
             Some(Ok(TungsteniteMessage::Close(_))) => { /* esperado */ }
-            other => panic!("Cliente não recebeu frame de Close, obteve: {:?}", other),
+            other => panic!("Cliente não recebeu frame de Close, obteve: {other:?}"),
         }
     }
 
@@ -287,7 +287,7 @@ mod tests {
             Some(received_on_server) => {
                  assert_eq!(serde_json::to_string(&received_on_server).unwrap(), client_msg_str_valid);
             }
-            other => panic!("Esperava uma mensagem válida após JSON inválido, obteve {:?}", other),
+            other => panic!("Esperava uma mensagem válida após JSON inválido, obteve {other:?}"),
         }
     }
 
@@ -311,7 +311,7 @@ mod tests {
             Some(received_on_server) => {
                  assert_eq!(serde_json::to_string(&received_on_server).unwrap(), client_msg_str_valid);
             }
-            other => panic!("Esperava uma mensagem de texto válida após mensagem binária, obteve {:?}", other),
+            other => panic!("Esperava uma mensagem de texto válida após mensagem binária, obteve {other:?}"),
         }
     }
 }

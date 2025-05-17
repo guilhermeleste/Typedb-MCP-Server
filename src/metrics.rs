@@ -227,7 +227,7 @@ mod tests {
     
     fn install_test_recorder(recorder: Arc<MockMetricsRecorder>) -> bool {
         match set_global_recorder(recorder) {
-            Ok(_) => {
+            Ok(()) => {
                 tracing::info!("MockMetricsRecorder instalado globalmente para o teste.");
                 true
             }
@@ -241,59 +241,59 @@ mod tests {
     #[test]
     fn test_metric_names_are_correct_and_prefixed() {
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, WEBSOCKET_CONNECTIONS_TOTAL),
+            format!("{METRIC_PREFIX}{WEBSOCKET_CONNECTIONS_TOTAL}"),
             "typedb_mcp_server_websocket_connections_total"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, TOOL_CALLS_TOTAL),
+            format!("{METRIC_PREFIX}{TOOL_CALLS_TOTAL}"),
             "typedb_mcp_server_tool_calls_total"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, OAUTH_TOKENS_VALIDATED_TOTAL),
+            format!("{METRIC_PREFIX}{OAUTH_TOKENS_VALIDATED_TOTAL}"),
             "typedb_mcp_server_oauth_tokens_validated_total"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, TYPEDB_REQUESTS_TOTAL),
+            format!("{METRIC_PREFIX}{TYPEDB_REQUESTS_TOTAL}"),
             "typedb_mcp_server_typedb_requests_total"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, JWKS_FETCH_TOTAL),
+            format!("{METRIC_PREFIX}{JWKS_FETCH_TOTAL}"),
             "typedb_mcp_server_jwks_fetch_total"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, CONFIG_LOAD_ATTEMPTS_TOTAL),
+            format!("{METRIC_PREFIX}{CONFIG_LOAD_ATTEMPTS_TOTAL}"),
             "typedb_mcp_server_config_load_attempts_total"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, WEBSOCKET_ACTIVE_CONNECTIONS),
+            format!("{METRIC_PREFIX}{WEBSOCKET_ACTIVE_CONNECTIONS}"),
             "typedb_mcp_server_websocket_active_connections"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, JWKS_KEYS_CACHED_COUNT),
+            format!("{METRIC_PREFIX}{JWKS_KEYS_CACHED_COUNT}"),
             "typedb_mcp_server_jwks_keys_cached_count"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, SERVER_INFO_GAUGE),
+            format!("{METRIC_PREFIX}{SERVER_INFO_GAUGE}"),
             "typedb_mcp_server_info"
         );
          assert_eq!(
-            format!("{}{}", METRIC_PREFIX, SERVER_READY_STATUS),
+            format!("{METRIC_PREFIX}{SERVER_READY_STATUS}"),
             "typedb_mcp_server_ready_status"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, TOOL_CALL_DURATION_SECONDS),
+            format!("{METRIC_PREFIX}{TOOL_CALL_DURATION_SECONDS}"),
             "typedb_mcp_server_tool_call_duration_seconds"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, OAUTH_TOKEN_VALIDATION_DURATION_SECONDS),
+            format!("{METRIC_PREFIX}{OAUTH_TOKEN_VALIDATION_DURATION_SECONDS}"),
             "typedb_mcp_server_oauth_token_validation_duration_seconds"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, TYPEDB_REQUEST_DURATION_SECONDS),
+            format!("{METRIC_PREFIX}{TYPEDB_REQUEST_DURATION_SECONDS}"),
             "typedb_mcp_server_typedb_request_duration_seconds"
         );
         assert_eq!(
-            format!("{}{}", METRIC_PREFIX, JWKS_FETCH_DURATION_SECONDS),
+            format!("{METRIC_PREFIX}{JWKS_FETCH_DURATION_SECONDS}"),
             "typedb_mcp_server_jwks_fetch_duration_seconds"
         );
     }
@@ -322,7 +322,7 @@ mod tests {
         );
 
         let expected_websocket_total = MetricDescriptionCall {
-            name: format!("{}{}", METRIC_PREFIX, WEBSOCKET_CONNECTIONS_TOTAL),
+            name: format!("{METRIC_PREFIX}{WEBSOCKET_CONNECTIONS_TOTAL}"),
             unit: Some(Unit::Count),
             description: "Número total de conexões WebSocket estabelecidas desde o início do servidor.".to_string(),
         };
@@ -333,7 +333,7 @@ mod tests {
         );
 
         let expected_tool_duration = MetricDescriptionCall {
-            name: format!("{}{}", METRIC_PREFIX, TOOL_CALL_DURATION_SECONDS),
+            name: format!("{METRIC_PREFIX}{TOOL_CALL_DURATION_SECONDS}"),
             unit: Some(Unit::Seconds),
             description: "Distribuição da duração das chamadas de ferramentas MCP.".to_string(),
         };
@@ -344,7 +344,7 @@ mod tests {
         );
 
         let expected_server_info = MetricDescriptionCall {
-            name: format!("{}{}", METRIC_PREFIX, SERVER_INFO_GAUGE),
+            name: format!("{METRIC_PREFIX}{SERVER_INFO_GAUGE}"),
             unit: Some(Unit::Count),
             description: "Informações sobre o servidor, como versão da aplicação e versão do Rust (expostas via labels).".to_string(),
         };

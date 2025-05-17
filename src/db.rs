@@ -228,7 +228,7 @@ mod tests {
                 TypeDBDriverError::Other(s) if s.contains("dns error") || s.contains("failed to lookup address information") || s.contains("address resolve") || s.contains("connection refused") => {
                     // Erro esperado (depende do SO e da rede)
                 }
-                _ => panic!("Erro inesperado para endereço inválido: {:?}. Esperado um ConnectionError ou Other relacionado a DNS/conexão.", e),
+                _ => panic!("Erro inesperado para endereço inválido: {e:?}. Esperado um ConnectionError ou Other relacionado a DNS/conexão."),
             }
         }
     }
@@ -243,15 +243,14 @@ mod tests {
             ));
         } else {
             panic!(
-                "Esperado erro de CA path obrigatório, obteve: {:?}",
-                result
+                "Esperado erro de CA path obrigatório, obteve: {result:?}"
             );
         }
     }
 
     #[tokio::test]
     async fn test_connect_tls_enabled_ca_path_is_empty_string_fails() {
-        let result = connect(None, None, None, true, Some("".to_string())).await;
+        let result = connect(None, None, None, true, Some(String::new())).await;
         assert!(result.is_err());
         if let Err(TypeDBDriverError::Other(msg)) = result {
             assert!(msg.contains(
@@ -259,8 +258,7 @@ mod tests {
             ));
         } else {
             panic!(
-                "Esperado erro de CA path obrigatório e não vazio, obteve: {:?}",
-                result
+                "Esperado erro de CA path obrigatório e não vazio, obteve: {result:?}"
             );
         }
     }
@@ -276,13 +274,11 @@ mod tests {
         assert!(result.is_err());
         if let Err(TypeDBDriverError::Other(msg)) = result {
             assert!(msg.contains(&format!(
-                "Arquivo CA para TypeDB TLS não encontrado em: {}",
-                non_existent_path
+                "Arquivo CA para TypeDB TLS não encontrado em: {non_existent_path}"
             )));
         } else {
             panic!(
-                "Esperado erro de arquivo CA não encontrado, obteve: {:?}",
-                result
+                "Esperado erro de arquivo CA não encontrado, obteve: {result:?}"
             );
         }
     }

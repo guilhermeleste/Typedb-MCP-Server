@@ -482,7 +482,7 @@ mod tests {
     #[test]
     fn test_typedb_value_to_json_value_duration() {
         // (1 ano + 2 meses), 3 dias, (4h + 5m + 6s)
-        let duration_val = TypeDBValue::Duration(TypeDBDuration::new(1*12 + 2, 3, (4*3600 + 5*60 + 6) * 1_000_000_000));
+        let duration_val = TypeDBValue::Duration(TypeDBDuration::new(12 + 2, 3, (4*3600 + 5*60 + 6) * 1_000_000_000));
         // A implementação Display de TypeDBDuration deve ser ISO 8601.
         // Ex: "P14M3DT4H5M6S"
         assert_eq!(typedb_value_to_json_value(&duration_val), serde_json::json!(TypeDBDuration::new(14, 3, 14706000000000_u64).to_string()));

@@ -299,7 +299,7 @@ mod tests {
     fn create_temp_toml_config(content: &str) -> tempfile::NamedTempFile {
         use std::io::Write;
         let mut file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
-        write!(file, "{}", content).expect("Failed to write to temp file");
+        write!(file, "{content}").expect("Failed to write to temp file");
         file.flush().expect("Failed to flush temp file");
         file
     }

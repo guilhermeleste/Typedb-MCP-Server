@@ -157,7 +157,7 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             sdktrace::TraceError::Other(s) => {
-                let msg = format!("{}", s);
+                let msg = format!("{s}");
                 assert!(msg.contains("OTEL_EXPORTER_OTLP_ENDPOINT"));
             }
             _ => panic!("Erro inesperado para endpoint ausente."),
