@@ -94,37 +94,6 @@ debug = false
 opt-level = 1
 debug = true
 
-[lints.rust]
-
-unsafe_code = "forbid"
-missing_docs = "warn"
-unreachable_pub = "warn"
-rust_2018_idioms = { level = "warn", priority = -1 }
-rust_2021_compatibility = { level = "warn", priority = -1 }
-
-[lints.clippy]
-
-clone_on_copy = "deny"
-expl_impl_locale_aware_cmp = "deny"
-float_cmp = "deny"
-mutex_integer = "deny"
-unnecessary_unwrap = "deny"
-unwrap_used = "deny"
-pedantic = { level = "warn", priority = -1 }
-default_trait_access = "warn"
-filter_map_next = "warn"
-flat_map_option = "warn"
-manual_ok_or = "warn"
-map_unwrap_or = "warn"
-match_same_arms = "warn"
-redundant_else = "warn"
-string_to_string = "warn"
-redundant_clone = "warn"
-expect_used = "warn"
-print_stdout = "warn"
-print_stderr = "warn"
-too_many_arguments = { level = "warn", priority = 0, args = ["threshold=7"] }
-cyclomatic_complexity = { level = "warn", priority = 0, args = ["threshold=25"] }
 
 
 [[bin]]
