@@ -425,9 +425,9 @@ mod tests {
         let now = jsonwebtoken::get_current_timestamp();
         let claims = Claims {
             sub: "user123".to_string(),
-            exp: (now + 3600) as usize,
-            iat: Some(now as usize),
-            nbf: Some(now as usize),
+            exp: usize::try_from(now + 3600).expect("timestamp não cabe em usize"),
+            iat: Some(usize::try_from(now).expect("timestamp não cabe em usize")),
+            nbf: Some(usize::try_from(now).expect("timestamp não cabe em usize")),
             iss: Some("test-issuer".to_string()),
             aud: Some(serde_json::json!(["test-audience"])),
             scope: Some("read write".to_string()),
@@ -536,9 +536,13 @@ mod tests {
 
         let now = jsonwebtoken::get_current_timestamp();
         let claims = Claims {
-            sub: "user123".to_string(), exp: (now + 3600) as usize, iat: Some(now as usize),
-            nbf: Some(now as usize), iss: Some("test-issuer".to_string()),
-            aud: Some(serde_json::json!(["test-audience"])), scope: Some("read".to_string()),
+            sub: "user123".to_string(),
+            exp: usize::try_from(now + 3600).expect("timestamp não cabe em usize"),
+            iat: Some(usize::try_from(now).expect("timestamp não cabe em usize")),
+            nbf: Some(usize::try_from(now).expect("timestamp não cabe em usize")),
+            iss: Some("test-issuer".to_string()),
+            aud: Some(serde_json::json!(["test-audience"])),
+            scope: Some("read".to_string()),
         };
         let token = generate_test_jwt(&claims, TEST_KID_RS256, Algorithm::RS256);
 
@@ -581,9 +585,11 @@ mod tests {
         let now = jsonwebtoken::get_current_timestamp();
         let claims = Claims {
             sub: "user123".to_string(),
-            exp: (now - 3600) as usize, 
-            iat: Some((now - 7200) as usize), nbf: Some((now - 7200) as usize),
-            iss: Some("test-issuer".to_string()), aud: Some(serde_json::json!(["test-audience"])),
+            exp: usize::try_from(now - 3600).expect("timestamp não cabe em usize"),
+            iat: Some(usize::try_from(now - 7200).expect("timestamp não cabe em usize")),
+            nbf: Some(usize::try_from(now - 7200).expect("timestamp não cabe em usize")),
+            iss: Some("test-issuer".to_string()),
+            aud: Some(serde_json::json!(["test-audience"])),
             scope: Some("read".to_string()),
         };
         let token = generate_test_jwt(&claims, TEST_KID_RS256, Algorithm::RS256);

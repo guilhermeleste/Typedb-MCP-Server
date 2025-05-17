@@ -197,7 +197,10 @@ mod tests {
 
     impl Recorder for MockMetricsRecorder {
         fn describe_counter(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            let mut guard = self.descriptions.lock().expect("Falha ao adquirir lock do descriptions (describe_counter)");
+            let mut guard = match self.descriptions.lock() {
+                Ok(g) => g,
+                Err(_) => panic!("Falha ao adquirir lock do descriptions (describe_counter)"),
+            };
             guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
@@ -206,7 +209,10 @@ mod tests {
         }
 
         fn describe_gauge(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            let mut guard = self.descriptions.lock().expect("Falha ao adquirir lock do descriptions (describe_gauge)");
+            let mut guard = match self.descriptions.lock() {
+                Ok(g) => g,
+                Err(_) => panic!("Falha ao adquirir lock do descriptions (describe_gauge)"),
+            };
             guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
@@ -215,7 +221,10 @@ mod tests {
         }
 
         fn describe_histogram(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            let mut guard = self.descriptions.lock().expect("Falha ao adquirir lock do descriptions (describe_histogram)");
+            let mut guard = match self.descriptions.lock() {
+                Ok(g) => g,
+                Err(_) => panic!("Falha ao adquirir lock do descriptions (describe_histogram)"),
+            };
             guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
@@ -311,7 +320,10 @@ mod tests {
 
         register_metrics_descriptions();
 
-        let descriptions = mock_recorder.descriptions.lock().expect("Falha ao adquirir lock do descriptions no teste");
+        let descriptions = match mock_recorder.descriptions.lock() {
+            Ok(g) => g,
+            Err(_) => panic!("Falha ao adquirir lock do descriptions no teste"),
+        };
         
         let num_expected_metrics = 4 + 4 + 6;
         
