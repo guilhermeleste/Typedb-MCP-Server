@@ -489,4 +489,63 @@ mod tests {
         assert_eq!(data_obj.get("expectedIssuers"), Some(&serde_json::json!(expected)));
         assert_eq!(data_obj.get("foundIssuer"), Some(&serde_json::json!(found)));
     }
+
+    fn extract_message_from_error_data(error_data: &ErrorData) -> String {
+        let Some(data_json) = error_data.data.as_ref() else {
+            panic!("ErrorData deve conter campo data");
+        };
+        let Some(data_obj) = data_json.as_object() else {
+            panic!("Campo data deve ser um objeto JSON");
+        };
+
+        data_obj
+            .get("message")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string)
+            .unwrap_or_default()
+    }
+
+    fn extract_details_from_error_data(error_data: &ErrorData) -> Option<String> {
+        let Some(data_json) = error_data.data.as_ref() else {
+            panic!("ErrorData deve conter campo data");
+        };
+        let Some(data_obj) = data_json.as_object() else {
+            panic!("Campo data deve ser um objeto JSON");
+        };
+
+        data_obj.get("details").and_then(|v| v.as_str()).map(ToString::to_string)
+    }
+
+    fn extract_error_code_from_error_data(error_data: &ErrorData) -> Option<String> {
+        let Some(data_json) = error_data.data.as_ref() else {
+            panic!("ErrorData deve conter campo data");
+        };
+        let Some(data_obj) = data_json.as_object() else {
+            panic!("Campo data deve ser um objeto JSON");
+        };
+
+        data_obj.get("error_code").and_then(|v| v.as_str()).map(ToString::to_string)
+    }
+
+    fn extract_error_name_from_error_data(error_data: &ErrorData) -> Option<String> {
+        let Some(data_json) = error_data.data.as_ref() else {
+            panic!("ErrorData deve conter campo data");
+        };
+        let Some(data_obj) = data_json.as_object() else {
+            panic!("Campo data deve ser um objeto JSON");
+        };
+
+        data_obj.get("name").and_then(|v| v.as_str()).map(ToString::to_string)
+    }
+
+    fn extract_error_type_from_error_data(error_data: &ErrorData) -> Option<String> {
+        let Some(data_json) = error_data.data.as_ref() else {
+            panic!("ErrorData deve conter campo data");
+        };
+        let Some(data_obj) = data_json.as_object() else {
+            panic!("Campo data deve ser um objeto JSON");
+        };
+
+        data_obj.get("type").and_then(|v| v.as_str()).map(ToString::to_string)
+    }
 }
