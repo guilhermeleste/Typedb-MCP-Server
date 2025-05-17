@@ -286,28 +286,27 @@ mod tests {
     // Este teste verifica a lógica de configuração do DriverOptions quando um CA válido (dummy) é fornecido.
     // Ele não tenta uma conexão real, pois isso exigiria um servidor TypeDB com TLS e este CA específico.
     #[tokio::test]
-    async fn test_connect_tls_enabled_valid_ca_file_configures_options_correctly_but_connection_may_fail()
-    {
-        let dir = tempdir().unwrap();
+    async fn test_connect_tls_enabled_valid_ca_file_configures_options_correctly_but_connection_may_fail() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
         let ca_file_path = dir.path().join("dummy_ca.pem");
-        let mut file = File::create(&ca_file_path).unwrap();
+        let mut file = File::create(&ca_file_path)?;
         // Conteúdo PEM mínimo (não é um CA real válido, mas o arquivo existe)
-        writeln!(file, "-----BEGIN CERTIFICATE-----").unwrap();
-        writeln!(file, "MII...").unwrap(); // Placeholder
-        writeln!(file, "-----END CERTIFICATE-----").unwrap();
+        writeln!(file, "-----BEGIN CERTIFICATE-----")?;
+        writeln!(file, "MII...")?; // Placeholder
+        writeln!(file, "-----END CERTIFICATE-----")?;
         drop(file); // Garante que o arquivo seja escrito e fechado
 
         // Usamos um endereço que provavelmente não terá um servidor TypeDB com TLS esperando este CA.
         // O objetivo é testar se a lógica de `DriverOptions::new` é chamada corretamente.
         // A falha na conexão é esperada aqui, pois não há servidor real configurado.
+        let ca_file_path_str = ca_file_path.to_str().ok_or("Falha ao converter path do CA para string")?.to_string();
         let result = connect(
             Some("localhost:11729".to_string()), // Porta improvável para TypeDB
             None,
             None,
             true,
-            Some(ca_file_path.to_str().unwrap().to_string()),
-        )
-        .await;
+            Some(ca_file_path_str),
+        ).await;
 
         assert!(
             result.is_err(),
@@ -318,5 +317,6 @@ mod tests {
         // Não vamos ser muito específicos sobre o erro de conexão aqui.
         // Um log `tracing::info!("Tentando conexão TLS com TypeDB usando CA customizado: {}")`
         // indicaria que esta parte da lógica foi executada.
+        Ok(())
     }
 }
