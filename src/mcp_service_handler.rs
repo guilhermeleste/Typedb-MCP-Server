@@ -135,7 +135,7 @@ impl McpServiceHandler {
     }
 
     /// Constrói as capacidades do servidor MCP.
-    fn build_server_capabilities(&self) -> ServerCapabilities {
+    fn build_server_capabilities() -> ServerCapabilities { // Removido &self
         ServerCapabilities::builder()
             .enable_tools()
             .enable_tool_list_changed()
@@ -252,7 +252,7 @@ impl ServerHandler for McpServiceHandler {
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26,
             server_info: Implementation::from_build_env(),
-            capabilities: self.build_server_capabilities(),
+            capabilities: Self::build_server_capabilities(), // Alterado para Self::
             instructions: Some(SERVER_INSTRUCTIONS.to_string()),
         }
     }

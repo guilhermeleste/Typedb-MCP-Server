@@ -150,13 +150,15 @@ fn default_oauth_settings() -> OAuth {
         jwks_uri: None,
         issuer: None,
         audience: None,
-        jwks_refresh_interval: default_jwks_refresh_interval(), // 1 hora
+        jwks_refresh_interval: default_jwks_refresh_interval(), // Mantém a chamada original
         jwks_request_timeout_seconds: Some(30), // 30 segundos de timeout default
         required_scopes: None,
     }
 }
 
-fn default_jwks_refresh_interval() -> Option<Duration> {
+// Reverte para a assinatura original e adiciona allow para clippy
+#[allow(clippy::unnecessary_wraps)]
+fn default_jwks_refresh_interval() -> Option<Duration> { 
     Some(Duration::from_secs(3600))
 }
 
