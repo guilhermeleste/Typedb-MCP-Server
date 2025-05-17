@@ -103,3 +103,35 @@ path = "src/main.rs"
 [lib]
 name = "typedb_mcp_server_lib"
 path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+# Removido rust_2018_idioms e rust_2021_compatibility pois podem ser gerenciados pela edition ou causar ruído.
+
+[lints.clippy]
+# Lints para negar (produzir erro)
+clone_on_copy = "deny"
+# expl_impl_locale_aware_cmp = "deny" # Lint desconhecido ou obsoleto
+float_cmp = "deny"
+mutex_integer = "deny"
+unnecessary_unwrap = "deny"
+unwrap_used = "deny" # Manter como deny para produção
+
+# Lints para avisar
+pedantic = "warn"
+default_trait_access = "warn"
+filter_map_next = "warn"
+flat_map_option = "warn"
+manual_ok_or = "warn"
+map_unwrap_or = "warn"
+match_same_arms = "warn"
+redundant_else = "warn"
+string_to_string = "warn"
+redundant_clone = "warn"
+expect_used = "warn" # Avisar sobre expect, incentivar tratamento de erro mais robusto
+print_stdout = "warn"
+print_stderr = "warn"
+# cyclomatic_complexity = "warn" # Usar cognitive_complexity em clippy.toml
+# too_many_arguments = "warn" # Configurado via threshold em clippy.toml
