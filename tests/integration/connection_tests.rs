@@ -233,8 +233,78 @@ async fn test_connect_wss_oauth_enabled_valid_token_succeeds() {
     client.close().await.expect("Falha ao fechar cliente");
 }
 
+#[tokio::test]
+#[serial_test::serial]
+async fn test_connect_wss_oauth_enabled_wrong_issuer_fails() {
+    let _docker_env = setup_test_environment("connect_wss_oauth_wrong_issuer").await;
+    let now_ts = common::auth_helpers::current_timestamp_secs();
+    let claims = TestClaims {
+        sub: "valid_user_wrong_issuer".to_string(),
+        exp: now_ts + 3600,
+        iat: Some(now_ts),
+        nbf: Some(now_ts),
+        iss: Some("wrong-issuer".to_string()), // Issuer incorreto
+        aud: Some(serde_json::json!("test-audience")),
+        scope: Some("typedb:read_data mcp:access".to_string()),
+        custom_claim: None,
+    };
+    let token_wrong_issuer = generate_test_jwt(claims, jsonwebtoken::Algorithm::RS256, TEST_KID_RSA_GOOD, &TEST_RSA_PRIVATE_KEY_PEM_GOOD);
+
+    match TestMcpClient::connect(MCP_SERVER_WSS_URL, Some(token_wrong_issuer)).await {
+        Ok(mut client) => {
+            // Se a conexão for estabelecida, a primeira chamada de ferramenta deve falhar.
+            let result = client.call_tool_typed("tools/list", None).await;
+            assert!(matches!(result, Err(McpClientError::McpErrorResponse(ErrorData { code, .. })) if code.0 == rmcp::model::ErrorCode(-32000).0 /* AUTHENTICATION_FAILED */ ),
+                "A chamada da ferramenta deveria falhar devido ao issuer incorreto, mas retornou: {:?}", result);
+            client.close().await.ok();
+        }
+        Err(McpClientError::WebSocketError(ws_err)) => {
+            // Idealmente, a conexão WebSocket já falha devido ao issuer inválido.
+            tracing::info!("Conexão WebSocket falhou como esperado devido ao issuer incorreto: {}", ws_err);
+            assert!(ws_err.to_string().contains("Handshake failed") || ws_err.to_string().contains("401") || ws_err.to_string().contains("Forbidden"),
+                "Erro WebSocket inesperado para issuer incorreto: {}", ws_err);
+        }
+        Err(e) => {
+            panic!("Erro inesperado ao tentar conectar com issuer incorreto: {:?}", e);
+        }
+    }
+}
+
+#[tokio::test]
+#[serial_test::serial]
+async fn test_connect_wss_oauth_enabled_wrong_audience_fails() {
+    let _docker_env = setup_test_environment("connect_wss_oauth_wrong_audience").await;
+    let now_ts = common::auth_helpers::current_timestamp_secs();
+    let claims = TestClaims {
+        sub: "valid_user_wrong_audience".to_string(),
+        exp: now_ts + 3600,
+        iat: Some(now_ts),
+        nbf: Some(now_ts),
+        iss: Some("test-issuer".to_string()),
+        aud: Some(serde_json::json!("wrong-audience")), // Audience incorreta
+        scope: Some("typedb:read_data mcp:access".to_string()),
+        custom_claim: None,
+    };
+    let token_wrong_audience = generate_test_jwt(claims, jsonwebtoken::Algorithm::RS256, TEST_KID_RSA_GOOD, &TEST_RSA_PRIVATE_KEY_PEM_GOOD);
+
+    match TestMcpClient::connect(MCP_SERVER_WSS_URL, Some(token_wrong_audience)).await {
+        Ok(mut client) => {
+            let result = client.call_tool_typed("tools/list", None).await;
+            assert!(matches!(result, Err(McpClientError::McpErrorResponse(ErrorData { code, .. })) if code.0 == rmcp::model::ErrorCode(-32000).0 /* AUTHENTICATION_FAILED */),
+                "A chamada da ferramenta deveria falhar devido à audience incorreta, mas retornou: {:?}", result);
+            client.close().await.ok();
+        }
+        Err(McpClientError::WebSocketError(ws_err)) => {
+            tracing::info!("Conexão WebSocket falhou como esperado devido à audience incorreta: {}", ws_err);
+            assert!(ws_err.to_string().contains("Handshake failed") || ws_err.to_string().contains("401") || ws_err.to_string().contains("Forbidden"),
+                "Erro WebSocket inesperado para audience incorreta: {}", ws_err);
+        }
+        Err(e) => {
+            panic!("Erro inesperado ao tentar conectar com audience incorreta: {:?}", e);
+        }
+    }
+}
+
 // TODO: Adicionar testes para:
-// - Token válido mas com issuer incorreto (deve falhar se o servidor validar issuer).
-// - Token válido mas com audience incorreto (deve falhar se o servidor validar audience).
 // - Token válido mas com escopos insuficientes para uma ferramenta específica (quando a autorização por escopo for implementada).
 // - Conexão ao TypeDB via TLS (se `typedb-server-it` estiver configurado com TLS).
