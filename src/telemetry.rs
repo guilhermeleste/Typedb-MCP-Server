@@ -162,7 +162,7 @@ mod tests {
             Err(e) => {
                 assert!(false, "Erro inesperado para endpoint ausente: {e:?}");
             }
-            Ok(_) => {
+            Ok(()) => {
                 assert!(false, "Esperado erro para endpoint ausente, mas obteve Ok");
             }
         }

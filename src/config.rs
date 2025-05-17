@@ -298,9 +298,16 @@ mod tests {
     // Helper para criar um arquivo TOML temporário com conteúdo específico.
     fn create_temp_toml_config(content: &str) -> tempfile::NamedTempFile {
         use std::io::Write;
-        let mut file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
-        write!(file, "{content}").expect("Failed to write to temp file");
-        file.flush().expect("Failed to flush temp file");
+        let mut file = match tempfile::NamedTempFile::new() {
+            Ok(f) => f,
+            Err(e) => panic!("Failed to create temp file: {e}"),
+        };
+        if let Err(e) = write!(file, "{content}") {
+            panic!("Failed to write to temp file: {e}");
+        }
+        if let Err(e) = file.flush() {
+            panic!("Failed to flush temp file: {e}");
+        }
         file
     }
 
@@ -318,7 +325,10 @@ mod tests {
         // Simular ausência de outras variáveis MCP_*
         // (Isso é mais difícil de fazer de forma limpa sem afetar outros testes se rodados em paralelo)
 
-        let settings = Settings::new().expect("Falha ao carregar configurações default");
+        let settings = match Settings::new() {
+            Ok(s) => s,
+            Err(e) => panic!("Falha ao carregar configurações default: {e}"),
+        };
 
         assert_eq!(settings.typedb.address, "localhost:1729");
         assert_eq!(settings.typedb.username, Some("admin".to_string()));
@@ -377,7 +387,10 @@ mod tests {
         let temp_file = create_temp_toml_config(toml_content);
         env::set_var("MCP_CONFIG_PATH", temp_file.path());
 
-        let settings = Settings::new().expect("Falha ao carregar config do TOML");
+        let settings = match Settings::new() {
+            Ok(s) => s,
+            Err(e) => panic!("Falha ao carregar config do TOML: {e}"),
+        };
 
         assert_eq!(settings.typedb.address, "my.typedb.host:1730");
         assert_eq!(settings.typedb.username, Some("test_user".to_string()));
@@ -430,7 +443,10 @@ mod tests {
         env::set_var("MCP_OAUTH__ISSUER", "env_issuer1,env_issuer2");
 
 
-        let settings = Settings::new().expect("Falha ao carregar config com overrides de env");
+        let settings = match Settings::new() {
+            Ok(s) => s,
+            Err(e) => panic!("Falha ao carregar config com overrides de env: {e}"),
+        };
 
         assert_eq!(settings.server.bind_address, "127.0.0.1:8888"); // Sobrescrito
         assert!(settings.oauth.enabled); // Sobrescrito
@@ -453,7 +469,10 @@ mod tests {
         let temp_file = create_temp_toml_config(toml_content);
         env::set_var("MCP_CONFIG_PATH", temp_file.path());
 
-        let settings = Settings::new().expect("Falha ao carregar config parcial");
+        let settings = match Settings::new() {
+            Ok(s) => s,
+            Err(e) => panic!("Falha ao carregar config parcial: {e}"),
+        };
 
         // Valor do TOML
         assert_eq!(settings.typedb.address, "specific.typedb.host:1729");
@@ -477,7 +496,10 @@ mod tests {
         let temp_file = create_temp_toml_config(toml_content);
         env::set_var("MCP_CONFIG_PATH", temp_file.path());
 
-        let settings = Settings::new().expect("Falha ao carregar config com duration");
+        let settings = match Settings::new() {
+            Ok(s) => s,
+            Err(e) => panic!("Falha ao carregar config com duration: {e}"),
+        };
         assert_eq!(
             settings.oauth.jwks_refresh_interval,
             Some(Duration::from_secs(2 * 3600 + 30 * 60 + 15))
@@ -496,7 +518,10 @@ mod tests {
         let temp_file = create_temp_toml_config(toml_content);
         env::set_var("MCP_CONFIG_PATH", temp_file.path());
 
-        let settings = Settings::new().expect("Falha ao carregar config sem duration opcional");
+        let settings = match Settings::new() {
+            Ok(s) => s,
+            Err(e) => panic!("Falha ao carregar config sem duration opcional: {e}"),
+        };
         // O #[serde(default = "default_jwks_refresh_interval")] garante que será Some.
         assert_eq!(settings.oauth.jwks_refresh_interval, default_jwks_refresh_interval());
 
@@ -514,7 +539,10 @@ mod tests {
         env::set_var("MCP_CONFIG_PATH", temp_file.path());
         env::set_var("MCP_CORS__ALLOWED_ORIGINS", "http://env.origin1.com,http://env.origin2.com");
 
-        let settings = Settings::new().expect("Falha ao carregar config com Vec<String>");
+        let settings = match Settings::new() {
+            Ok(s) => s,
+            Err(e) => panic!("Falha ao carregar config com Vec<String>: {e}"),
+        };
 
         assert_eq!(settings.oauth.audience, Some(vec!["aud_toml1".to_string(), "aud_toml2".to_string()]));
         assert_eq!(settings.cors.allowed_origins, vec!["http://env.origin1.com".to_string(), "http://env.origin2.com".to_string()]);

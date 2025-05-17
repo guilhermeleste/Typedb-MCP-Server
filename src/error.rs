@@ -433,7 +433,7 @@ mod tests {
         let data_json = error_data.data.as_ref().expect("ErrorData deve conter campo data");
         let data_obj = data_json.as_object().expect("Campo data deve ser um objeto JSON");
         assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("ConfigurationError"));
-        assert!(data_obj.get("detail").and_then(|v| v.as_str()).map(|s| s.contains("uma.chave.de.config not found")).unwrap_or(false));
+        assert!(data_obj.get("detail").and_then(|v| v.as_str()).is_some_and(|s| s.contains("uma.chave.de.config not found")));
     }
 
     #[test]
