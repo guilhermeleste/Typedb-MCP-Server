@@ -1,6 +1,9 @@
+
 # Typedb-MCP-Server
 
-Servidor Rust de alta performance, seguro e extensível, atuando como gateway MCP (Model Context Protocol) para o banco de dados TypeDB. Expõe endpoints WebSocket (MCP), HTTP REST para métricas Prometheus, integra autenticação OAuth2, tracing distribuído (OpenTelemetry) e métricas detalhadas.
+Servidor Rust de alta performance, seguro e extensível, atuando como gateway MCP (Model Context Protocol) para o banco de dados TypeDB. Expõe endpoints WebSocket (MCP), HTTP REST para métricas Prometheus, integra autenticação OAuth2 opcional, tracing distribuído (OpenTelemetry) e métricas detalhadas.
+
+Este projeto visa fornecer uma ponte robusta e eficiente entre clientes que utilizam o Model Context Protocol e um backend TypeDB, com foco em segurança, observabilidade e extensibilidade.
 
 ---
 
@@ -9,151 +12,193 @@ Servidor Rust de alta performance, seguro e extensível, atuando como gateway MC
 - [Typedb-MCP-Server](#typedb-mcp-server)
 	- [Índice](#índice)
 	- [Visão Geral](#visão-geral)
-	- [Requisitos](#requisitos)
-	- [Instalação](#instalação)
-	- [Configuração](#configuração)
+	- [Principais Funcionalidades](#principais-funcionalidades)
+	- [Status do Projeto](#status-do-projeto)
+	- [Começando](#começando)
+		- [Pré-requisitos](#pré-requisitos)
+		- [Instalação Rápida (Docker)](#instalação-rápida-docker)
+		- [Instalação a partir do Código-Fonte](#instalação-a-partir-do-código-fonte)
+	- [Configuração Essencial](#configuração-essencial)
 	- [Execução](#execução)
-	- [Endpoints](#endpoints)
-	- [Segurança](#segurança)
-	- [Métricas e Observabilidade](#métricas-e-observabilidade)
-	- [Extensibilidade](#extensibilidade)
-	- [Estrutura de Pastas](#estrutura-de-pastas)
-	- [Arquitetura Detalhada](#arquitetura-detalhada)
+	- [Endpoints Principais](#endpoints-principais)
+	- [Documentação Completa](#documentação-completa)
+	- [Contribuição](#contribuição)
+	- [Licença](#licença)
+	- [Agradecimentos](#agradecimentos)
 
 ---
 
 ## Visão Geral
 
-O Typedb-MCP-Server é um gateway MCP para TypeDB, implementado em Rust, com foco em:
+O Typedb-MCP-Server é projetado para ser um componente central em arquiteturas que necessitam de interação programática e segura com o TypeDB. Ele implementa o Model Context Protocol, permitindo que clientes (como modelos de linguagem grandes ou outras aplicações) interajam com o banco de dados através de um conjunto padronizado de ferramentas para consulta, manipulação de esquema e administração de banco de dados.
 
-- Segurança (TLS, OAuth2/JWT, controle de escopos)
-- Performance (Tokio, Axum, WebSocket)
-- Observabilidade (Prometheus, OpenTelemetry)
-- Extensibilidade modular (ferramentas MCP)
+Construído em Rust, o servidor prioriza performance e segurança, utilizando o runtime Tokio para operações assíncronas e o framework Axum para a camada web.
 
-## Requisitos
+## Principais Funcionalidades
 
-- **Rust** >= 1.87.0
-- **TypeDB** (servidor externo)
-- **Tokio** (runtime assíncrono)
-- **Axum** (framework web)
-- **Ferramentas auxiliares:**
-  - [cargo](https://doc.rust-lang.org/cargo/)
-  - [TypeDB Client/Server](https://typedb.com/)
+- **Gateway MCP para TypeDB:** Expõe as funcionalidades do TypeDB através do Model Context Protocol.
+- **Transporte WebSocket:** Comunicação principal via WebSockets (com suporte a WSS para TLS).
+- **Segurança:**
+  - Suporte a TLS (HTTPS/WSS) para o servidor MCP.
+  - Suporte a TLS para a conexão com o TypeDB.
+  - Autenticação de cliente opcional via OAuth2/JWT.
+  - Controle de escopos por ferramenta MCP (quando OAuth2 está habilitado).
+- **Observabilidade:**
+  - Métricas detalhadas no formato Prometheus expostas via endpoint HTTP (`/metrics`).
+  - Tracing distribuído com OpenTelemetry (exportação OTLP).
+  - Logging estruturado e configurável.
+- **Configurabilidade:** Configuração flexível via arquivo TOML e/ou variáveis de ambiente.
+- **Extensibilidade:** Arquitetura modular que facilita a adição de novas ferramentas MCP.
+- **Dockerização:** Suporte completo para execução em contêineres Docker, incluindo exemplos com `docker-compose`.
+- **Health Checks:** Endpoints `/livez` e `/readyz` para monitoramento de saúde e prontidão.
 
-## Instalação
+## Status do Projeto
 
-Clone o repositório e instale as dependências:
+- [Indicar o status atual do projeto: Em desenvolvimento ativo, Beta, Estável, etc.]
+- [Mencionar quaisquer limitações conhecidas ou funcionalidades futuras importantes.]
+
+## Começando
+
+### Pré-requisitos
+
+- **Rust:** Versão especificada em `rust-toolchain.toml` (atualmente >= 1.87.0).
+- **Cargo:** Instalado com o Rust.
+- **TypeDB Server:** Uma instância do TypeDB (versão 3.2.0 ou compatível) em execução e acessível.
+- **Docker & Docker Compose (Opcional):** Para execução via contêineres.
+- **Cliente MCP:** Uma aplicação ou ferramenta capaz de se comunicar via Model Context Protocol.
+
+### Instalação Rápida (Docker)
+
+A maneira mais rápida de executar o servidor é usando Docker Compose.
+Consulte o [README.docker.md](./README.docker.md) e o arquivo [docker-compose.yml](./docker-compose.yml) para exemplos e instruções detalhadas.
 
 ```sh
-# Clone o projeto
-$ git clone https://github.com/guilhermeleste/Typedb-MCP-Server.git
-$ cd Typedb-MCP-Server
-
-# Compile em release
-$ cargo build --release
+# Exemplo básico (clone o repositório primeiro)
+# cd Typedb-MCP-Server
+# export TYPEDB_PASSWORD="sua_senha_do_typedb" # Se o TypeDB exigir senha
+# docker-compose up -d
 ```
 
-## Configuração
+### Instalação a partir do Código-Fonte
 
-A configuração é feita via arquivo TOML (`typedb_mcp_server_config.toml`) e/ou variáveis de ambiente prefixadas com `MCP_`.
+1. **Clone o repositório:**
 
-Exemplo de configuração:
+    ```sh
+    git clone https://github.com/guilhermeleste/Typedb-MCP-Server.git
+    cd Typedb-MCP-Server
+    ```
+
+2. **Compile o projeto:**
+
+    ```sh
+    cargo build --release
+    ```
+
+    O binário estará disponível em `target/release/typedb_mcp_server`.
+
+Para mais detalhes sobre a instalação, consulte o [Guia do Usuário - Instalação](/docs/user_guide/03_installation.md).
+
+## Configuração Essencial
+
+A configuração do servidor é gerenciada através de um arquivo TOML (padrão: `typedb_mcp_server_config.toml`) e/ou variáveis de ambiente (prefixadas com `MCP_`).
+
+**Exemplo mínimo de `typedb_mcp_server_config.toml`:**
 
 ```toml
 [typedb]
-address = "localhost:1729"
-username = "admin"
-tls_enabled = false
-# tls_ca_path = "/path/to/ca.pem"
+address = "localhost:1729" # Endereço do seu TypeDB Server
+username = "admin"         # Usuário do TypeDB (se aplicável)
+# TYPEDB_PASSWORD deve ser fornecida via variável de ambiente
 
 [server]
-bind_address = "0.0.0.0:8787"
-tls_enabled = false
-# tls_cert_path = ""
-# tls_key_path = ""
-metrics_bind_address = "0.0.0.0:9090"
-
-[oauth]
-enabled = false
-# jwks_uri = "https://auth-server/.well-known/jwks.json"
-# issuer = ["https://auth-server"]
-# audience = ["typedb-mcp-server"]
+bind_address = "0.0.0.0:8787" # Endereço onde o MCP Server escutará
 ```
 
-> **Nota:** A senha do TypeDB deve ser fornecida via variável de ambiente `TYPEDB_PASSWORD`.
+**Variável de Ambiente Obrigatória (se TypeDB usa autenticação):**
 
-Veja exemplos completos em [`typedb_mcp_server_config.toml`](typedb_mcp_server_config.toml) e [`config.example.toml`](config.example.toml).
+```sh
+export TYPEDB_PASSWORD="sua_senha_typedb"
+```
+
+Para uma lista completa de todas as opções de configuração e seus detalhes, consulte a [Referência de Configuração](/docs/reference/configuration.md) e os arquivos de exemplo:
+
+- [`typedb_mcp_server_config.toml`](./typedb_mcp_server_config.toml) (exemplo completo com defaults)
+- [`config.example.toml`](./config.example.toml) (template para iniciar)
+- [`config.dev.toml`](./config.dev.toml) (usado no `docker-compose.yml` padrão)
 
 ## Execução
 
+Após a compilação e configuração:
+
 ```sh
-# Exemplo: executando com configuração padrão
-$ export TYPEDB_PASSWORD="<senha>"
-$ cargo run --release
+# Com configuração padrão (e TYPEDB_PASSWORD no ambiente)
+./target/release/typedb_mcp_server
 ```
 
-- Use `MCP_CONFIG_PATH` para customizar o caminho do arquivo de configuração.
-- Variáveis de ambiente sobrescrevem o arquivo TOML.
+Ou usando `cargo run`:
 
-## Endpoints
+```sh
+export TYPEDB_PASSWORD="sua_senha_typedb"
+cargo run --release
+```
+
+Você pode especificar um arquivo de configuração customizado com a variável de ambiente `MCP_CONFIG_PATH`.
+
+## Endpoints Principais
 
 - **WebSocket MCP:**
-  - Default: `ws://<host>:8787/mcp` (ou `wss://` se TLS ativado)
+  - Padrão: `ws://<host>:8787/mcp/ws` (ou `wss://` se TLS do servidor estiver ativado)
+  - O path pode ser configurado via `server.mcp_websocket_path`.
 - **Métricas Prometheus:**
-  - Default: `http://<host>:9090/metrics`
-- **Healthchecks:**
-  - `/livez`, `/readyz`
+  - Padrão: `http://<host>:9090/metrics`
+  - O endereço de bind e o path podem ser configurados via `server.metrics_bind_address` e `server.metrics_path`.
+- **Health Checks:**
+  - Liveness: `/livez`
+  - Readiness: `/readyz`
 
-## Segurança
+## Documentação Completa
 
-- TLS obrigatório em produção (via Rustls)
-- Autenticação OAuth2/JWT opcional, recomendada
-- Controle de escopos por ferramenta MCP
-- Configuração sensível nunca persistida em arquivos versionados
+Para uma documentação mais detalhada, incluindo guias para usuários e desenvolvedores, referência de API, tópicos avançados e mais, consulte a pasta [`/docs`](./docs/index.md).
 
-## Métricas e Observabilidade
+- **[Guia do Usuário](/docs/user_guide/01_introduction.md):** Para instalar, configurar e usar o servidor.
+- **[Guia do Desenvolvedor](/docs/developer_guide/01_introduction.md):** Para entender a arquitetura e contribuir com o projeto.
+- **[Referência de Configuração](/docs/reference/configuration.md):** Detalhes de todas as opções de configuração.
+- **[Referência da API](/docs/reference/api.md):** Detalhes das ferramentas MCP e endpoints HTTP.
+- **[Arquitetura](/docs/architecture.md):** Visão geral da arquitetura do sistema.
 
-- **Prometheus:** métricas detalhadas expostas em `/metrics`
-- **OpenTelemetry:** tracing distribuído (OTLP)
-- **Logging:** configurável via `RUST_LOG` ou arquivo de configuração
+## Contribuição
 
-## Extensibilidade
+Contribuições são muito bem-vindas! Por favor, leia nosso [Guia de Contribuição](./CONTRIBUTING.md) para saber como você pode nos ajudar.
+Também temos um [Código de Conduta](./CODE_OF_CONDUCT.md) que esperamos que todos os participantes da comunidade sigam.
 
-- Novas ferramentas MCP podem ser adicionadas em `src/tools/` e registradas no `McpServiceHandler`
-- Configuração modular e validada
+## Licença
 
-## Estrutura de Pastas
+Este projeto é licenciado sob a [Licença MIT](./LICENSE).
 
-```sh
-├── src/
-│   ├── main.rs              # Binário principal
-│   ├── lib.rs               # Biblioteca central
-│   ├── config.rs            # Configuração
-│   ├── db.rs                # Integração TypeDB
-│   ├── error.rs             # Tipos de erro
-│   ├── mcp_service_handler.rs # Handler MCP
-│   ├── auth.rs              # OAuth2/JWT
-│   ├── metrics.rs           # Métricas Prometheus
-│   ├── telemetry.rs         # Tracing OpenTelemetry
-│   ├── resources.rs         # Recursos MCP
-│   ├── transport.rs         # Transporte WebSocket
-│   └── tools/               # Ferramentas MCP (query, schema_ops, db_admin, ...)
-├── tests/                   # Testes de integração
-├── certs/                   # Certificados TLS (não versionados)
-├── scripts/                 # Scripts auxiliares
-├── docs/                    # Documentação (inclui architecture.md)
-├── typedb_mcp_server_config.toml # Exemplo de configuração
-├── config.example.toml      # Exemplo alternativo
-├── .gitignore
-├── Cargo.toml
-└── README.md
-```
+## Agradecimentos
 
-## Arquitetura Detalhada
-
-Veja [docs/architecture.md](docs/architecture.md) para um diagrama de alto nível, fluxo de inicialização e explicação dos módulos.
+- À comunidade TypeDB e aos desenvolvedores do protocolo MCP.
+- Aos criadores das excelentes bibliotecas Rust que tornam este projeto possível.
 
 ---
 
-> Gerado automaticamente a partir do código-fonte em 16/05/2025. Para detalhes de implementação, consulte os módulos e a documentação interna.
+**Principais Alterações e Justificativas:**
+
+- **Índice Atualizado:** Reflete melhor o conteúdo e a estrutura que um usuário/desenvolvedor esperaria.
+- **Principais Funcionalidades:** Destaca os pontos fortes do servidor.
+- **Status do Projeto:** Adicionado um placeholder para indicar o estado atual.
+- **Começando:**
+  - Pré-requisitos mais claros.
+  - Instalação Rápida com Docker é mencionada primeiro por ser mais fácil para muitos usuários.
+  - Link para o `README.docker.md`.
+- **Configuração Essencial:**
+  - Mostra um exemplo mínimo e direto.
+  - Reforça a necessidade da variável `TYPEDB_PASSWORD`.
+  - Links para os documentos de configuração mais detalhados.
+- **Endpoints Principais:** Atualizado para refletir a configurabilidade dos paths.
+- **Documentação Completa:** Seção dedicada com links diretos para os principais documentos que serão criados na pasta `/docs`. Isso é crucial para a navegação.
+- **Contribuição e Licença:** Seções padrão.
+- **Agradecimentos:** Uma seção opcional, mas simpática.
+- **Clareza e Links:** Tentativa de usar uma linguagem mais direta e incluir links para onde o usuário pode encontrar mais informações (mesmo que os arquivos ainda não existam, os links já apontam para a estrutura planejada).
+
+Lembre-se de substituir placeholders como `[Indicar o status atual do projeto: ...]` e a URL do rastreador de issues em `CONTRIBUTING.md` quando apropriado.

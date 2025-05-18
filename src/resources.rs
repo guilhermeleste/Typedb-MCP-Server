@@ -189,6 +189,27 @@ fn parse_schema_uri(uri_str: &str) -> Result<(String, String), ErrorData> {
         });
     }
 
+    // Verificação extra: rejeita '%' não seguido de dois dígitos hexadecimais
+    let mut chars = db_name_encoded.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            let h1 = chars.peek().copied();
+            let h2 = {
+                if h1.is_some() { chars.nth(0) } else { None }
+            };
+            if !(h1.map(|x| x.is_ascii_hexdigit()).unwrap_or(false)
+                && h2.map(|x| x.is_ascii_hexdigit()).unwrap_or(false)) {
+                return Err(ErrorData {
+                    code: ErrorCode::INVALID_PARAMS,
+                    message: Cow::Owned(format!(
+                        "Nome do banco de dados malformado na URI do esquema: '%' não seguido de dois dígitos hexadecimais em '{db_name_encoded}'"
+                    )),
+                    data: None,
+                });
+            }
+        }
+    }
+
     let db_name = percent_decode_str(db_name_encoded)
         .decode_utf8()
         .map_err(|e| ErrorData {
