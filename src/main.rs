@@ -129,7 +129,7 @@ fn setup_metrics_server(
         })
 }
 
-/// Inicializa os serviços principais: conexão com TypeDB e cache JWKS (se habilitado).
+/// Inicializa os serviços principais: conexão com `TypeDB` e cache JWKS (se habilitado).
 async fn initialize_core_services(
     settings: &Arc<Settings>,
 ) -> Result<(Arc<TypeDBDriver>, Option<Arc<JwksCache>>), Box<dyn std::error::Error + Send + Sync>> {
@@ -483,7 +483,7 @@ async fn websocket_handler(
     // Quando o token de desligamento global é cancelado, este também será.
     let conn_cancellation_token = app_state.global_shutdown_token.child_token();
     // Clone para o serviço e para o adaptador, garantindo que ambos respeitem o shutdown.
-    let service_shutdown_token = conn_cancellation_token.clone();
+    let service_shutdown_token = conn_cancellation_token;
 
     ws.on_upgrade(move |socket| async move {
         tracing::info!("Conexão WebSocket MCP estabelecida.");
@@ -539,7 +539,7 @@ fn setup_signal_handler(token: CancellationToken) {
 
             tokio::select! {
                 biased; // Prioriza o token cancelado externamente se ocorrer ao mesmo tempo.
-                _ = token.cancelled() => {
+                () = token.cancelled() => {
                     tracing::debug!("Handler de sinal: Token de cancelamento global já ativo.");
                 },
                 _ = sigint.recv() => {

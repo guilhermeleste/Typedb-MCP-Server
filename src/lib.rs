@@ -18,11 +18,11 @@
 //!
 //! Este crate (`typedb_mcp_server_lib`) define a lógica central para o `Typedb-MCP-Server`.
 //! Ele encapsula a funcionalidade necessária para atuar como um gateway MCP (Model Context Protocol)
-//! para o banco de dados TypeDB.
+//! para o banco de dados `TypeDB`.
 //!
 //! A biblioteca lida com:
 //! - Carregamento e gerenciamento de configurações.
-//! - Conectividade e interação com o TypeDB.
+//! - Conectividade e interação com o `TypeDB`.
 //! - Definição e tratamento de erros específicos da aplicação.
 //! - Implementação do `ServerHandler` do RMCP, incluindo a lógica de despacho para as diversas ferramentas MCP.
 //! - Mecanismos de autenticação, como OAuth2/JWT.
