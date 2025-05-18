@@ -197,9 +197,10 @@ mod tests {
 
     impl Recorder for MockMetricsRecorder {
         fn describe_counter(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            let Ok(mut guard) = self.descriptions.lock() else {
-                panic!("Falha ao adquirir lock do descriptions (describe_counter): lock envenenado");
-            };
+            let mut guard = self
+                .descriptions
+                .lock()
+                .expect("Falha ao adquirir lock do descriptions (describe_counter): PoisonError");
             guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
@@ -208,9 +209,10 @@ mod tests {
         }
 
         fn describe_gauge(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            let Ok(mut guard) = self.descriptions.lock() else {
-                panic!("Falha ao adquirir lock do descriptions (describe_gauge): lock envenenado");
-            };
+            let mut guard = self
+                .descriptions
+                .lock()
+                .expect("Falha ao adquirir lock do descriptions (describe_gauge): PoisonError");
             guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
@@ -219,9 +221,10 @@ mod tests {
         }
 
         fn describe_histogram(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            let Ok(mut guard) = self.descriptions.lock() else {
-                panic!("Falha ao adquirir lock do descriptions (describe_histogram): lock envenenado");
-            };
+            let mut guard = self
+                .descriptions
+                .lock()
+                .expect("Falha ao adquirir lock do descriptions (describe_histogram): PoisonError");
             guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
