@@ -120,46 +120,46 @@ fn default_server_settings() -> Server {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuth {
-    /// Habilita a autenticação `OAuth2`.
+    /// Habilita la autenticación `OAuth2`.
     pub enabled: bool,
-    /// URI do endpoint JWKS (JSON Web Key Set) do Authorization Server.
-    /// Obrigatório se `enabled` for true.
+    /// URI del endpoint JWKS (JSON Web Key Set) del Authorization Server.
+    /// Obligatorio si `enabled` es true.
     pub jwks_uri: Option<String>,
-    /// Issuer(s) esperado(s) no JWT. Se definido, o claim `iss` será validado.
-    /// Pode ser uma lista de strings no TOML: `issuer = ["https://auth1.example.com", "https://auth2.example.com"]`
+    /// Issuer(s) esperado(s) en el JWT. Si se define, el claim `iss` será validado.
+    /// Puede ser una lista de strings en TOML: `issuer = ["https://auth1.example.com", "https://auth2.example.com"]`
     #[serde(default)]
     pub issuer: Option<Vec<String>>,
-    /// Audience(s) esperado(s) no JWT. Se definido, o claim `aud` será validado.
-    /// Pode ser uma lista de strings no TOML: `audience = ["api1", "typedb-mcp-server"]`
+    /// Audience(s) esperado(s) en el JWT. Si se define, el claim `aud` será validado.
+    /// Puede ser una lista de strings en TOML: `audience = ["api1", "typedb-mcp-server"]`
     #[serde(default)]
     pub audience: Option<Vec<String>>,
-    /// Intervalo para recarregar o JWKS. Ex: "1h", "30m", "3600s".
-    #[serde(default = "default_jwks_refresh_interval", with = "humantime_serde::option")]
+    /// Intervalo para recargar el JWKS. Ex: "1h", "30m", "3600s".
+    #[serde(skip)] // Se salta a deserialización directa, se maneja manualmente.
     pub jwks_refresh_interval: Option<Duration>,
-    /// Timeout para a requisição HTTP ao buscar o JWKS. Em segundos.
+    /// Campo intermedio para deserialización del TOML/env. No usa default aquí.
+    #[serde(rename = "jwks_refresh_interval")]
+    pub jwks_refresh_interval_raw: Option<String>,
+    /// Timeout para la requisición HTTP al buscar el JWKS. En segundos.
     pub jwks_request_timeout_seconds: Option<u64>,
-    /// Escopos `OAuth2` que o token DEVE conter para acesso geral.
-    /// Ex: `required_scopes = ["mcp:access", "typedb:read"]` no TOML.
+    /// Escopos `OAuth2` que el token DEBE contener para acceso general.
+    /// Ex: `required_scopes = ["mcp:access", "typedb:read"]` en TOML.
     #[serde(default)]
     pub required_scopes: Option<Vec<String>>,
 }
 
-const fn default_oauth_settings() -> OAuth {
+fn default_oauth_settings() -> OAuth {
     OAuth {
         enabled: false,
         jwks_uri: None,
         issuer: None,
         audience: None,
-        jwks_refresh_interval: default_jwks_refresh_interval(), // Mantém a chamada original
-        jwks_request_timeout_seconds: Some(30), // 30 segundos de timeout default
+        // Default para el campo Duration procesado
+        jwks_refresh_interval: Some(Duration::from_secs(3600)),
+        // Default para el campo raw String, usado si no hay valor en TOML/env
+        jwks_refresh_interval_raw: Some("3600s".to_string()),
+        jwks_request_timeout_seconds: Some(30),
         required_scopes: None,
     }
-}
-
-// Reverte para a assinatura original e adiciona allow para clippy
-#[allow(clippy::unnecessary_wraps)]
-const fn default_jwks_refresh_interval() -> Option<Duration> { 
-    Some(Duration::from_secs(3600))
 }
 
 /// Configurações de logging.
@@ -272,21 +272,41 @@ impl Settings {
         );
 
         let s = Config::builder()
-            // Adiciona fontes de configuração com prioridade mais baixa primeiro.
-            // Valores padrão são tratados por `#[serde(default = "...")]` nas structs.
             .add_source(
                 ConfigFile::with_name(&config_file_path)
-                    .required(false) // Torna o arquivo opcional; defaults serão usados.
+                    .required(false)
             )
             .add_source(
                 Environment::with_prefix(ENV_PREFIX)
                     .separator(ENV_SEPARATOR)
-                    .try_parsing(true) // Tenta parsear tipos como bool e int de strings de env
-                    .list_separator(",") // Para Vec<String> em variáveis de ambiente como "val1,val2"
+                    .try_parsing(true)
+                    .list_separator(",")
             )
             .build()?;
 
-        s.try_deserialize()
+        let mut settings: Self = s.try_deserialize()?;
+
+        // Conversão manual del campo jwks_refresh_interval
+        if let Some(ref raw_interval_str) = settings.oauth.jwks_refresh_interval_raw {
+            match humantime::parse_duration(raw_interval_str) {
+                Ok(duration) => settings.oauth.jwks_refresh_interval = Some(duration),
+                Err(e) => {
+                    return Err(ConfigError::Message(format!(
+                        "Falha ao parsear jwks_refresh_interval ('{}'): {}",
+                        raw_interval_str, e
+                    )));
+                }
+            }
+        } else {
+            // Se jwks_refresh_interval_raw é None (não veio do TOML/Env),
+            // usamos el default para jwks_refresh_interval (Duration).
+            // El default para jwks_refresh_interval_raw en default_oauth_settings
+            // asegura que si toda la sección oauth usa defaults, esto se maneje allí.
+            // Este else es para el caso donde la sección oauth existe, pero el campo específico no.
+            settings.oauth.jwks_refresh_interval = Some(Duration::from_secs(3600));
+        }
+
+        Ok(settings)
     }
 }
 
@@ -510,11 +530,11 @@ mod tests {
 
     #[test]
     fn test_humantime_duration_optional_field_not_present() {
-        let toml_content = r"
+        let toml_content = r#"
             [oauth]
             enabled = false
-            # jwks_refresh_interval não está presente, deve usar o default da função ou None se Option
-        ";
+            # jwks_refresh_interval não está presente
+        "#;
         let temp_file = create_temp_toml_config(toml_content);
         env::set_var("MCP_CONFIG_PATH", temp_file.path());
 
@@ -522,8 +542,8 @@ mod tests {
             Ok(s) => s,
             Err(e) => panic!("Falha ao carregar config sem duration opcional: {e}"),
         };
-        // O #[serde(default = "default_jwks_refresh_interval")] garante que será Some.
-        assert_eq!(settings.oauth.jwks_refresh_interval, default_jwks_refresh_interval());
+        // Verifica se o valor Duration processado é o default quando raw é None ou não parseável
+        assert_eq!(settings.oauth.jwks_refresh_interval, Some(Duration::from_secs(3600)));
 
         env::remove_var("MCP_CONFIG_PATH");
     }

@@ -159,19 +159,3 @@ Você também pode construir a imagem Docker diretamente e executá-la.
 ## Próximos Passos
 
 Após instalar o Typedb-MCP-Server, o próximo passo é [Configurar o Servidor](./04_configuration.md) de acordo com suas necessidades.
-
----
-
-**Pontos Chave deste `03_installation.md`:**
-
-* **Clareza nas Opções:** Distingue claramente entre compilar do fonte e usar Docker.
-* **Passos Detalhados:** Fornece comandos e explicações para cada etapa.
-* **Foco no Usuário:**
-  * Para a compilação do fonte, explica o que esperar (tempo de compilação, local do binário).
-  * Para Docker, enfatiza o `docker-compose` pela sua simplicidade, mas também cobre o build manual para flexibilidade.
-* **Referências Cruzadas:**
-  * Linka para os pré-requisitos.
-  * Linka para a documentação de configuração e execução.
-  * Menciona e linka para `README.docker.md` e os arquivos `docker-compose.yml` e `config.dev.toml`.
-* **Notas Importantes:** Inclui dicas como a necessidade da variável `TYPEDB_PASSWORD` e a resolução de `host.docker.internal`.
-* **Placeholder para Imagens Pré-Construídas:** Deixa espaço para adicionar informações se o projeto começar a publicar imagens oficiais.

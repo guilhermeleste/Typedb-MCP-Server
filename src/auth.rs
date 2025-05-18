@@ -375,6 +375,7 @@ mod tests {
             required_scopes: None,
             jwks_request_timeout_seconds: Some(5),
             jwks_refresh_interval: Some(Duration::from_secs(300)),
+            jwks_refresh_interval_raw: Some("300s".to_string()),
         }
     }
 
