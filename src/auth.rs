@@ -425,18 +425,9 @@ mod tests {
         let now = jsonwebtoken::get_current_timestamp();
         let claims = Claims {
             sub: "user123".to_string(),
-            exp: match usize::try_from(now + 3600) {
-                Ok(val) => val,
-                Err(_) => panic!("timestamp não cabe em usize"),
-            },
-            iat: Some(match usize::try_from(now) {
-                Ok(val) => val,
-                Err(_) => panic!("timestamp não cabe em usize"),
-            }),
-            nbf: Some(match usize::try_from(now) {
-                Ok(val) => val,
-                Err(_) => panic!("timestamp não cabe em usize"),
-            }),
+            exp: usize::try_from(now + 3600).expect("Falha ao converter timestamp 'exp' para usize"),
+            iat: Some(usize::try_from(now).expect("Falha ao converter timestamp 'iat' para usize")),
+            nbf: Some(usize::try_from(now).expect("Falha ao converter timestamp 'nbf' para usize")),
             iss: Some("test-issuer".to_string()),
             aud: Some(serde_json::json!(["test-audience"])),
             scope: Some("read write".to_string()),
@@ -546,18 +537,9 @@ mod tests {
         let now = jsonwebtoken::get_current_timestamp();
         let claims = Claims {
             sub: "user123".to_string(),
-            exp: match usize::try_from(now + 3600) {
-                Ok(val) => val,
-                Err(_) => panic!("timestamp não cabe em usize"),
-            },
-            iat: Some(match usize::try_from(now) {
-                Ok(val) => val,
-                Err(_) => panic!("timestamp não cabe em usize"),
-            }),
-            nbf: Some(match usize::try_from(now) {
-                Ok(val) => val,
-                Err(_) => panic!("timestamp não cabe em usize"),
-            }),
+            exp: usize::try_from(now + 3600).expect("Falha ao converter timestamp 'exp' para usize"),
+            iat: Some(usize::try_from(now).expect("Falha ao converter timestamp 'iat' para usize")),
+            nbf: Some(usize::try_from(now).expect("Falha ao converter timestamp 'nbf' para usize")),
             iss: Some("test-issuer".to_string()),
             aud: Some(serde_json::json!(["test-audience"])),
             scope: Some("read".to_string()),
@@ -603,18 +585,9 @@ mod tests {
         let now = jsonwebtoken::get_current_timestamp();
         let claims = Claims {
             sub: "user123".to_string(),
-            exp: match usize::try_from(now - 3600) {
-                Ok(val) => val,
-                Err(_) => panic!("timestamp não cabe em usize"),
-            },
-            iat: Some(match usize::try_from(now - 7200) {
-                Ok(val) => val,
-                Err(_) => panic!("timestamp não cabe em usize"),
-            }),
-            nbf: Some(match usize::try_from(now - 7200) {
-                Ok(val) => val,
-                Err(_) => panic!("timestamp não cabe em usize"),
-            }),
+            exp: usize::try_from(now - 3600).expect("Falha ao converter timestamp 'exp' para usize"),
+            iat: Some(usize::try_from(now - 7200).expect("Falha ao converter timestamp 'iat' para usize")),
+            nbf: Some(usize::try_from(now - 7200).expect("Falha ao converter timestamp 'nbf' para usize")),
             iss: Some("test-issuer".to_string()),
             aud: Some(serde_json::json!(["test-audience"])),
             scope: Some("read".to_string()),

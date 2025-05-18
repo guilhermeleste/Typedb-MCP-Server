@@ -247,7 +247,7 @@ mod tests {
 
     // Teste de falha na desserialização se um campo obrigatório estiver faltando
     #[test]
-    fn test_query_read_params_missing_required_field() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_query_read_params_missing_required_field() {
         let json_data = r#"
         {
             "query": "match $x isa person; get;"
@@ -255,7 +255,6 @@ mod tests {
         "#; // Falta databaseName
         let result: Result<QueryReadParams, _> = serde_json::from_str(json_data);
         assert!(result.is_err(), "Desserialização deveria falhar por campo obrigatório ausente");
-        Ok(())
     }
 
     // Teste para verificar se camelCase está funcionando

@@ -74,13 +74,10 @@ mod tests {
     // No entanto, para cumprir a regra de "testes em cada arquivo", um teste trivial:
     #[test]
     fn test_library_compiles() {
-        // Se este teste compila e roda, significa que `lib.rs` está sintaticamente correto
-        // e o compilador conseguiu processar as declarações de módulo.
-        // O conteúdo real dos módulos é testado em seus respectivos arquivos.
-        assert!(
-            true,
-            "Este teste apenas confirma que o arquivo lib.rs compila e os módulos são declarados."
-        );
+        // Esta asserção foi removida porque `assert!(true)` não tem efeito prático
+        // e causa um aviso do clippy::assertions_on_constants.
+        // O propósito do teste, "garantir que a biblioteca compila", 
+        // é inerentemente verificado pela compilação bem-sucedida do próprio teste.
     }
 
     // Exemplo de teste mais elaborado que poderia ser usado se os submódulos já estivessem
