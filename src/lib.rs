@@ -1,7 +1,6 @@
 // src/lib.rs
 
-// Licença Apache 2.0
-// Copyright [ANO_ATUAL] [SEU_NOME_OU_ORGANIZACAO]
+// Copyright 2025 Guilherme Leste
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,118 +14,90 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Typedb-MCP-Server
+//! # Typedb-MCP-Server Library
 //!
-//! Este crate define a lógica central do servidor, incluindo a manipulação
-//! do protocolo MCP, interação com o `TypeDB`, autenticação, configuração,
-//! e as ferramentas expostas. O binário em `src/main.rs` utiliza esta
-//! biblioteca para construir e executar o servidor.
+//! Este crate (`typedb_mcp_server_lib`) define a lógica central para o `Typedb-MCP-Server`.
+//! Ele encapsula a funcionalidade necessária para atuar como um gateway MCP (Model Context Protocol)
+//! para o banco de dados TypeDB.
 //!
-//! Módulos expostos:
-//! - `config`: Carregamento e gerenciamento de configurações.
-//! - `db`: Conectividade com o banco de dados `TypeDB`.
-//! - `error`: Tipos de erro customizados e utilitários.
-//! - `mcp_service_handler`: Implementação do `ServerHandler` do RMCP e lógica das ferramentas.
-//! - `auth`: Autenticação `OAuth2`.
-//! - `metrics`: Definição de métricas.
-//! - `telemetry`: Configuração de tracing OpenTelemetry.
-//! - `resources`: Gerenciamento de recursos MCP.
-//! - `tools`: Submódulos para cada categoria de ferramenta MCP.
-
-// Validação: `pub mod <nome>;` é a sintaxe padrão para declarar um módulo público
-// que reside em `<nome>.rs` ou `<nome>/mod.rs`.
-// Fonte: https://doc.rust-lang.org/book/ch07-02-defining-modules-to-control-scope-and-privacy.html
+//! A biblioteca lida com:
+//! - Carregamento e gerenciamento de configurações.
+//! - Conectividade e interação com o TypeDB.
+//! - Definição e tratamento de erros específicos da aplicação.
+//! - Implementação do `ServerHandler` do RMCP, incluindo a lógica de despacho para as diversas ferramentas MCP.
+//! - Mecanismos de autenticação, como OAuth2/JWT.
+//! - Coleta e exposição de métricas (compatível com Prometheus).
+//! - Configuração e exportação de tracing distribuído (OpenTelemetry).
+//! - Gerenciamento de recursos estáticos e dinâmicos expostos via MCP.
+//! - A lógica específica para cada categoria de ferramenta MCP e seus parâmetros.
+//! - Adaptação do transporte WebSocket para o protocolo MCP.
+//!
+//! O binário principal do servidor, localizado em `src/main.rs`, utiliza esta biblioteca
+//! para construir, configurar e executar o servidor Typedb-MCP-Server.
 
 /// Módulo para carregamento e gerenciamento de configurações da aplicação.
+/// Define as estruturas de configuração e a lógica para lê-las de arquivos TOML
+/// e variáveis de ambiente.
 pub mod config;
 
 /// Módulo para interação e conectividade com o banco de dados TypeDB.
+/// Fornece funcionalidades para estabelecer e gerenciar conexões com uma instância
+/// do TypeDB, incluindo suporte a TLS.
 pub mod db;
 
 /// Módulo para definições de erro customizadas e utilitários de tratamento de erro.
+/// Centraliza os tipos de erro da aplicação, facilitando a conversão de erros
+/// de dependências e a formatação para o protocolo MCP.
 pub mod error;
 
-/// Módulo contendo o handler principal do serviço MCP e a lógica de despacho de ferramentas.
+/// Módulo contendo o handler principal do serviço MCP (`McpServiceHandler`).
+/// Implementa o trait `ServerHandler` da crate `rmcp` e orquestra a
+/// execução das ferramentas MCP disponíveis.
 pub mod mcp_service_handler;
 
 /// Módulo para lógica de autenticação OAuth 2.0 e autorização.
+/// Inclui middleware para validação de tokens JWT e gerenciamento de JWKS.
 pub mod auth;
 
-/// Módulo para definição e registro de métricas da aplicação (Prometheus).
+/// Módulo para definição e registro de métricas da aplicação, compatível com Prometheus.
+/// Define as métricas que o servidor expõe para monitoramento.
 pub mod metrics;
 
-/// Módulo para configuração e inicialização do tracing distribuído (OpenTelemetry).
+/// Módulo para configuração e inicialização do tracing distribuído utilizando OpenTelemetry.
+/// Permite a observabilidade do fluxo de requisições através do servidor.
 pub mod telemetry;
 
 /// Módulo para gerenciamento de recursos estáticos e dinâmicos expostos via MCP.
+/// Define os recursos informativos que os clientes MCP podem acessar.
 pub mod resources;
 
-/// Módulo agregador para todas as ferramentas MCP e seus parâmetros.
+/// Módulo agregador para todas as ferramentas MCP e seus respectivos parâmetros.
+/// Organiza a lógica específica de cada ferramenta em submódulos.
 pub mod tools;
+
+/// Módulo responsável pela adaptação do transporte WebSocket para o protocolo MCP.
+/// Define como as mensagens MCP são trocadas sobre uma conexão WebSocket.
 pub mod transport;
 
+// Itens que podem ser reexportados para facilitar o uso da biblioteca, se necessário.
+// Por enquanto, manteremos a necessidade de importar diretamente dos submódulos
+// para maior clareza da origem de cada item.
+// Exemplo:
+pub use config::Settings;
+pub use error::McpServerError;
 
 #[cfg(test)]
 mod tests {
-    // Testes unitários para `lib.rs` geralmente não são necessários se ele apenas
-    // declara módulos. A compilação bem-sucedida da biblioteca já é um teste
-    // de que os módulos foram declarados corretamente e podem ser encontrados.
-    // No entanto, para cumprir a regra de "testes em cada arquivo", um teste trivial:
+    /// Testa se a biblioteca e suas declarações de módulo compilam corretamente.
+    ///
+    /// A compilação bem-sucedida deste teste indica que a estrutura de `lib.rs`
+    /// está sintaticamente correta e que o compilador conseguiu processar
+    /// as declarações de módulo. A funcionalidade interna de cada módulo
+    /// é verificada em seus próprios testes unitários e nos testes de integração.
     #[test]
-    fn test_library_compiles() {
-        // Esta asserção foi removida porque `assert!(true)` não tem efeito prático
-        // e causa um aviso do clippy::assertions_on_constants.
-        // O propósito do teste, "garantir que a biblioteca compila", 
-        // é inerentemente verificado pela compilação bem-sucedida do próprio teste.
+    fn test_library_compiles_and_modules_are_declared() {
+        // Este teste serve primariamente para garantir que `lib.rs` é compilável
+        // e que os `pub mod` estão corretos. Não há lógica para assertar aqui,
+        // a própria compilação é o teste.
     }
-
-    // Exemplo de teste mais elaborado que poderia ser usado se os submódulos já estivessem
-    // definidos com itens públicos. Manter comentado como referência.
-    /*
-    // Para que este teste funcione, cada módulo precisaria de um item público para referência.
-    // Por exemplo, em `src/config.rs`: `pub struct Settings {}`
-    // Em `src/db.rs`: `pub async fn connect(...) {}` (precisaria de mock para não conectar de verdade)
-
-    // Importar os módulos para usar seus itens no teste.
-    use super::{config, db, error, mcp_service_handler, auth, metrics, telemetry, resources, tools};
-
-    #[test]
-    fn test_public_modules_are_accessible_and_basic_placeholder_exists() {
-        // Apenas verifica se conseguimos nomear um tipo/função de cada módulo,
-        // o que prova que o módulo está visível e exporta algo.
-        // Isso não testa a funcionalidade, apenas a estrutura e visibilidade.
-
-        // Exemplo para config (supondo que Settings::new() é pública)
-        // Para evitar executar a lógica de Settings::new(), podemos apenas referenciar o tipo.
-        let _config_settings_type: Option<config::Settings> = None;
-
-        // Exemplo para db (supondo que db::connect é pública)
-        // Apenas referenciar a função.
-        let _db_connect_fn_ptr: fn(Option<String>, Option<String>, Option<String>, bool, Option<String>) -> Pin<Box<dyn Future<Output = Result<TypeDBDriver, TypeDBError>> + Send>> = db::connect;
-
-
-        // Para error (supondo que McpServerError é público)
-        let _error_type: Option<error::McpServerError> = None;
-
-        // Para mcp_service_handler (supondo que McpServiceHandler é público)
-        // let _mcp_handler_type: Option<mcp_service_handler::McpServiceHandler> = None; // Precisa de TypeDBDriver etc.
-
-        // Para auth (supondo que ClientAuthContext é público)
-        let _auth_context_type: Option<auth::ClientAuthContext> = None;
-
-        // Para metrics (supondo que register_metrics_descriptions é público)
-        let _metrics_fn_ptr: fn() = metrics::register_metrics_descriptions;
-
-        // Para telemetry (supondo que init_tracing_pipeline é público)
-        // let _telemetry_fn_ptr: fn(&config::TracingConfig) -> Result<(), opentelemetry_sdk::trace::TraceError> = telemetry::init_tracing_pipeline;
-
-        // Para resources (supondo que list_static_resources é público)
-        let _resources_fn_ptr: fn() -> Vec<rmcp::model::Resource> = resources::list_static_resources;
-
-        // Para tools (o tools/mod.rs em si não tem itens, mas seus submódulos sim)
-        // let _tools_params_type: Option<tools::params::QueryReadParams> = None; // Exemplo
-
-        assert!(true, "Módulos públicos parecem acessíveis (teste placeholder).");
-    }
-    */
 }
