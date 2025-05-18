@@ -200,7 +200,7 @@ mod tests {
     use bytes::Bytes;
     use tokio_tungstenite::tungstenite::protocol::frame::Utf8Bytes;
     use futures_util::stream::StreamExt as FuturesStreamExt;
-    use rmcp::model::{JsonRpcNotification, NotificationNoParam, InitializedNotificationMethod};
+    use rmcp::model::{JsonRpcNotification, NotificationNoParam, InitializedNotificationMethod, Extensions};
     use tokio::net::TcpListener;
     use tokio_tungstenite::{connect_async, tungstenite::Message as TungsteniteMessage};
 
@@ -239,9 +239,8 @@ mod tests {
             Ok(res) => res,
             Err(e) => panic!("Falha ao conectar cliente WebSocket de teste: {e}"),
         };
-        let server_ws_from_handler = match socket_rx.recv().await {
-            Some(ws) => ws,
-            None => panic!("Servidor de teste não recebeu o WebSocket do handler Axum"),
+        let Some(server_ws_from_handler) = socket_rx.recv().await else {
+            panic!("Servidor de teste não recebeu o WebSocket do handler Axum");
         };
         (WebSocketTransport::new(server_ws_from_handler), client_socket)
     }
@@ -251,7 +250,7 @@ mod tests {
         let (mut transport_server_side, mut client_socket) = connected_pair().await;
 
         let server_msg_payload = rmcp::model::ServerNotification::ToolListChangedNotification(
-            NotificationNoParam { method: rmcp::model::ToolListChangedNotificationMethod, extensions: Default::default() }
+            NotificationNoParam { method: rmcp::model::ToolListChangedNotificationMethod, extensions: Extensions::default() }
         );
         let server_msg = ServerJsonRpcMessage::Notification(JsonRpcNotification {
             jsonrpc: rmcp::model::JsonRpcVersion2_0,
@@ -284,7 +283,7 @@ mod tests {
         }
 
         let client_msg_payload = rmcp::model::ClientNotification::InitializedNotification(
-            NotificationNoParam { method: InitializedNotificationMethod, extensions: Default::default() }
+            NotificationNoParam { method: InitializedNotificationMethod, extensions: Extensions::default() }
         );
         let client_rpc_msg = ClientJsonRpcMessage::Notification(JsonRpcNotification {
             jsonrpc: rmcp::model::JsonRpcVersion2_0,
@@ -345,7 +344,7 @@ mod tests {
         }
         
         let client_msg_payload = rmcp::model::ClientNotification::InitializedNotification(
-            NotificationNoParam { method: InitializedNotificationMethod, extensions: Default::default() }
+            NotificationNoParam { method: InitializedNotificationMethod, extensions: Extensions::default() }
         );
         let client_rpc_msg_valid = ClientJsonRpcMessage::Notification(JsonRpcNotification {
             jsonrpc: rmcp::model::JsonRpcVersion2_0,
@@ -379,7 +378,7 @@ mod tests {
         }
         
         let client_msg_payload = rmcp::model::ClientNotification::InitializedNotification(
-            NotificationNoParam { method: InitializedNotificationMethod, extensions: Default::default() }
+            NotificationNoParam { method: InitializedNotificationMethod, extensions: Extensions::default() }
         );
         let client_rpc_msg_valid = ClientJsonRpcMessage::Notification(JsonRpcNotification {
             jsonrpc: rmcp::model::JsonRpcVersion2_0,
