@@ -1,0 +1,195 @@
+# llm.txt para o projeto Typedb-MCP-Server
+# Este arquivo orienta os Modelos de Linguagem de Grande Escala (LLMs)
+# sobre como interagir e indexar a documentação deste projeto.
+
+User-Agent: *
+
+# Permitir a indexação da raiz e da pasta de documentação principal.
+Allow: /$
+Allow: /README.md
+Allow: /docs/
+
+# Impedir a indexação de diretórios de código fonte, testes, build e metadados do git.
+# Essas áreas geralmente não contêm documentação de alto nível para o usuário/desenvolvedor final
+# e podem adicionar ruído ou informações irrelevantes para a indexação por LLMs focados em documentação.
+Disallow: /src/
+Disallow: /tests/
+Disallow: /target/
+Disallow: /.git/
+Disallow: /scripts/
+Disallow: /certs/ # Certificados, especialmente os gerados, não são documentação
+Disallow: /mock_jwks.json # Arquivo de mock para testes
+Disallow: /config.dev.toml
+Disallow: /config.test.toml
+Disallow: /docker-compose.test.yml
+Disallow: /.dockerignore
+Disallow: /.editorconfig
+Disallow: /clippy.toml
+Disallow: /rustfmt.toml
+Disallow: /rust-toolchain.toml
+
+# Sitemap (opcional): Se você gerar um sitemap para sua documentação,
+# pode especificá-lo aqui.
+# Exemplo: Sitemap: /docs/sitemap.xml
+
+# --- Orientações para LLMs ---
+
+# Pontos de Entrada Preferenciais e Estrutura do Conteúdo:
+# O Typedb-MCP-Server é um servidor gateway implementado em Rust,
+# que utiliza o Model Context Protocol (MCP) para interagir com o TypeDB.
+# A documentação principal está organizada da seguinte forma:
+#
+# 1. README.md:
+#    - Visão geral rápida do projeto, funcionalidades chave e como começar.
+#    - Ideal para uma primeira leitura e entendimento do propósito do servidor.
+#
+# 2. /docs/index.md: (Ou um arquivo de introdução principal dentro de /docs/)
+#    - Página de entrada para a documentação detalhada.
+#    - Explica a estrutura da documentação e como navegar pelos diferentes guias.
+#
+# 3. /docs/user_guide/:
+#    - Destinado a usuários finais e administradores do Typedb-MCP-Server.
+#    - Cobre instalação, configuração, execução, conexão de clientes,
+#      observabilidade (métricas, logs, health checks) e troubleshooting.
+#    - Arquivos chave: 03_installation.md, 04_configuration.md (que linka para a referência).
+#
+# 4. /docs/developer_guide/:
+#    - Destinado a desenvolvedores que desejam entender a arquitetura interna,
+#      contribuir com o código ou estender as funcionalidades do servidor.
+#    - Cobre setup do ambiente de desenvolvimento, arquitetura detalhada,
+#      estrutura do código, como adicionar novas ferramentas MCP e estratégias de teste.
+#    - Arquivos chave: 03_architecture_deep_dive.md, 04_code_structure.md, 05_adding_new_mcp_tools.md.
+#
+# 5. /docs/reference/configuration.md:
+#    - Referência completa e detalhada de todas as opções de configuração
+#      disponíveis no arquivo TOML e via variáveis de ambiente.
+#    - Crucial para entender como customizar o comportamento do servidor.
+#
+# 6. /docs/reference/api.md:
+#    - Descreve os endpoints MCP (ferramentas expostas, seus schemas de entrada/saída)
+#      e os endpoints HTTP (métricas, health checks).
+#    - Essencial para desenvolvedores de clientes MCP.
+#
+# 7. /docs/architecture.md:
+#    - Diagrama de alto nível e explicação dos componentes principais do servidor.
+#    - Importante para desenvolvedores entenderem o fluxo de dados e as interações.
+
+# Palavras-chave e Sinônimos Relevantes:
+# Model Context Protocol, MCP, Typedb-MCP-Server, TypeDB, TypeDB Gateway,
+# Rust, Servidor Rust, Gateway Rust,
+# TypeQL, WebSocket, API WebSocket,
+# OAuth2, JWT, Autenticação, Segurança, TLS, HTTPS, WSS,
+# Prometheus, Métricas, OpenTelemetry, Tracing, Observabilidade, Logging,
+# Configuração, Instalação, Docker, Docker Compose,
+# Ferramentas MCP, Consulta TypeDB, Operações de Esquema, Administração de Banco de Dados,
+# Cliente MCP, Servidor MCP, Modelos de Linguagem (LLM)
+
+# Versionamento:
+# A documentação se refere à versão do software indicada no `README.md`
+# e/ou no arquivo `Cargo.toml` do projeto.
+# Para documentação de versões específicas, consulte os tags ou releases
+# correspondentes no repositório Git.
+
+# Foco do Conteúdo para LLMs:
+# Ao processar este projeto, priorize o conteúdo do `README.md` e da pasta `/docs/`
+# para entender como usar e desenvolver com o Typedb-MCP-Server.
+# O código-fonte em `/src/` e os testes em `/tests/` são menos relevantes para
+# extração de informações de documentação geral, embora possam ser úteis para
+# análises de código específicas.# llm.txt para o projeto Typedb-MCP-Server
+# Este arquivo orienta os Modelos de Linguagem de Grande Escala (LLMs)
+# sobre como interagir e indexar a documentação deste projeto.
+
+User-Agent: *
+
+# Permitir a indexação da raiz e da pasta de documentação principal.
+Allow: /$
+Allow: /README.md
+Allow: /docs/
+
+# Impedir a indexação de diretórios de código fonte, testes, build e metadados do git.
+# Essas áreas geralmente não contêm documentação de alto nível para o usuário/desenvolvedor final
+# e podem adicionar ruído ou informações irrelevantes para a indexação por LLMs focados em documentação.
+Disallow: /src/
+Disallow: /tests/
+Disallow: /target/
+Disallow: /.git/
+Disallow: /scripts/
+Disallow: /certs/ # Certificados, especialmente os gerados, não são documentação
+Disallow: /mock_jwks.json # Arquivo de mock para testes
+Disallow: /config.dev.toml
+Disallow: /config.test.toml
+Disallow: /docker-compose.test.yml
+Disallow: /.dockerignore
+Disallow: /.editorconfig
+Disallow: /clippy.toml
+Disallow: /rustfmt.toml
+Disallow: /rust-toolchain.toml
+
+# Sitemap (opcional): Se você gerar um sitemap para sua documentação,
+# pode especificá-lo aqui.
+# Exemplo: Sitemap: /docs/sitemap.xml
+
+# --- Orientações para LLMs ---
+
+# Pontos de Entrada Preferenciais e Estrutura do Conteúdo:
+# O Typedb-MCP-Server é um servidor gateway implementado em Rust,
+# que utiliza o Model Context Protocol (MCP) para interagir com o TypeDB.
+# A documentação principal está organizada da seguinte forma:
+#
+# 1. README.md:
+#    - Visão geral rápida do projeto, funcionalidades chave e como começar.
+#    - Ideal para uma primeira leitura e entendimento do propósito do servidor.
+#
+# 2. /docs/index.md: (Ou um arquivo de introdução principal dentro de /docs/)
+#    - Página de entrada para a documentação detalhada.
+#    - Explica a estrutura da documentação e como navegar pelos diferentes guias.
+#
+# 3. /docs/user_guide/:
+#    - Destinado a usuários finais e administradores do Typedb-MCP-Server.
+#    - Cobre instalação, configuração, execução, conexão de clientes,
+#      observabilidade (métricas, logs, health checks) e troubleshooting.
+#    - Arquivos chave: 03_installation.md, 04_configuration.md (que linka para a referência).
+#
+# 4. /docs/developer_guide/:
+#    - Destinado a desenvolvedores que desejam entender a arquitetura interna,
+#      contribuir com o código ou estender as funcionalidades do servidor.
+#    - Cobre setup do ambiente de desenvolvimento, arquitetura detalhada,
+#      estrutura do código, como adicionar novas ferramentas MCP e estratégias de teste.
+#    - Arquivos chave: 03_architecture_deep_dive.md, 04_code_structure.md, 05_adding_new_mcp_tools.md.
+#
+# 5. /docs/reference/configuration.md:
+#    - Referência completa e detalhada de todas as opções de configuração
+#      disponíveis no arquivo TOML e via variáveis de ambiente.
+#    - Crucial para entender como customizar o comportamento do servidor.
+#
+# 6. /docs/reference/api.md:
+#    - Descreve os endpoints MCP (ferramentas expostas, seus schemas de entrada/saída)
+#      e os endpoints HTTP (métricas, health checks).
+#    - Essencial para desenvolvedores de clientes MCP.
+#
+# 7. /docs/architecture.md:
+#    - Diagrama de alto nível e explicação dos componentes principais do servidor.
+#    - Importante para desenvolvedores entenderem o fluxo de dados e as interações.
+
+# Palavras-chave e Sinônimos Relevantes:
+# Model Context Protocol, MCP, Typedb-MCP-Server, TypeDB, TypeDB Gateway,
+# Rust, Servidor Rust, Gateway Rust,
+# TypeQL, WebSocket, API WebSocket,
+# OAuth2, JWT, Autenticação, Segurança, TLS, HTTPS, WSS,
+# Prometheus, Métricas, OpenTelemetry, Tracing, Observabilidade, Logging,
+# Configuração, Instalação, Docker, Docker Compose,
+# Ferramentas MCP, Consulta TypeDB, Operações de Esquema, Administração de Banco de Dados,
+# Cliente MCP, Servidor MCP, Modelos de Linguagem (LLM)
+
+# Versionamento:
+# A documentação se refere à versão do software indicada no `README.md`
+# e/ou no arquivo `Cargo.toml` do projeto.
+# Para documentação de versões específicas, consulte os tags ou releases
+# correspondentes no repositório Git.
+
+# Foco do Conteúdo para LLMs:
+# Ao processar este projeto, priorize o conteúdo do `README.md` e da pasta `/docs/`
+# para entender como usar e desenvolver com o Typedb-MCP-Server.
+# O código-fonte em `/src/` e os testes em `/tests/` são menos relevantes para
+# extração de informações de documentação geral, embora possam ser úteis para
+# análises de código específicas.
