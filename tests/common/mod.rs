@@ -18,32 +18,16 @@
 //! Módulo raiz para código utilitário compartilhado entre testes.
 //!
 //! Este módulo agrega e reexporta funcionalidades comuns usadas nos testes
-//! de integração e comportamentais (BDD) do `Typedb-MCP-Server`.
-//! O objetivo é evitar a duplicação de código e centralizar lógica auxiliar
-//! que é comum a múltiplos cenários de teste.
+//! de integração. Para usar esses utilitários em um módulo de teste
+//! (ex: `tests/integration/meu_teste.rs`), adicione:
+//! `use crate::common::nome_do_submodulo;` ou `use crate::common::ItemEspecifico;`.
 
-/// Utilitários para criar clientes de teste MCP e interagir com o servidor.
-// Validação: Declara o submódulo `client` que deve residir em `tests/common/client.rs`.
-pub mod client;
-
-/// Funções auxiliares para gerar tokens JWT de teste e lidar com autenticação.
-// Validação: Declara o submódulo `auth_helpers` que deve residir em `tests/common/auth_helpers.rs`.
 pub mod auth_helpers;
-
-/// Funções auxiliares para gerenciar contêineres Docker (ex: via docker-compose) para testes.
-// Validação: Declara o submódulo `docker_helpers` que deve residir em `tests/common/docker_helpers.rs`.
+pub mod client;
 pub mod docker_helpers;
 
-// Reexportações para conveniência de uso nos módulos de teste.
-// Permite `use typedb_mcp_server_lib::tests::common::TestMcpClient;`
-// em vez de `use typedb_mcp_server_lib::tests::common::client::TestMcpClient;`.
-// NOTA: Estas reexportações causarão erros de compilação até que os itens
-// correspondentes sejam definidos nos submódulos (`client.rs`, `auth_helpers.rs`, etc.).
-
-pub use client::TestMcpClient;
-pub use auth_helpers::generate_test_jwt;
-pub use docker_helpers::{docker_compose_up, docker_compose_down, wait_for_service_healthy};
-
+// Reexportar itens frequentemente usados pode ser conveniente, mas opcional.
+// Exemplo: `pub use client::TestMcpClient;`
 
 #[cfg(test)]
 mod tests {
@@ -54,8 +38,9 @@ mod tests {
     // os itens reexportados devem ser publicamente acessíveis.
     #[allow(unused_imports)]
     use super::{
-        TestMcpClient, generate_test_jwt, docker_compose_up, docker_compose_down,
-        wait_for_service_healthy,
+        TestMcpClient, generate_test_jwt, 
+        // docker_compose_up, docker_compose_down, // Comentado
+        // wait_for_service_healthy, // Comentado
     };
 
     /// Testa se o módulo `common::mod.rs` compila corretamente.

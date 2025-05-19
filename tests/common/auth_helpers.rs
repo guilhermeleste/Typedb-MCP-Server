@@ -18,7 +18,9 @@
 //! Fornece funções utilitárias e dados de teste relacionados à autenticação OAuth 2.0,
 //! especificamente para a geração de JSON Web Tokens (JWTs) de teste.
 
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use jsonwebtoken::{encode, EncodingKey, Header};
+// Tornando Algorithm público para ser acessível por outros módulos
+pub use jsonwebtoken::Algorithm;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 

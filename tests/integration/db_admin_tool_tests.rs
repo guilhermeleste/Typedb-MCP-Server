@@ -12,7 +12,8 @@
 use std::time::Duration;
 use serde_json::json;
 use futures::future::join_all;
-use tests::common::{client::TestMcpClient, auth_helpers, docker_helpers::{DockerComposeEnv, Result as DockerResult}};
+// Corrigido: usar crate::common
+use crate::common::{client::{TestMcpClient, McpClientError}, auth_helpers::{self, Algorithm}, docker_helpers::{DockerComposeEnv, Result as DockerResult}};
 
 const DOCKER_COMPOSE_FILE: &str = "docker-compose.test.yml";
 const PROJECT_PREFIX: &str = "dbadmintest";
@@ -20,18 +21,20 @@ const MCP_WS_ENDPOINT: &str = "ws://localhost:8787/mcp/ws";
 
 // Helper para gerar nomes únicos de banco de dados
 fn unique_db_name(suffix: &str) -> String {
-    format!("test_db_admin_{}_{}", suffix, uuid::Uuid::new_v4().to_simple())
+    // Corrigido: usar simple().to_string()
+    format!("test_db_admin_{}_{}", suffix, uuid::Uuid::new_v4().simple().to_string())
 }
 
 // Helper para setup do ambiente docker compose
 async fn setup_env() -> DockerResult<DockerComposeEnv> {
     let env = DockerComposeEnv::new(DOCKER_COMPOSE_FILE, PROJECT_PREFIX);
-    env.up()?;
+    // Corrigido: Usar .expect() em vez de ?
+    env.up().expect("Falha ao iniciar ambiente docker (env.up)");
     // Aguarda serviços ficarem saudáveis (Typedb-MCP-Server, TypeDB, Auth)
-    // (Assume que existe um método wait_for_service_healthy)
-    env.wait_for_service_healthy("typedb-mcp-server", Duration::from_secs(60)).await?;
-    env.wait_for_service_healthy("typedb", Duration::from_secs(60)).await?;
-    env.wait_for_service_healthy("mock-auth-server", Duration::from_secs(30)).await?;
+    // Corrigido: Usar .expect() em vez de ?
+    env.wait_for_service_healthy("typedb-mcp-server", Duration::from_secs(60)).await.expect("Falha ao esperar por typedb-mcp-server");
+    env.wait_for_service_healthy("typedb", Duration::from_secs(60)).await.expect("Falha ao esperar por typedb");
+    env.wait_for_service_healthy("mock-auth-server", Duration::from_secs(30)).await.expect("Falha ao esperar por mock-auth-server");
     Ok(env)
 }
 
@@ -53,13 +56,15 @@ async fn mcp_client_with_scope(scope: &str) -> TestMcpClient {
         scope: Some(scope.to_string()),
         custom_claim: None,
     };
-    let token = auth_helpers::generate_test_jwt(claims, jsonwebtoken::Algorithm::HS256);
+    // Corrigido: Usar Algorithm de auth_helpers
+    let token = auth_helpers::generate_test_jwt(claims, Algorithm::HS256);
     TestMcpClient::connect(MCP_WS_ENDPOINT, Some(token), Duration::from_secs(10), Duration::from_secs(10)).await.expect("Falha ao conectar MCP client")
 }
 
 // Helper para criar cliente MCP autenticado com claims customizados (para testes de expiração, audience, etc)
 async fn mcp_client_with_claims(claims: auth_helpers::TestClaims) -> TestMcpClient {
-    let token = auth_helpers::generate_test_jwt(claims, jsonwebtoken::Algorithm::HS256);
+    // Corrigido: Usar Algorithm de auth_helpers
+    let token = auth_helpers::generate_test_jwt(claims, Algorithm::HS256);
     TestMcpClient::connect(MCP_WS_ENDPOINT, Some(token), Duration::from_secs(10), Duration::from_secs(10)).await.expect("Falha ao conectar MCP client")
 }
 
@@ -175,10 +180,12 @@ async fn test_invalid_issuer_fails_authentication() {
 async fn test_create_database_with_invalid_name_fails() {
     let env = setup_env().await.expect("Falha no setup do ambiente docker");
     let mut client = mcp_client_with_scope("typedb:manage_databases").await;
-    let invalid_names = vec!["", " ", "!@#", "a".repeat(300)];
+    // Corrigido: Garantir que todos os elementos do vetor são &str
+    let long_invalid_name = "a".repeat(300);
+    let invalid_names: Vec<&str> = vec!["", " ", "!@#", &long_invalid_name];
     for name in invalid_names {
         let result = client.call_tool("create_database", Some(json!({"name": name}))).await;
-        assert!(result.is_err(), "Esperado erro ao criar banco com nome inválido");
+        assert!(result.is_err(), "Esperado erro ao criar banco com nome inválido: {}", name);
     }
     teardown_env(env).await;
 }
@@ -193,8 +200,13 @@ async fn test_list_databases_after_delete() {
     let _ = client.call_tool("delete_database", Some(json!({"name": db_name}))).await.expect("Falha ao deletar banco");
     let result = client.call_tool("list_databases", None).await;
     assert!(result.is_ok(), "Esperado sucesso ao listar bancos");
-    let content = &result.unwrap().content[0].as_text().unwrap().text;
-    let dbs: Vec<String> = serde_json::from_str(content).expect("Resposta não é JSON array");
+    // Corrigido: Acessar o conteúdo da resposta corretamente
+    let content_item = &result.unwrap().content[0];
+    let text_content = match content_item {
+        rmcp::model::ResourceContents::TextResourceContents { text, .. } => text,
+        _ => panic!("Conteúdo da resposta não é Texto como esperado."),
+    };
+    let dbs: Vec<String> = serde_json::from_str(text_content).expect("Resposta não é JSON array");
     assert!(!dbs.iter().any(|n| n == &db_name), "Banco deletado ainda aparece na lista");
     teardown_env(env).await;
 }
@@ -205,8 +217,13 @@ async fn test_create_database_succeeds() {
     let mut client = mcp_client_with_scope("typedb:manage_databases").await;
     let result = client.call_tool("create_database", Some(json!({"name": db_name}))).await;
     assert!(result.is_ok(), "Esperado sucesso ao criar banco: {:?}", result);
-    let content = &result.unwrap().content[0].as_text().unwrap().text;
-    assert_eq!(content, "OK");
+    // Corrigido: Acessar o conteúdo da resposta corretamente
+    let content_item = &result.unwrap().content[0];
+    let text_content = match content_item {
+        rmcp::model::ResourceContents::TextResourceContents { text, .. } => text,
+        _ => panic!("Conteúdo da resposta não é Texto como esperado."),
+    };
+    assert_eq!(text_content, "OK");
     teardown_env(env).await;
 }
 
@@ -222,8 +239,8 @@ async fn test_create_existing_database_fails() {
     assert!(result.is_err(), "Esperado erro ao criar banco duplicado");
     if let Err(e) = result {
         match e {
-            tests::common::client::McpClientError::McpErrorResponse { code, .. } => {
-                assert_eq!(code, rmcp::model::ErrorCode::INTERNAL_ERROR);
+            McpClientError::McpErrorResponse { code, message: _, data: _ } => {
+                assert_eq!(code.0, rmcp::model::ErrorCode::INTERNAL_ERROR);
             },
             _ => panic!("Erro inesperado: {:?}", e),
         }
@@ -237,8 +254,13 @@ async fn test_list_databases_empty_on_fresh_server() {
     let mut client = mcp_client_with_scope("typedb:manage_databases").await;
     let result = client.call_tool("list_databases", None).await;
     assert!(result.is_ok(), "Esperado sucesso ao listar bancos");
-    let content = &result.unwrap().content[0].as_text().unwrap().text;
-    let dbs: Vec<String> = serde_json::from_str(content).expect("Resposta não é JSON array");
+    // Corrigido: Acessar o conteúdo da resposta corretamente
+    let content_item = &result.unwrap().content[0];
+    let text_content = match content_item {
+        rmcp::model::ResourceContents::TextResourceContents { text, .. } => text,
+        _ => panic!("Conteúdo da resposta não é Texto como esperado."),
+    };
+    let dbs: Vec<String> = serde_json::from_str(text_content).expect("Resposta não é JSON array");
     assert!(dbs.is_empty(), "Esperado lista vazia de bancos");
     teardown_env(env).await;
 }
@@ -251,8 +273,13 @@ async fn test_list_databases_returns_created_databases() {
     let _ = client.call_tool("create_database", Some(json!({"name": db_name}))).await.expect("Falha ao criar banco");
     let result = client.call_tool("list_databases", None).await;
     assert!(result.is_ok(), "Esperado sucesso ao listar bancos");
-    let content = &result.unwrap().content[0].as_text().unwrap().text;
-    let dbs: Vec<String> = serde_json::from_str(content).expect("Resposta não é JSON array");
+    // Corrigido: Acessar o conteúdo da resposta corretamente
+    let content_item = &result.unwrap().content[0];
+    let text_content = match content_item {
+        rmcp::model::ResourceContents::TextResourceContents { text, .. } => text,
+        _ => panic!("Conteúdo da resposta não é Texto como esperado."),
+    };
+    let dbs: Vec<String> = serde_json::from_str(text_content).expect("Resposta não é JSON array");
     assert!(dbs.iter().any(|n| n == &db_name), "Banco criado não aparece na lista");
     teardown_env(env).await;
 }
@@ -265,8 +292,13 @@ async fn test_database_exists_returns_true_for_existing_db() {
     let _ = client.call_tool("create_database", Some(json!({"name": db_name}))).await.expect("Falha ao criar banco");
     let result = client.call_tool("database_exists", Some(json!({"name": db_name}))).await;
     assert!(result.is_ok(), "Esperado sucesso ao checar existência");
-    let content = &result.unwrap().content[0].as_text().unwrap().text;
-    assert_eq!(content, "true");
+    // Corrigido: Acessar o conteúdo da resposta corretamente
+    let content_item = &result.unwrap().content[0];
+    let text_content = match content_item {
+        rmcp::model::ResourceContents::TextResourceContents { text, .. } => text,
+        _ => panic!("Conteúdo da resposta não é Texto como esperado."),
+    };
+    assert_eq!(text_content, "true");
     teardown_env(env).await;
 }
 
@@ -277,8 +309,13 @@ async fn test_database_exists_returns_false_for_non_existent_db() {
     let mut client = mcp_client_with_scope("typedb:manage_databases").await;
     let result = client.call_tool("database_exists", Some(json!({"name": db_name}))).await;
     assert!(result.is_ok(), "Esperado sucesso ao checar existência");
-    let content = &result.unwrap().content[0].as_text().unwrap().text;
-    assert_eq!(content, "false");
+    // Corrigido: Acessar o conteúdo da resposta corretamente
+    let content_item = &result.unwrap().content[0];
+    let text_content = match content_item {
+        rmcp::model::ResourceContents::TextResourceContents { text, .. } => text,
+        _ => panic!("Conteúdo da resposta não é Texto como esperado."),
+    };
+    assert_eq!(text_content, "false");
     teardown_env(env).await;
 }
 
@@ -290,13 +327,23 @@ async fn test_delete_database_succeeds() {
     let _ = client.call_tool("create_database", Some(json!({"name": db_name}))).await.expect("Falha ao criar banco");
     let result = client.call_tool("delete_database", Some(json!({"name": db_name}))).await;
     assert!(result.is_ok(), "Esperado sucesso ao deletar banco");
-    let content = &result.unwrap().content[0].as_text().unwrap().text;
-    assert_eq!(content, "OK");
+    // Corrigido: Acessar o conteúdo da resposta corretamente
+    let content_item = &result.unwrap().content[0];
+    let text_content = match content_item {
+        rmcp::model::ResourceContents::TextResourceContents { text, .. } => text,
+        _ => panic!("Conteúdo da resposta não é Texto como esperado."),
+    };
+    assert_eq!(text_content, "OK");
     // Confirma que não existe mais
     let result = client.call_tool("database_exists", Some(json!({"name": db_name}))).await;
     assert!(result.is_ok());
-    let content = &result.unwrap().content[0].as_text().unwrap().text;
-    assert_eq!(content, "false");
+    // Corrigido: Acessar o conteúdo da resposta corretamente
+    let content_item = &result.unwrap().content[0];
+    let text_content = match content_item {
+        rmcp::model::ResourceContents::TextResourceContents { text, .. } => text,
+        _ => panic!("Conteúdo da resposta não é Texto como esperado."),
+    };
+    assert_eq!(text_content, "false");
     teardown_env(env).await;
 }
 
@@ -309,8 +356,8 @@ async fn test_delete_non_existent_database_fails() {
     assert!(result.is_err(), "Esperado erro ao deletar banco inexistente");
     if let Err(e) = result {
         match e {
-            tests::common::client::McpClientError::McpErrorResponse { code, .. } => {
-                assert_eq!(code, rmcp::model::ErrorCode::INTERNAL_ERROR);
+            McpClientError::McpErrorResponse { code, message: _, data: _ } => {
+                assert_eq!(code.0, rmcp::model::ErrorCode::INTERNAL_ERROR);
             },
             _ => panic!("Erro inesperado: {:?}", e),
         }
@@ -329,8 +376,8 @@ async fn test_delete_database_requires_admin_scope() {
     assert!(result.is_err(), "Esperado erro de autorização ao deletar sem escopo admin");
     if let Err(e) = result {
         match e {
-            tests::common::client::McpClientError::McpErrorResponse { code, .. } => {
-                assert_eq!(code, rmcp::model::ErrorCode::PERMISSION_DENIED);
+            McpClientError::McpErrorResponse { code, message: _, data: _ } => {
+                assert_eq!(code.0, crate::error::MCP_ERROR_CODE_AUTHORIZATION_FAILED);
             },
             _ => panic!("Erro inesperado: {:?}", e),
         }
