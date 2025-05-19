@@ -1,8 +1,127 @@
 #!/bin/bash
-# Sobe um mock JWKS server local para OAuth2
-set -e
-PORT=${1:-9091}
-MOCK_JWKS_FILE=mock_jwks.json
+#
+# run-mock-oauth2.sh
+#
+# Descrição:
+#   Este script inicia um servidor Nginx em um contêiner Docker para simular um 
+#   endpoint JWKS (JSON Web Key Set) para fins de desenvolvimento e teste OAuth2.
+#   Ele serve o arquivo 'mock_jwks.json' localizado na raiz do projeto.
+#
+# Autor: [Seu Nome/Equipe]
+# Data de Criação: [Data Original]
+# Data da Última Modificação: 2024-07-26
+# Versão: 1.1
+#
+# Pré-requisitos:
+#   - Docker: Deve estar instalado e o daemon Docker deve estar em execução.
+#   - mock_jwks.json: Um arquivo chamado 'mock_jwks.json' deve existir na raiz do projeto.
+#
+# Uso:
+#   ./scripts/run-mock-oauth2.sh [PORTA]
+#
+# Argumentos:
+#   PORTA (opcional): A porta na qual o servidor mock JWKS será exposto. 
+#                     O padrão é 9091.
+#
+# Exemplo de Uso:
+#   # Iniciar o servidor na porta padrão 9091
+#   ./scripts/run-mock-oauth2.sh
+#
+#   # Iniciar o servidor na porta 9000
+#   ./scripts/run-mock-oauth2.sh 9000
+#
+# Funcionamento:
+#   O script utiliza o comando 'docker run' para iniciar um contêiner Nginx:
+#   - '--rm': Remove o contêiner automaticamente quando ele é parado.
+#   - '-p <PORTA_HOST>:<PORTA_CONTAINER>': Mapeia a porta especificada (ou padrão)
+#     do host para a porta 80 dentro do contêiner Nginx.
+#   - '-v <ARQUIVO_HOST>:<ARQUIVO_CONTAINER>:ro': Monta o arquivo 'mock_jwks.json' 
+#     do host (localizado na raiz do projeto) para o caminho 
+#     '/usr/share/nginx/html/.well-known/jwks.json' dentro do contêiner, em modo
+#     somente leitura ('ro').
+#   - 'nginx:alpine': Especifica a imagem Docker a ser usada (uma versão leve do Nginx).
+#
+# Caminho Servido:
+#   O arquivo JWKS estará acessível em: http://localhost:<PORTA>/.well-known/jwks.json
+#
+# Arquivo JWKS Esperado:
+#   <RAIZ_DO_PROJETO>/mock_jwks.json
+#
+# Notas Importantes:
+#   - Este script é destinado apenas para desenvolvimento e teste.
+#   - Para parar o servidor mock, pressione Ctrl+C no terminal onde o script 
+#     está sendo executado.
 
-echo "[INFO] Servindo $MOCK_JWKS_FILE em http://localhost:$PORT/.well-known/jwks.json"
-docker run --rm -p $PORT:80 -v $(pwd)/$MOCK_JWKS_FILE:/usr/share/nginx/html/.well-known/jwks.json:ro nginx:alpine
+# Configurações de segurança e robustez do script
+set -e  # Encerra imediatamente se um comando sair com status diferente de zero.
+set -u  # Trata variáveis não definidas como um erro ao fazer expansão.
+set -o pipefail # O status de retorno de um pipeline é o status do último comando a sair com um código de saída diferente de zero, ou zero se todos os comandos saírem com sucesso.
+
+# --- Funções Auxiliares ---
+log_info() {
+    echo "[INFO] $(date +'%Y-%m-%dT%H:%M:%S%z'): $1"
+}
+
+log_error() {
+    echo "[ERROR] $(date +'%Y-%m-%dT%H:%M:%S%z'): $1" >&2
+}
+
+# --- Determinar Caminhos ---
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+PROJECT_ROOT=$(cd -- "$SCRIPT_DIR/.." &>/dev/null && pwd)
+
+# --- Variáveis ---
+DEFAULT_PORT=9091
+PORT=${1:-$DEFAULT_PORT}
+MOCK_JWKS_FILE_NAME="mock_jwks.json"
+MOCK_JWKS_PATH="$PROJECT_ROOT/$MOCK_JWKS_FILE_NAME"
+NGINX_IMAGE="nginx:alpine"
+
+# --- Verificações de Pré-requisitos ---
+log_info "Verificando pré-requisitos..."
+
+# Verificar se o Docker está instalado
+if ! command -v docker &> /dev/null; then
+    log_error "Docker não encontrado. Por favor, instale o Docker para continuar."
+    exit 1
+fi
+
+# Verificar se o daemon Docker está em execução
+if ! docker info &> /dev/null; then
+    log_error "O daemon Docker não parece estar em execução. Por favor, inicie o Docker."
+    exit 1
+fi
+log_info "Docker encontrado e daemon em execução."
+
+# Verificar se o arquivo mock_jwks.json existe
+if [ ! -f "$MOCK_JWKS_PATH" ]; then
+    log_error "Arquivo JWKS não encontrado em '$MOCK_JWKS_PATH'."
+    log_error "Certifique-se de que '$MOCK_JWKS_FILE_NAME' existe na raiz do projeto."
+    exit 1
+fi
+log_info "Arquivo JWKS '$MOCK_JWKS_PATH' encontrado."
+
+# --- Execução Principal ---
+log_info "Iniciando o servidor mock JWKS..."
+log_info "Servindo o arquivo '$MOCK_JWKS_PATH'"
+log_info "Disponível em: http://localhost:$PORT/.well-known/jwks.json"
+log_info "Pressione Ctrl+C para parar o servidor."
+
+# Executar o contêiner Nginx
+# O Nginx por padrão serve arquivos de /usr/share/nginx/html
+# Montamos o mock_jwks.json diretamente no subdiretório .well-known
+if docker run \
+    --rm \
+    -p "$PORT:80" \
+    -v "$MOCK_JWKS_PATH:/usr/share/nginx/html/.well-known/jwks.json:ro" \
+    "$NGINX_IMAGE"; then
+    log_info "Servidor mock JWKS encerrado."
+else
+    log_error "Falha ao iniciar o contêiner Docker Nginx."
+    # set -e já cuida de sair em caso de erro, mas uma mensagem adicional pode ser útil
+    # dependendo da configuração de trap ou se set -e for removido.
+    exit 1
+fi
+
+# Nota: O script terminará aqui quando o docker run for interrompido (Ctrl+C)
+# ou se houver um erro na execução do docker run.
