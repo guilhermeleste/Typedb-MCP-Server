@@ -3,59 +3,43 @@
 # run-mock-oauth2.sh
 #
 # Descrição:
-#   Este script inicia um servidor Nginx em um contêiner Docker para simular um 
-#   endpoint JWKS (JSON Web Key Set) para fins de desenvolvimento e teste OAuth2.
-#   Ele serve o arquivo 'mock_jwks.json' localizado na raiz do projeto.
+#   Este script gerencia um contêiner Docker para executar um servidor Nginx
+#   configurado para simular um provedor OAuth2/OIDC, servindo um arquivo JWKS estático.
+#   É essencial para testes de integração e desenvolvimento local que dependem de
+#   autenticação OAuth2.
 #
-# Autor: [Seu Nome/Equipe]
-# Data de Criação: [Data Original]
-# Data da Última Modificação: 2024-07-26
-# Versão: 1.1
-#
-# Pré-requisitos:
-#   - Docker: Deve estar instalado e o daemon Docker deve estar em execução.
-#   - mock_jwks.json: Um arquivo chamado 'mock_jwks.json' deve existir na raiz do projeto.
+# Funcionalidades:
+#   - Determina dinamicamente o diretório raiz do projeto.
+#   - Verifica pré-requisitos: Docker instalado e arquivo mock_jwks.json existente.
+#   - Para e remove contêineres Nginx mock existentes para evitar conflitos.
+#   - Inicia um novo contêiner Nginx:
+#     - Mapeia a porta 8088 do host para a porta 80 do contêiner.
+#     - Monta o arquivo mock_jwks.json local em /usr/share/nginx/html/.well-known/jwks.json no contêiner.
+#     - Monta uma configuração Nginx personalizada (se fornecida) ou usa o padrão.
+#     - Executa em modo destacado (detached).
+#     - Remove o contêiner automaticamente ao parar (--rm).
+#   - Captura o ID do contêiner e verifica se ele está em execução.
+#   - Fornece instruções para parar o contêiner manualmente.
 #
 # Uso:
-#   ./scripts/run-mock-oauth2.sh [PORTA]
-#
-# Argumentos:
-#   PORTA (opcional): A porta na qual o servidor mock JWKS será exposto. 
-#                     O padrão é 9091.
-#
-# Exemplo de Uso:
-#   # Iniciar o servidor na porta padrão 9091
 #   ./scripts/run-mock-oauth2.sh
 #
-#   # Iniciar o servidor na porta 9000
-#   ./scripts/run-mock-oauth2.sh 9000
+#   Para parar o servidor mock manualmente:
+#   docker stop <container_id>
 #
-# Funcionamento:
-#   O script utiliza o comando 'docker run' para iniciar um contêiner Nginx:
-#   - '--rm': Remove o contêiner automaticamente quando ele é parado.
-#   - '-p <PORTA_HOST>:<PORTA_CONTAINER>': Mapeia a porta especificada (ou padrão)
-#     do host para a porta 80 dentro do contêiner Nginx.
-#   - '-v <ARQUIVO_HOST>:<ARQUIVO_CONTAINER>:ro': Monta o arquivo 'mock_jwks.json' 
-#     do host (localizado na raiz do projeto) para o caminho 
-#     '/usr/share/nginx/html/.well-known/jwks.json' dentro do contêiner, em modo
-#     somente leitura ('ro').
-#   - 'nginx:alpine': Especifica a imagem Docker a ser usada (uma versão leve do Nginx).
+# Variáveis de Ambiente (opcional):
+#   MOCK_JWKS_PATH: Caminho para o arquivo mock_jwks.json (padrão: ${PROJECT_ROOT}/mock_jwks.json)
+#   NGINX_CONF_PATH: Caminho para um arquivo de configuração Nginx personalizado (opcional)
 #
-# Caminho Servido:
-#   O arquivo JWKS estará acessível em: http://localhost:<PORTA>/.well-known/jwks.json
-#
-# Arquivo JWKS Esperado:
-#   <RAIZ_DO_PROJETO>/mock_jwks.json
-#
-# Notas Importantes:
-#   - Este script é destinado apenas para desenvolvimento e teste.
-#   - Para parar o servidor mock, pressione Ctrl+C no terminal onde o script 
-#     está sendo executado.
+# Autor: Guilherme de Oliveira
+# Data: 2024-07-29 (última modificação)
 
 # Configurações de segurança e robustez do script
-set -e  # Encerra imediatamente se um comando sair com status diferente de zero.
-set -u  # Trata variáveis não definidas como um erro ao fazer expansão.
-set -o pipefail # O status de retorno de um pipeline é o status do último comando a sair com um código de saída diferente de zero, ou zero se todos os comandos saírem com sucesso.
+# -e: Aborta imediatamente se um comando sair com status diferente de zero.
+# -u: Trata variáveis não definidas como erro.
+# -o pipefail: O status de saída de um pipeline é o do último comando que falhou,
+#              ou zero se todos os comandos bem-sucedidos.
+set -e -u -o pipefail
 
 # --- Funções Auxiliares ---
 log_info() {
@@ -66,103 +50,125 @@ log_error() {
     echo "[ERROR] $(date +'%Y-%m-%dT%H:%M:%S%z'): $1" >&2
 }
 
-# --- Determinar Caminhos ---
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-PROJECT_ROOT=$(cd -- "$SCRIPT_DIR/.." &>/dev/null && pwd)
+# --- Determinação de Caminhos ---
+# Obtém o diretório do script para construir caminhos relativos de forma segura
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." &>/dev/null && pwd)" # Assume que scripts está um nível abaixo da raiz
 
 # --- Variáveis ---
-DEFAULT_PORT=9091
-PORT=${1:-$DEFAULT_PORT}
-MOCK_JWKS_FILE_NAME="mock_jwks.json"
-MOCK_JWKS_PATH="$PROJECT_ROOT/$MOCK_JWKS_FILE_NAME"
+CONTAINER_NAME="mock-oauth2-server"
+MOCK_JWKS_FILENAME="mock_jwks.json"
+MOCK_JWKS_PATH="${MOCK_JWKS_PATH:-${PROJECT_ROOT}/${MOCK_JWKS_FILENAME}}"
 NGINX_IMAGE="nginx:alpine"
+HOST_PORT="8088"
+CONTAINER_PORT="80"
 
-# --- Verificações de Pré-requisitos ---
+# Caminho para o arquivo de configuração Nginx personalizado (opcional)
+# Se NGINX_CONF_PATH for fornecido e o arquivo existir, ele será usado.
+# Caso contrário, o Nginx usará sua configuração padrão, que é suficiente para servir arquivos estáticos.
+CUSTOM_NGINX_CONF_PATH="${NGINX_CONF_PATH:-}"
+
+# --- Pré-requisitos ---
 log_info "Verificando pré-requisitos..."
 
-# Verificar se o Docker está instalado
+# 1. Docker
 if ! command -v docker &> /dev/null; then
-    log_error "Docker não encontrado. Por favor, instale o Docker para continuar."
+    log_error "Docker não encontrado. Por favor, instale o Docker."
     exit 1
 fi
+log_info "Docker encontrado."
 
-# Verificar se o daemon Docker está em execução
-if ! docker info &> /dev/null; then
-    log_error "O daemon Docker não parece estar em execução. Por favor, inicie o Docker."
+# 2. Arquivo JWKS
+if [ ! -f "${MOCK_JWKS_PATH}" ]; then
+    log_error "Arquivo JWKS não encontrado em ${MOCK_JWKS_PATH}."
+    log_error "Certifique-se de que o arquivo ${MOCK_JWKS_FILENAME} existe na raiz do projeto ou forneça MOCK_JWKS_PATH."
     exit 1
 fi
-log_info "Docker encontrado e daemon em execução."
+log_info "Arquivo JWKS encontrado em ${MOCK_JWKS_PATH}."
 
-# Verificar se o arquivo mock_jwks.json existe
-if [ ! -f "$MOCK_JWKS_PATH" ]; then
-    log_error "Arquivo JWKS não encontrado em '$MOCK_JWKS_PATH'."
-    log_error "Certifique-se de que '$MOCK_JWKS_FILE_NAME' existe na raiz do projeto."
-    exit 1
-fi
-log_info "Arquivo JWKS '$MOCK_JWKS_PATH' encontrado."
+# --- Limpeza de Contêineres Anteriores ---
+log_info "Procurando e parando contêineres '${CONTAINER_NAME}' existentes..."
+# Encontra contêineres com o nome especificado, incluindo os parados
+EXISTING_CONTAINERS=$(docker ps -a -q --filter "name=${CONTAINER_NAME}")
 
-# --- Execução Principal ---
-log_info "Iniciando o servidor mock JWKS..."
-log_info "Servindo o arquivo '$MOCK_JWKS_PATH'"
-log_info "Disponível em: http://localhost:$PORT/.well-known/jwks.json"
-log_info "Pressione Ctrl+C para parar o servidor."
-
-# Executar o contêiner Nginx
-# O Nginx por padrão serve arquivos de /usr/share/nginx/html
-# Montamos o mock_jwks.json diretamente no subdiretório .well-known
-
-# Captura o ID do contêiner para verificação posterior
-CONTAINER_ID_FILE=$(mktemp) # Cria um arquivo temporário para armazenar o ID do contêiner
-
-if docker run \
-    --cidfile "$CONTAINER_ID_FILE" \
-    --rm \
-    -d \
-    -p "$PORT:80" \
-    -v "$MOCK_JWKS_PATH:/usr/share/nginx/html/.well-known/jwks.json:ro" \
-    "$NGINX_IMAGE"; then
-
-    CONTAINER_ID=$(cat "$CONTAINER_ID_FILE")
-    rm -f "$CONTAINER_ID_FILE" # Remove o arquivo temporário
-
-    log_info "Contêiner Nginx iniciado com ID: $CONTAINER_ID"
-    log_info "Verificando o status do contêiner em alguns segundos..."
-    sleep 5 # Aguarda um pouco para o Nginx iniciar completamente
-
-    # Verifica se o contêiner está realmente em execução
-    if docker ps -q --filter "id=$CONTAINER_ID" | grep -q .; then
-        log_info "[SUCESSO] Servidor mock JWKS está em execução."
-        log_info "URL: http://localhost:$PORT/.well-known/jwks.json"
-        log_info "Para parar o servidor, execute: docker stop $CONTAINER_ID"
-        # Mantém o script em execução para que o usuário possa ver os logs e o comando para parar.
-        # O contêiner continuará rodando em background devido ao -d.
-        # Para um comportamento de script que bloqueia, remova o -d e adicione um trap para limpeza.
-        wait "$CONTAINER_ID" # Esta linha só funcionaria se não fosse -d, ou se usássemos `docker attach`
-                           # Como estamos em modo detached (-d), o script sairia aqui.
-                           # Para manter o script "vivo" e mostrar o Ctrl+C, precisamos de um loop ou similar.
-                           # No entanto, para um script de background, o comportamento atual é mais comum.
-                           # O usuário pode usar 'docker logs -f $CONTAINER_ID' para ver os logs do Nginx.
-        # Como o docker run está com -d, o script não vai esperar aqui naturalmente.
-        # Se o objetivo é que o script termine e deixe o container rodando, isso está correto.
-        # Se o objetivo é que o script espere o Ctrl+C, o -d deve ser removido e o docker run não deve ser em background.
-        # Para o propósito deste script (iniciar um servidor em background), o -d é apropriado.
-        # A mensagem "Pressione Ctrl+C para parar o servidor" é um pouco enganosa com -d.
-        # Vamos ajustar a mensagem para refletir que o container está em background.
-        echo
-        log_info "O contêiner está rodando em segundo plano."
-        log_info "Para ver os logs: docker logs -f $CONTAINER_ID"
-        log_info "Para parar o servidor: docker stop $CONTAINER_ID"
-        exit 0 # Sucesso, o contêiner está rodando
-    else
-        log_error "[FALHA] O contêiner Nginx ($CONTAINER_ID) não parece estar em execução após a inicialização."
-        log_error "Verifique os logs do contêiner com: docker logs $CONTAINER_ID"
-        exit 1
-    fi
+if [ -n "${EXISTING_CONTAINERS}" ]; then
+    log_info "Parando contêineres existentes: ${EXISTING_CONTAINERS}..."
+    # shellcheck disable=SC2086 # EXISTING_CONTAINERS pode ter múltiplos IDs
+    docker stop ${EXISTING_CONTAINERS} >/dev/null
+    log_info "Removendo contêineres existentes (eles já devem ser removidos por --rm, mas como garantia)..."
+    # shellcheck disable=SC2086
+    docker rm ${EXISTING_CONTAINERS} >/dev/null
+    log_info "Contêineres anteriores '${CONTAINER_NAME}' parados e removidos."
 else
-    rm -f "$CONTAINER_ID_FILE" # Garante a remoção do arquivo temporário em caso de falha no run
-    log_error "[FALHA] Falha ao iniciar o contêiner Docker Nginx."
+    log_info "Nenhum contêiner anterior '${CONTAINER_NAME}' encontrado."
+fi
+
+# --- Preparação dos Volumes e Configurações do Docker ---
+DOCKER_RUN_OPTS=(
+    -d # Modo destacado
+    --rm # Remove o contêiner quando ele para
+    --name "${CONTAINER_NAME}"
+    -p "${HOST_PORT}:${CONTAINER_PORT}"
+    # Monta o arquivo JWKS no local esperado pelo Nginx
+    -v "${MOCK_JWKS_PATH}:/usr/share/nginx/html/.well-known/jwks.json:ro"
+)
+
+# Adiciona montagem de configuração Nginx personalizada, se fornecida
+if [ -n "${CUSTOM_NGINX_CONF_PATH}" ] && [ -f "${CUSTOM_NGINX_CONF_PATH}" ]; then
+    log_info "Usando configuração Nginx personalizada de: ${CUSTOM_NGINX_CONF_PATH}"
+    DOCKER_RUN_OPTS+=("-v" "${CUSTOM_NGINX_CONF_PATH}:/etc/nginx/conf.d/default.conf:ro")
+elif [ -n "${CUSTOM_NGINX_CONF_PATH}" ]; then
+    log_warn "Arquivo de configuração Nginx personalizado especificado em NGINX_CONF_PATH (${CUSTOM_NGINX_CONF_PATH}) não encontrado. Usando configuração padrão do Nginx."
+fi
+
+# --- Execução do Contêiner ---
+log_info "Iniciando o contêiner mock OAuth2 (Nginx)..."
+log_info "Comando Docker: docker run ${DOCKER_RUN_OPTS[*]} ${NGINX_IMAGE}"
+
+# Captura o ID do contêiner diretamente do stdout
+# shellcheck disable=SC2046 # Expansão de array é intencional aqui
+CONTAINER_ID=$(docker run "${DOCKER_RUN_OPTS[@]}" "${NGINX_IMAGE}")
+
+if [ -z "${CONTAINER_ID}" ]; then
+    log_error "Falha ao iniciar o contêiner Docker. Nenhum ID de contêiner retornado."
     exit 1
 fi
 
-# Nota: O script terminará aqui quando o docker run for interrompido (Ctrl+C)
-# ou se houver um erro na execução do docker run.
+log_info "Contêiner '${CONTAINER_NAME}' iniciado com ID: ${CONTAINER_ID}"
+
+# --- Verificação ---
+# Pequena pausa para dar tempo ao contêiner de iniciar completamente
+sleep 3
+
+if docker ps -q --filter "id=${CONTAINER_ID}" --filter "status=running" | grep -q .; then
+    log_info "Contêiner '${CONTAINER_NAME}' (ID: ${CONTAINER_ID}) está em execução."
+    log_info "Servidor mock OAuth2 (Nginx) escutando em http://localhost:${HOST_PORT}/.well-known/jwks.json"
+    log_info "Para parar o servidor, execute: docker stop ${CONTAINER_ID}"
+    log_info "Ou simplesmente pare este script (se não estiver em segundo plano), pois --rm foi usado."
+else
+    log_error "Contêiner '${CONTAINER_NAME}' (ID: ${CONTAINER_ID}) não parece estar em execução."
+    log_error "Verifique os logs do Docker para mais detalhes: docker logs ${CONTAINER_ID}"
+    # Tenta limpar o contêiner se ele falhou em iniciar corretamente mas ainda existe
+    if docker ps -a -q --filter "id=${CONTAINER_ID}" | grep -q .; then
+        docker rm "${CONTAINER_ID}" >/dev/null
+    fi
+    exit 1
+fi
+
+# O script pode terminar aqui, o contêiner continuará rodando em segundo plano.
+# O usuário precisará pará-lo manualmente ou o --rm cuidará disso quando o contêiner for parado.
+# Se o script for interrompido (Ctrl+C), o contêiner também será parado e removido devido ao --rm
+# e à forma como o Docker lida com sinais quando o processo principal que o iniciou termina.
+# Para garantir a limpeza em caso de saída abrupta do script, um trap poderia ser adicionado,
+# mas o --rm já oferece uma boa garantia.
+
+# Exemplo de trap (opcional, pois --rm já está em uso):
+# cleanup() {
+#     log_info "Parando e removendo o contêiner ${CONTAINER_ID}..."
+#     docker stop "${CONTAINER_ID}" >/dev/null
+#     # docker rm é desnecessário por causa do --rm
+#     log_info "Limpeza concluída."
+# }
+# trap cleanup EXIT SIGINT SIGTERM
+
+log_info "Script concluído. O servidor mock continua em execução em segundo plano."

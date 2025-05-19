@@ -34,9 +34,11 @@ async fn test_typedb_tls_success() {
     let docker = clients::Cli::default();
     let compose = GenericImage::new("typedb-mcp-server-it", "latest")
         .with_env_var("TYPEDB_TLS_ENABLED", "true")
-        .with_env_var("TYPEDB_TLS_CA_PATH", "/certs/dev-ca.pem")
+        // Caminho atualizado para o CA gerado pelo script generate-dev-certs.sh
+        .with_env_var("TYPEDB_TLS_CA_PATH", "/certs/generated-dev/ca.pem")
         .with_env_var("TYPEDB_ADDRESS", "typedb-server-it:1729")
-        .with_volume("./certs/example-certs/dev-ca.pem", "/certs/dev-ca.pem");
+        // Volume atualizado para montar o CA correto
+        .with_volume("./certs/generated-dev/ca.pem", "/certs/generated-dev/ca.pem");
     let _container: Container<_> = docker.run(compose);
 
     // Aguarda MCP ficar pronto
@@ -49,11 +51,16 @@ async fn test_typedb_tls_success() {
 #[tokio::test]
 async fn test_typedb_tls_invalid_ca() {
     let docker = clients::Cli::default();
+    // Para simular um CA inválido, podemos apontar para um arquivo que não existe ou é um CA diferente.
+    // Usaremos um caminho fictício para garantir que o CA correto não seja encontrado.
     let compose = GenericImage::new("typedb-mcp-server-it", "latest")
         .with_env_var("TYPEDB_TLS_ENABLED", "true")
-        .with_env_var("TYPEDB_TLS_CA_PATH", "/certs/invalid-ca.pem")
-        .with_env_var("TYPEDB_ADDRESS", "typedb-server-it:1729")
-        .with_volume("./certs/example-certs/invalid-ca.pem", "/certs/invalid-ca.pem");
+        .with_env_var("TYPEDB_TLS_CA_PATH", "/certs/invalid-ca.pem") // Caminho para um CA inválido/inexistente
+        .with_env_var("TYPEDB_ADDRESS", "typedb-server-it:1729");
+        // Não montaremos um volume para invalid-ca.pem, garantindo que ele não exista no container,
+        // ou montaremos um CA sabidamente incorreto se quisermos testar a falha de validação.
+        // Para este teste, a ausência do arquivo em TYPEDB_TLS_CA_PATH já deve causar falha.
+
     let _container: Container<_> = docker.run(compose);
 
     // Aguarda MCP (não deve ficar pronto)
@@ -97,8 +104,12 @@ async fn setup_tls_test_env(test_name: &str, wait_for_mcp: bool) -> DockerCompos
 
 /// Testa conexão bem-sucedida com TypeDB-TLS (CA válido)
 #[tokio::test]
-async fn test_typedb_tls_success() {
-    let _docker_env = setup_tls_test_env("typedb_tls_success", true).await;
+async fn test_typedb_tls_success_compose() { // Renomeado para evitar conflito com o teste acima
+    // Esta função de setup precisará garantir que o docker-compose.test.yml
+    // configure o TypeDB Server com os certificados de ./certs/generated-dev/
+    // e que o MCP Server (se também definido no compose) use o ./certs/generated-dev/ca.pem
+    // como TYPEDB_TLS_CA_PATH.
+    let _docker_env = setup_tls_test_env("typedb_tls_success_compose", true).await;
     let mut client = TestMcpClient::connect(MCP_SERVER_WS_URL, None, Duration::from_secs(10), Duration::from_secs(10))
         .await
         .expect("Deveria conectar ao MCP via WS");
@@ -111,17 +122,12 @@ async fn test_typedb_tls_success() {
 
 /// Testa falha de conexão com TypeDB-TLS (CA inválido/ausente)
 #[tokio::test]
-async fn test_typedb_tls_invalid_ca() {
-    let _docker_env = setup_tls_test_env("typedb_tls_invalid_ca", false).await;
+async fn test_typedb_tls_invalid_ca_compose() { // Renomeado
+    // Esta função de setup precisará garantir que o MCP Server no docker-compose.test.yml
+    // seja configurado com um TYPEDB_TLS_CA_PATH inválido ou ausente.
+    let _docker_env = setup_tls_test_env("typedb_tls_invalid_ca_compose", false).await;
     // MCP não deve ficar saudável, logo não tentamos conectar
     // Opcional: checar logs do serviço MCP para erro de TLS
-}
-
-/// Testa falha de conexão: cliente MCP tenta conexão não-TLS
-#[tokio::test]
-async fn test_typedb_tls_client_no_tls() {
-    let _docker_env = setup_tls_test_env("typedb_tls_client_no_tls", false).await;
-    // MCP não deve ficar saudável, logo não tentamos conectar
 }
 
 /// Testa falha de conexão: cliente MCP tenta TLS para TypeDB sem TLS

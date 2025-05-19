@@ -55,13 +55,13 @@ pub struct TestClaims {
 // Substitua "..." por conteúdo de chaves PEM válidas para testar a assinatura RS256.
 // A chave privada é usada para assinar. A pública correspondente seria configurada no mock JWKS.
 // ESTAS CHAVES SÃO APENAS PARA TESTE E NÃO DEVEM SER USADAS EM PRODUÇÃO.
-const TEST_RSA_PRIVATE_KEY_PEM: &str = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----";
+const TEST_RSA_PRIVATE_KEY_PEM: &str = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDEx2KKIGHhMQam\nkUUJXHFTv48ZWgd1gf/JxpXVaBlS/SjeKza6tlACKXDlUofPBP7lsoJ8zrkjjMQM\nz+L6nXhvoBmWmJl6b+MXoktJAc/Z1Rxxtwhc1T6uBk2qvWyb8EquGM1gKMcc+3Wy\nKz4nTWUB1o9F/IwlXzZpaYqsZpAXzd7l5O+M1SMaewFRIgLR9LjWLPDnkx+7wXK3\n63pKHTxeEBtoZtYX5WvLdAmNata0juX5Tw9ZXO5Mpub8VwF/KxVGRy/nGLRxGeuP\n+/so6KMc4Umis3iVbMgJlJD8FSCUi0/DNRoZDOBOD7/logCuPo8n8NmZFYfScnu0\n+Snu1Mb3AgMBAAECggEAD3b1/RH/b0G5mpSXHt23gFPxLJZhOLBvSE3Fj8B/IQEJ\nWbB+vBzA2/Kizzr1tmTXnXiyfZmHfk49SB58YaLHiMpFyIqUoUUyzTQxg3rTeXSg\nqCUw0I7nvqh7KRx68SRo0hbb6R87SsFOZiK030TbV9Ijb2YiI3vAnHcxcUwcLeqa\nINDImk1sFiZv9kk8btJ5Nc+w7TyNnK+r1ZMiawcNIC4w3mdc6ohl+TGuNNNTOL3D\nqJ9uFXzFX1CiBg/VIXy70AwXQ8pSIScjWpgiOigp0azvb+g/rAaakClofaiQnL5y\nFWZdMbPn1FYBBBuTLGMR1uKhFlxJ9A+DaKoI1hcaZQKBgQDznAG0CzajELti+EJx\nmtWQn0yFUPOQzcCS2USIW6Dmo4RPpaPwXuOLZTTw8v3BhKyjZC+igCJpZFeSsAkb\ngCA+kmd3OQ3e57LHUSoKpSCX5djpyWZtFza6HMQn2u/vz6a4QAYaoqlfdli9ORQB\nfAo+aiWL9/6J2y4Af3nkHvZsKwKBgQDOyZsw0NIynuJIDNEEmZ1ajN6LZwhkMoGU\n7cncxkbYibI9Tf7MrVYMwWuveqnrAo33nBoMASxC2MCWcb0NOLr/0ZOorlxzsiWU\n7/2DjKJYNt73J8Yxuf3CoqHnsnoL5ffPnGkyTmWdNikc9jx37cZb7VAJ9ThHL+5+\nuqghGXVOZQKBgQDIIkWf9Ypogul/kHd9v3duvgBukifXscFgo1BTOfvBH1sm1+0M\nH9iOf5Hz1Z01a9sszLT5qo0ayo3LfAWvax6SaVLJNr03gGB2sS552lkhkXoX7xbP\nzr9uPQ3FtG9kM9NDEY4yOaouPBsBMbBG2/HKfwfjqtSZytBLJm8sQ2etSwKBgAP8\n/3FBlcxEJDkfhiiAjfhhHymxIwhLsRQeQfZwHI2wmi90gaWQ8kfssxb/VqehtPtB\nl38DxsbDR3OfXfYTUgf9Esv+EOpqVS86MbmHzNnGtSYvLjNnUu2eFWFSn+f613y5\nl43Q1UTi9ogId8IYY+sB+Lk4cY1t7zuiffulcg3BAoGAdSBxd8yXGOUyTKwOh5Od\n/jik25d31mX1WDvspEPHnONdlZIA4mr9ku8otMdTuEhI+YW2s/IfIo4k88K+LxOg\ndq7EDeNEZT+/KnMPppNBcTALx/I21+iTR3elZAakO70HEXMniC7hF30bOVizmlvY\n4zRGK7m3K4paxD1F69HHmJU=\n-----END PRIVATE KEY-----";
 // Adicione a chave pública PEM correspondente à chave privada acima.
 // Esta chave é usada para verificar a assinatura do token.
-const TEST_RSA_PUBLIC_KEY_PEM: &str = "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----";
+const TEST_RSA_PUBLIC_KEY_PEM: &str = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxMdiiiBh4TEGppFFCVxx\nU7+PGVoHdYH/ycaV1WgZUv0o3is2urZQAilw5VKHzwT+5bKCfM65I4zEDM/i+p14\nb6AZlpiZem/jF6JLSQHP2dUccbcIXNU+rgZNqr1sm/BKrhjNYCjHHPt1sis+J01l\nAdaPRfyMJV82aWmKrGaQF83e5eTvjNUjGnsBUSIC0fS41izw55Mfu8Fyt+t6Sh08\nXhAbaGbWF+Vry3QJjWrWtI7l+U8PWVzuTKbm/FcBfysVRkcv5xi0cRnrj/v7KOij\nHOFJorN4lWzICZSQ/BUglItPwzUaGQzgTg+/5aIArj6PJ/DZmRWH0nJ7tPkp7tTG\n9wIDAQAB\n-----END PUBLIC KEY-----";
 
 /// Key ID de teste para JWTs.
-pub const TEST_KID: &str = "test-jwt-kid-rs256";
+pub const TEST_KID: &str = "test-key-1"; // Atualizado para corresponder ao mock_jwks.json
 
 /// Gera um token JWT de teste.
 ///
@@ -170,7 +170,7 @@ mod tests {
     /// `TEST_RSA_PRIVATE_KEY_PEM` e `TEST_RSA_PUBLIC_KEY_PEM`
     /// sejam substituídos por chaves RSA PEM válidas e correspondentes.
     #[test]
-    #[should_panic(expected = "Falha ao carregar chave RSA privada de teste. Verifique TEST_RSA_PRIVATE_KEY_PEM.")]
+    // #[should_panic(expected = \"Falha ao carregar chave RSA privada de teste. Verifique TEST_RSA_PRIVATE_KEY_PEM.\")] // Removido
     // OU, se a chave privada for válida mas a pública não, o pânico será em `DecodingKey::from_rsa_pem`
     // ou na decodificação. Para cobrir o caso mais provável com placeholders, o pânico na chave privada é esperado.
     // Se você fornecer uma chave privada válida, mas uma pública inválida (ou o placeholder),
