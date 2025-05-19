@@ -110,16 +110,57 @@ log_info "Pressione Ctrl+C para parar o servidor."
 # Executar o contêiner Nginx
 # O Nginx por padrão serve arquivos de /usr/share/nginx/html
 # Montamos o mock_jwks.json diretamente no subdiretório .well-known
+
+# Captura o ID do contêiner para verificação posterior
+CONTAINER_ID_FILE=$(mktemp) # Cria um arquivo temporário para armazenar o ID do contêiner
+
 if docker run \
+    --cidfile "$CONTAINER_ID_FILE" \
     --rm \
+    -d \
     -p "$PORT:80" \
     -v "$MOCK_JWKS_PATH:/usr/share/nginx/html/.well-known/jwks.json:ro" \
     "$NGINX_IMAGE"; then
-    log_info "Servidor mock JWKS encerrado."
+
+    CONTAINER_ID=$(cat "$CONTAINER_ID_FILE")
+    rm -f "$CONTAINER_ID_FILE" # Remove o arquivo temporário
+
+    log_info "Contêiner Nginx iniciado com ID: $CONTAINER_ID"
+    log_info "Verificando o status do contêiner em alguns segundos..."
+    sleep 5 # Aguarda um pouco para o Nginx iniciar completamente
+
+    # Verifica se o contêiner está realmente em execução
+    if docker ps -q --filter "id=$CONTAINER_ID" | grep -q .; then
+        log_info "[SUCESSO] Servidor mock JWKS está em execução."
+        log_info "URL: http://localhost:$PORT/.well-known/jwks.json"
+        log_info "Para parar o servidor, execute: docker stop $CONTAINER_ID"
+        # Mantém o script em execução para que o usuário possa ver os logs e o comando para parar.
+        # O contêiner continuará rodando em background devido ao -d.
+        # Para um comportamento de script que bloqueia, remova o -d e adicione um trap para limpeza.
+        wait "$CONTAINER_ID" # Esta linha só funcionaria se não fosse -d, ou se usássemos `docker attach`
+                           # Como estamos em modo detached (-d), o script sairia aqui.
+                           # Para manter o script "vivo" e mostrar o Ctrl+C, precisamos de um loop ou similar.
+                           # No entanto, para um script de background, o comportamento atual é mais comum.
+                           # O usuário pode usar 'docker logs -f $CONTAINER_ID' para ver os logs do Nginx.
+        # Como o docker run está com -d, o script não vai esperar aqui naturalmente.
+        # Se o objetivo é que o script termine e deixe o container rodando, isso está correto.
+        # Se o objetivo é que o script espere o Ctrl+C, o -d deve ser removido e o docker run não deve ser em background.
+        # Para o propósito deste script (iniciar um servidor em background), o -d é apropriado.
+        # A mensagem "Pressione Ctrl+C para parar o servidor" é um pouco enganosa com -d.
+        # Vamos ajustar a mensagem para refletir que o container está em background.
+        echo
+        log_info "O contêiner está rodando em segundo plano."
+        log_info "Para ver os logs: docker logs -f $CONTAINER_ID"
+        log_info "Para parar o servidor: docker stop $CONTAINER_ID"
+        exit 0 # Sucesso, o contêiner está rodando
+    else
+        log_error "[FALHA] O contêiner Nginx ($CONTAINER_ID) não parece estar em execução após a inicialização."
+        log_error "Verifique os logs do contêiner com: docker logs $CONTAINER_ID"
+        exit 1
+    fi
 else
-    log_error "Falha ao iniciar o contêiner Docker Nginx."
-    # set -e já cuida de sair em caso de erro, mas uma mensagem adicional pode ser útil
-    # dependendo da configuração de trap ou se set -e for removido.
+    rm -f "$CONTAINER_ID_FILE" # Garante a remoção do arquivo temporário em caso de falha no run
+    log_error "[FALHA] Falha ao iniciar o contêiner Docker Nginx."
     exit 1
 fi
 

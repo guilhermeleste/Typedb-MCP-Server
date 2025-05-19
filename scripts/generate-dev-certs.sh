@@ -285,6 +285,35 @@ echo
 echo "Arquivos gerados em: $OUTPUT_DIR/"
 ls -l "$OUTPUT_DIR/"
 echo
+
+# 8. Verificação Final dos Arquivos Gerados
+echo "[INFO] Verificando a existência dos arquivos gerados..."
+FILES_TO_CHECK=(
+    "$OUTPUT_DIR/$MCP_CERT_FILE"
+    "$OUTPUT_DIR/$MCP_KEY_FILE"
+    "$OUTPUT_DIR/$TYPEDB_CERT_FILE"
+    "$OUTPUT_DIR/$TYPEDB_KEY_FILE"
+    "$OUTPUT_DIR/$MKCERT_CA_ROOT_FILE"
+)
+ALL_FILES_EXIST=true
+for FILE_PATH in "${FILES_TO_CHECK[@]}"; do
+    if [ -f "$FILE_PATH" ]; then
+        echo "        [OK] Arquivo encontrado: $FILE_PATH"
+    else
+        echo "        [ERRO] Arquivo NÃO encontrado: $FILE_PATH" >&2
+        ALL_FILES_EXIST=false
+    fi
+done
+
+if [ "$ALL_FILES_EXIST" = false ]; then
+    echo
+    echo "ERRO: Um ou mais arquivos de certificado esperados não foram encontrados após a geração." >&2
+    echo "      Por favor, revise os logs acima para identificar a causa da falha." >&2
+    # Não saia com erro aqui necessariamente, pois o mkcert pode ter tido sucesso parcial
+    # ou o erro principal já ocorreu e foi tratado. Apenas informa.
+fi
+echo
+
 echo "Próximos Passos:"
 echo "1. Configure as seguintes variáveis de ambiente (ex: no seu .env ou config.toml):"
 echo
