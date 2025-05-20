@@ -47,7 +47,8 @@ impl DockerComposeEnv {
     }
 
     fn run_compose_command(&self, args: &[&str], env_vars: Option<&[(&str, &str)]>) -> Result<ExitStatus> {
-        let mut command = Command::new("docker-compose");
+        let mut command = Command::new("docker");
+        command.arg("compose"); // Adiciona o subcomando "compose"
         command
             .arg("-f")
             .arg(&self.compose_file)
@@ -237,35 +238,133 @@ impl DockerComposeEnv {
     /// `Result<()>` indicando sucesso ou falha na coleta e exibição dos logs.
     pub fn logs_all_services(&self) -> Result<()> {
         info!("Coletando logs para o projeto: {}", self.project_name);
-        let output = Command::new("docker-compose")
+        let output = Command::new("docker")
+            .arg("compose") // Adiciona o subcomando "compose"
             .arg("-f")
             .arg(&self.compose_file)
             .arg("-p")
             .arg(&self.project_name)
             .arg("logs")
             .arg("--no-color")
-            .arg("--tail=200")
-            .output()?;
+            // Considerar aumentar o --tail se necessário para depuração mais profunda
+            .arg("--tail=250") // Aumentado para 250 linhas
+            .output()
+            .context(format!("Falha ao executar 'docker-compose logs' para o projeto {}", self.project_name))?;
 
         if output.status.success() {
-            info!("[Logs Compose {} STDOUT]:\n{}", self.project_name, String::from_utf8_lossy(&output.stdout));
-            if !output.stderr.is_empty() {
-                warn!("[Logs Compose {} STDERR]:\n{}", self.project_name, String::from_utf8_lossy(&output.stderr));
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stdout.trim().is_empty() {
+                info!("[Compose Logs STDOUT {}]:\n{}", self.project_name, stdout);
+            }
+            if !stderr.trim().is_empty() {
+                warn!("[Compose Logs STDERR {}]:\n{}", self.project_name, stderr);
             }
         } else {
-            let err_msg = format!(
-                "Falha ao obter logs do docker-compose para o projeto '{}'. Status: {}. Stderr: {}",
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            error!(
+                "Erro ao coletar logs para o projeto {}: {}. Status: {}. Stderr: {}",
                 self.project_name,
                 output.status,
-                String::from_utf8_lossy(&output.stderr)
+                output.status.code().unwrap_or(-1), // Adicionado para logar o código de saída
+                stderr
             );
-            error!("{}", err_msg);
-            return Err(anyhow::anyhow!(err_msg));
+            // Retornar erro se o comando de logs falhar, pode indicar um problema maior.
+            return Err(anyhow::anyhow!(
+                "Falha ao coletar logs para o projeto {}. Status: {}. Stderr: {}",
+                self.project_name, output.status, stderr
+            ));
         }
         Ok(())
     }
 
-    /// Aguarda até que um serviço específico se torne "healthy" ou "running".
+    /// Obtém a porta do host mapeada para uma porta interna de um serviço específico.
+    ///
+    /// Executa `docker compose -p <project_name> -f <compose_file> port <service_name> <internal_port>`
+    /// e parseia a saída para extrair a porta do host.
+    ///
+    /// # Argumentos
+    ///
+    /// * `service_name`: O nome do serviço Docker Compose.
+    /// * `internal_port`: A porta interna do contêiner para a qual a porta do host foi mapeada.
+    ///
+    /// # Retorna
+    ///
+    /// `Result<u16>` contendo a porta do host mapeada, ou um erro se a porta não puder ser determinada.
+    pub fn get_service_port(&self, service_name: &str, internal_port: u16) -> Result<u16> {
+        debug!(
+            "Obtendo porta mapeada para o serviço '{}', porta interna {} no projeto '{}'",
+            service_name, internal_port, self.project_name
+        );
+
+        let output = Command::new("docker")
+            .arg("compose")
+            .arg("-f")
+            .arg(&self.compose_file)
+            .arg("-p")
+            .arg(&self.project_name)
+            .arg("port")
+            .arg(service_name)
+            .arg(internal_port.to_string())
+            .output()
+            .context(format!(
+                "Falha ao executar 'docker compose port {} {}' para o projeto {}",
+                service_name, internal_port, self.project_name
+            ))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            error!(
+                "Erro ao obter porta para o serviço '{}': {}. Stderr: {}",
+                service_name, output.status, stderr
+            );
+            bail!(
+                "Comando 'docker compose port {} {}' falhou com status {} e stderr: {}",
+                service_name, internal_port, output.status, stderr
+            );
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if stdout.is_empty() {
+            // Adiciona logs antes de derrubar o ambiente para ajudar na depuração
+            warn!("Saída do comando 'docker compose port' está vazia para {} porta {}. Tentando coletar logs gerais.", service_name, internal_port);
+            self.logs_all_services().unwrap_or_else(|e| {
+                error!("Falha ao coletar logs de depuração adicionais: {}", e);
+            });
+            bail!(
+                "Saída do comando 'docker compose port {} {}' está vazia. O serviço pode não estar expondo a porta corretamente ou não estar rodando.",
+                service_name, internal_port
+            );
+        }
+
+        // A saída é geralmente no formato "0.0.0.0:PORTA" ou ":::PORTA" (para IPv6)
+        match stdout.rsplit_once(':') {
+            Some((_, port_str)) => {
+                match port_str.parse::<u16>() {
+                    Ok(port) => {
+                        info!(
+                            "Porta mapeada para o serviço '{}', porta interna {}: {}",
+                            service_name, internal_port, port
+                        );
+                        Ok(port)
+                    }
+                    Err(e) => {
+                        error!(
+                            "Falha ao parsear a porta '{}' da saída '{}': {}",
+                            port_str, stdout, e
+                        );
+                        bail!("Falha ao parsear a porta '{}' da saída '{}': {}", port_str, stdout, e)
+                    }
+                }
+            }
+            None => {
+                error!("Formato de saída inesperado do 'docker compose port': {}", stdout);
+                bail!("Formato de saída inesperado do 'docker compose port': {}", stdout)
+            }
+        }
+    }
+
+    /// Aguarda até que um serviço específico no ambiente Docker Compose seja considerado saudável.
     ///
     /// Verifica o status de saúde do contêiner do serviço em intervalos regulares.
     /// Se o serviço tiver um healthcheck configurado, aguarda o status "healthy".
@@ -299,7 +398,8 @@ impl DockerComposeEnv {
                 bail!(err_msg); // Usa bail! de anyhow
             }
 
-            let output = Command::new("docker-compose")
+            let output = Command::new("docker")
+                .arg("compose") // Adiciona o subcomando "compose"
                 .arg("-f")
                 .arg(&self.compose_file)
                 .arg("-p")
@@ -355,7 +455,8 @@ impl DockerComposeEnv {
 }
 
 fn service_has_healthcheck(env: &DockerComposeEnv, service_name: &str) -> Result<bool> {
-    let output = Command::new("docker-compose")
+    let output = Command::new("docker")
+        .arg("compose") // Adiciona o subcomando "compose"
         .arg("-f")
         .arg(&env.compose_file)
         .arg("-p")
