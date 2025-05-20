@@ -8,8 +8,13 @@ use std::process::{Command, ExitStatus, Stdio}; // Removido: Path
 use std::io::{BufRead, BufReader};
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
-use anyhow::{Context, Result, bail}; // Adicionado anyhow
+pub use anyhow::{Context, Result, bail}; // Adicionado anyhow
 
+/// Gerencia um ambiente Docker Compose isolado para testes de integração.
+///
+/// Cada instância utiliza um nome de projeto único, sufixado com um UUID,
+/// para permitir a execução paralela de testes sem conflitos de contêineres
+/// ou redes.
 #[derive(Debug)]
 pub struct DockerComposeEnv {
     compose_file: String,
@@ -17,6 +22,20 @@ pub struct DockerComposeEnv {
 }
 
 impl DockerComposeEnv {
+    /// Cria uma nova instância de `DockerComposeEnv`.
+    ///
+    /// Inicializa a configuração para um ambiente Docker Compose, gerando um
+    /// nome de projeto único baseado no prefixo fornecido e um UUID.
+    ///
+    /// # Argumentos
+    ///
+    /// * `compose_file_path`: Caminho para o arquivo `docker-compose.yml` a ser usado.
+    /// * `project_name_prefix`: Prefixo para o nome do projeto Docker Compose. Um UUID
+    ///   será anexado a este prefixo para garantir unicidade.
+    ///
+    /// # Retorna
+    ///
+    /// Uma nova instância de `DockerComposeEnv`.
     pub fn new(compose_file_path: &str, project_name_prefix: &str) -> Self {
         let unique_suffix = uuid::Uuid::new_v4().simple().to_string();
         let project_name = format!("{}_{}", project_name_prefix, unique_suffix);
@@ -101,18 +120,51 @@ impl DockerComposeEnv {
         Ok(status)
     }
 
+    /// Inicia o ambiente Docker Compose.
+    ///
+    /// Executa `docker-compose up -d --remove-orphans --force-recreate --build`.
+    /// Garante que os contêineres sejam recriados e que os órfãos sejam removidos.
+    ///
+    /// # Retorna
+    ///
+    /// `Result<()>` indicando sucesso ou falha na inicialização do ambiente.
     pub fn up(&self) -> Result<()> {
         info!("Iniciando ambiente Docker Compose para o projeto: {}", self.project_name);
         self.run_compose_command(&["up", "-d", "--remove-orphans", "--force-recreate", "--build"], None)?; // Adicionado --build
         Ok(())
     }
     
+    /// Inicia o ambiente Docker Compose com variáveis de ambiente personalizadas.
+    ///
+    /// Similar a `up()`, mas permite a passagem de variáveis de ambiente específicas
+    /// para o comando `docker-compose up`.
+    ///
+    /// # Argumentos
+    ///
+    /// * `env_vars`: Um slice de tuplas `(&str, &str)` representando as variáveis
+    ///   de ambiente (chave, valor) a serem definidas para o comando.
+    ///
+    /// # Retorna
+    ///
+    /// `Result<()>` indicando sucesso ou falha na inicialização do ambiente.
     pub fn up_with_envs(&self, env_vars: &[(&str, &str)]) -> Result<()> {
         info!("Iniciando ambiente Docker Compose para o projeto: {} com ENVs", self.project_name);
         self.run_compose_command(&["up", "-d", "--remove-orphans", "--force-recreate", "--build"], Some(env_vars))?;  // Adicionado --build
         Ok(())
     }
 
+    /// Derruba o ambiente Docker Compose.
+    ///
+    /// Executa `docker-compose down`.
+    ///
+    /// # Argumentos
+    ///
+    /// * `remove_volumes`: Se `true`, adiciona a flag `-v` para remover os volumes
+    ///   associados aos contêineres.
+    ///
+    /// # Retorna
+    ///
+    /// `Result<()>` indicando sucesso ou falha ao derrubar o ambiente.
     pub fn down(&self, remove_volumes: bool) -> Result<()> {
         info!("Derrubando ambiente Docker Compose para o projeto: {} (remover volumes: {})", self.project_name, remove_volumes);
         let mut args = vec!["down"];
@@ -124,24 +176,65 @@ impl DockerComposeEnv {
         Ok(())
     }
 
+    /// Pausa um serviço específico no ambiente Docker Compose.
+    ///
+    /// Executa `docker-compose pause <service_name>`.
+    ///
+    /// # Argumentos
+    ///
+    /// * `service_name`: O nome do serviço a ser pausado.
+    ///
+    /// # Retorna
+    ///
+    /// `Result<()>` indicando sucesso ou falha ao pausar o serviço.
     pub fn pause_service(&self, service_name: &str) -> Result<()> {
         info!("Pausando serviço '{}' no projeto '{}'", service_name, self.project_name);
         self.run_compose_command(&["pause", service_name], None)?;
         Ok(())
     }
 
+    /// Retoma (unpauses) um serviço específico previamente pausado no ambiente Docker Compose.
+    ///
+    /// Executa `docker-compose unpause <service_name>`.
+    ///
+    /// # Argumentos
+    ///
+    /// * `service_name`: O nome do serviço a ser retomado.
+    ///
+    /// # Retorna
+    ///
+    /// `Result<()>` indicando sucesso ou falha ao retomar o serviço.
     pub fn unpause_service(&self, service_name: &str) -> Result<()> {
         info!("Retomando serviço '{}' no projeto '{}'", service_name, self.project_name);
         self.run_compose_command(&["unpause", service_name], None)?;
         Ok(())
     }
     
+    /// Para (stops) um serviço específico no ambiente Docker Compose.
+    ///
+    /// Executa `docker-compose stop <service_name>`.
+    ///
+    /// # Argumentos
+    ///
+    /// * `service_name`: O nome do serviço a ser parado.
+    ///
+    /// # Retorna
+    ///
+    /// `Result<()>` indicando sucesso ou falha ao parar o serviço.
     pub fn stop_service(&self, service_name: &str) -> Result<()> {
         info!("Parando serviço '{}' no projeto '{}'", service_name, self.project_name);
         self.run_compose_command(&["stop", service_name], None)?;
         Ok(())
     }
 
+    /// Coleta e exibe os logs de todos os serviços no ambiente Docker Compose.
+    ///
+    /// Executa `docker-compose logs --no-color --tail=200`.
+    /// Os logs são enviados para a saída de tracing como `info` (STDOUT) ou `warn` (STDERR).
+    ///
+    /// # Retorna
+    ///
+    /// `Result<()>` indicando sucesso ou falha na coleta e exibição dos logs.
     pub fn logs_all_services(&self) -> Result<()> {
         info!("Coletando logs para o projeto: {}", self.project_name);
         let output = Command::new("docker-compose")
@@ -172,6 +265,23 @@ impl DockerComposeEnv {
         Ok(())
     }
 
+    /// Aguarda até que um serviço específico se torne "healthy" ou "running".
+    ///
+    /// Verifica o status de saúde do contêiner do serviço em intervalos regulares.
+    /// Se o serviço tiver um healthcheck configurado, aguarda o status "healthy".
+    /// Se não tiver healthcheck, aguarda o status "running".
+    ///
+    /// # Argumentos
+    ///
+    /// * `service_name`: O nome do serviço a ser monitorado.
+    /// * `timeout_duration`: A duração máxima de espera antes de retornar um erro de timeout.
+    ///
+    /// # Retorna
+    ///
+    /// `Result<()>`:
+    /// * `Ok(())` se o serviço atingir o estado desejado dentro do timeout.
+    /// * `Err(...)` se ocorrer timeout, o serviço ficar "unhealthy", ou houver falha
+    ///   ao inspecionar o contêiner.
     pub async fn wait_for_service_healthy(
         &self,
         service_name: &str,

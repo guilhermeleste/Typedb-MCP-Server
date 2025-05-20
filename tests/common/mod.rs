@@ -32,6 +32,8 @@
 pub mod auth_helpers;
 pub mod client;
 pub mod docker_helpers;
+/// Contém utilitários específicos do MCP, como parsing de respostas e outras
+/// funções auxiliares para interagir com o protocolo MCP em testes.
 pub mod mcp_utils;
 
 // Reexportações para facilitar o acesso aos tipos e funções mais comuns.

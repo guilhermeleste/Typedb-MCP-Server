@@ -30,6 +30,7 @@ use tokio_tungstenite::{
     tungstenite::protocol::Message as WsMessage,
     tungstenite::Error as WsError,
     WebSocketStream,
+    tungstenite::protocol::frame::Utf8Bytes, // Importação para Utf8Bytes
 };
 
 // futures imports
@@ -37,11 +38,7 @@ use futures_util::{StreamExt, SinkExt};
 
 // HTTP types import
 use http::{Request as HttpRequest, header::AUTHORIZATION, StatusCode as HttpStatus};
-// axum::body::to_bytes não é mais necessário para o fluxo de erro do handshake.
-// Se for usado em outros lugares, o import deve ser axum::body::to_bytes.
-// Para o erro, vamos manter AxumBoxError.
 use axum::BoxError as AxumBoxError;
-
 
 // URL parsing import
 use url::Url;
@@ -53,15 +50,15 @@ use rmcp::model::{
     ClientJsonRpcMessage, ServerJsonRpcMessage, RequestId, NumberOrString,
     JsonRpcRequest, JsonRpcResponse, JsonRpcError, JsonRpcVersion2_0,
     ClientRequest, ServerResult, ErrorCode,
-    CallToolRequestParam, CallToolResult,
-    ListToolsResult,
-    ReadResourceRequestParam, ReadResourceResult,
-    InitializeRequestParam, InitializeResult,
+    CallToolRequestParam, CallToolResult, CallToolRequestMethod, // Adicionado
+    ListToolsResult, ListToolsRequestMethod,
+    ReadResourceRequestParam, ReadResourceResult, ReadResourceRequestMethod,
+    InitializeRequestParam, InitializeResult, InitializeResultMethod,
     ListResourcesResult, ListResourcesRequestMethod,
+    ListResourceTemplatesResult, ListResourceTemplatesRequestMethod,
     ClientNotification,
     CancelledNotificationParam, CancelledNotificationMethod,
-    InitializeResultMethod, CallToolRequestMethod, ListToolsRequestMethod, ReadResourceRequestMethod,
-    PaginatedRequestParam, Extensions, InitializedNotificationMethod
+    PaginatedRequestParam, Extensions, InitializedNotificationMethod,
 };
 
 // Tracing import
@@ -78,39 +75,52 @@ fn new_req_id() -> RequestId {
 /// Erros que podem ocorrer ao usar o `TestMcpClient`.
 #[derive(Debug, thiserror::Error)]
 pub enum McpClientError {
+    /// Erro originado na camada WebSocket.
     #[error("Erro WebSocket: {0}")]
     WebSocket(#[from] WsError),
 
+    /// Erro durante a serialização ou desserialização JSON.
     #[error("Erro JSON: {0}")]
     Json(#[from] serde_json::Error),
 
+    /// Erro ao parsear uma URL, geralmente a URL do servidor.
     #[error("Erro ao parsear URL: {0}")]
     UrlParse(#[from] url::ParseError),
 
+    /// Erro na construção ou envio da requisição HTTP durante o handshake WebSocket.
     #[error("Erro na requisição HTTP (handshake): {0}")]
     HttpRequest(#[from] http::Error),
 
+    /// Falha no handshake WebSocket, indicado por um status HTTP não-101.
     #[error("Falha no handshake WebSocket: Status {0}, Body: {1:?}")]
     HandshakeFailed(HttpStatus, Option<String>),
 
+    /// Erro retornado pelo servidor MCP em uma resposta JSON-RPC.
     #[error("Erro MCP do Servidor: code={code:?}, message='{message}', data={data:?}")]
     McpErrorResponse {
+        /// O código de erro JSON-RPC.
         code: ErrorCode,
+        /// A mensagem de erro descritiva.
         message: String,
+        /// Dados adicionais opcionais sobre o erro.
         data: Option<JsonValue>,
     },
 
+    /// Timeout ocorrido ao esperar uma resposta do servidor.
     #[error("Timeout esperando resposta do servidor")]
     Timeout,
 
+    /// A conexão WebSocket foi fechada inesperadamente.
     #[error("Conexão fechada inesperadamente")]
     ConnectionClosed,
 
+    /// Uma resposta inesperada ou malformada foi recebida do servidor.
     #[error("Resposta inesperada do servidor: {0}")]
     UnexpectedResponse(String),
 
+    /// Erro ao converter o corpo da resposta HTTP (geralmente durante o handshake).
     #[error("Erro ao converter corpo da resposta HTTP: {0}")]
-    BodyConversionError(AxumBoxError), // Renomeado para clareza, ainda usa AxumBoxError
+    BodyConversionError(AxumBoxError),
 }
 
 /// Cliente de teste para interagir com o `Typedb-MCP-Server`.
@@ -153,12 +163,11 @@ impl TestMcpClient {
         info!("Tentando conectar cliente MCP de teste a: {}", server_url_str);
 
         match timeout(connect_timeout_duration, connect_async(request)).await {
-            Ok(Ok((ws_stream, response))) => { // response é tokio_tungstenite::tungstenite::http::Response<Option<Vec<u8>>>
+            Ok(Ok((ws_stream, response))) => {
                 let status = response.status();
                 debug!("Handshake WebSocket. Resposta do servidor: {}", status);
                 if status != HttpStatus::SWITCHING_PROTOCOLS {
-                    // CORREÇÃO AQUI: Ler o corpo diretamente do response de tungstenite
-                    let body_option_vec_u8 = response.into_body(); // Isto retorna Option<Vec<u8>>
+                    let body_option_vec_u8 = response.into_body();
                     let body_string = body_option_vec_u8.and_then(|bytes| String::from_utf8(bytes).ok());
                     
                     warn!("Resposta HTTP inesperada no handshake WebSocket: {}. Corpo: {:?}", status, body_string);
@@ -180,7 +189,7 @@ impl TestMcpClient {
 
     async fn send_request_and_get_response<R, F>(
         &mut self,
-        client_request_payload: rmcp::model::ClientRequest,
+        client_request_payload: ClientRequest,
         expected_server_result_variant_fn: F,
     ) -> Result<R, McpClientError>
     where
@@ -202,7 +211,9 @@ impl TestMcpClient {
         };
         debug!("Cliente MCP enviando (ID: {:?}): {}", request_id_for_log, json_payload);
 
-        self.ws_stream.send(WsMessage::Text(json_payload.into())).await?;
+        // CORRIGIDO: Convertido para Utf8Bytes
+        self.ws_stream.send(WsMessage::Text(Utf8Bytes::from(json_payload))).await?;
+
 
         let op_start_time = std::time::Instant::now();
         loop {
@@ -257,7 +268,7 @@ impl TestMcpClient {
                     error!("Stream WebSocket terminou inesperadamente (esperando ID {:?})", req_id);
                     return Err(McpClientError::ConnectionClosed);
                 }
-                Err(_) => {
+                Err(_) => { 
                     trace!("Timeout de leitura individual (200ms) para ID {:?}, continuando espera.", req_id);
                 }
             }
@@ -299,7 +310,8 @@ impl TestMcpClient {
 
         let json_payload = serde_json::to_string(&client_message)?;
         debug!("Cliente MCP enviando notificação Initialized: {}", json_payload);
-        self.ws_stream.send(WsMessage::Text(json_payload.into())).await?;
+        // CORRIGIDO: Convertido para Utf8Bytes
+        self.ws_stream.send(WsMessage::Text(Utf8Bytes::from(json_payload))).await?;
         Ok(())
     }
 
@@ -314,7 +326,7 @@ impl TestMcpClient {
             arguments: arguments.and_then(|v| v.as_object().cloned()),
         };
         let client_request = ClientRequest::CallToolRequest(rmcp::model::Request {
-            method: CallToolRequestMethod::default(),
+            method: CallToolRequestMethod::default(), // CORRIGIDO (era ListToolsRequestMethod)
             params,
             extensions: Extensions::default(),
         });
@@ -388,6 +400,26 @@ impl TestMcpClient {
         }).await
     }
 
+    /// Lista os templates de recursos disponíveis no servidor.
+    pub async fn list_resource_templates(
+        &mut self,
+        params: Option<PaginatedRequestParam>,
+    ) -> Result<ListResourceTemplatesResult, McpClientError> {
+        let client_request = ClientRequest::ListResourceTemplatesRequest(rmcp::model::RequestOptionalParam {
+            method: ListResourceTemplatesRequestMethod::default(),
+            params,
+            extensions: Extensions::default(),
+        });
+        self.send_request_and_get_response(client_request, |server_result| {
+            if let ServerResult::ListResourceTemplatesResult(res) = server_result {
+                Ok(res)
+            } else {
+                Err(McpClientError::UnexpectedResponse(format!("Esperado ListResourceTemplatesResult, obtido {:?}", server_result)))
+            }
+        }).await
+    }
+
+
     /// Envia uma notificação `notifications/cancelled` para o servidor.
     pub async fn cancel_request(&mut self, request_id_to_cancel: RequestId, reason: Option<String>) -> Result<(), McpClientError> {
         let params = CancelledNotificationParam {
@@ -410,7 +442,8 @@ impl TestMcpClient {
         let json_payload = serde_json::to_string(&client_message)?;
         debug!("Cliente MCP enviando notificação Cancelled (para ID: {:?}): {}", request_id_to_cancel, json_payload);
 
-        self.ws_stream.send(WsMessage::Text(json_payload.into())).await?;
+        // CORRIGIDO: Convertido para Utf8Bytes
+        self.ws_stream.send(WsMessage::Text(Utf8Bytes::from(json_payload))).await?;
         Ok(())
     }
     

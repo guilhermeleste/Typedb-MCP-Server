@@ -61,11 +61,55 @@ async fn setup_test_environment() -> Result<(DockerComposeEnv, String)> {
     Ok((docker_env, MCP_SERVER_WS_URL.to_string()))
 }
 
+/// Helper para criar um banco de dados de teste usando o cliente MCP.
+///
+/// Esta função envia uma chamada à ferramenta `create_database` do servidor MCP.
+///
+/// # Arguments
+///
+/// * `client` - Uma referência mutável para `TestMcpClient` já conectado.
+/// * `db_name` - O nome do banco de dados a ser criado.
+///
+/// # Returns
+///
+/// Retorna `Ok(())` em caso de sucesso, ou um `anyhow::Error` em caso de falha
+/// na comunicação ou se o servidor MCP retornar um erro.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// // Dentro de uma função de teste async:
+/// let mut client = TestMcpClient::connect(&server_url, None, CONNECT_TIMEOUT, REQUEST_TIMEOUT).await?;
+/// let db_name = "meu_banco_de_teste";
+/// create_test_db(&mut client, db_name).await?;
+/// // ... prosseguir com o teste ...
+/// ```
 pub async fn create_test_db(client: &mut TestMcpClient, db_name: &str) -> Result<()> {
     client.call_tool("create_database", Some(json!({"name": db_name}))).await
         .with_context(|| format!("Falha ao criar banco de teste '{}'", db_name))?;
     Ok(())
 }
+
+/// Helper para deletar um banco de dados de teste usando o cliente MCP.
+///
+/// Esta função envia uma chamada à ferramenta `delete_database` do servidor MCP.
+///
+/// # Arguments
+///
+/// * `client` - Uma referência mutável para `TestMcpClient` já conectado.
+/// * `db_name` - O nome do banco de dados a ser deletado.
+///
+/// # Returns
+///
+/// Retorna `Ok(())` em caso de sucesso, ou um `anyhow::Error` em caso de falha
+/// na comunicação ou se o servidor MCP retornar um erro.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// // Dentro de uma função de teste async, após criar e usar o banco:
+/// delete_test_db(&mut client, db_name).await?;
+/// ```
 pub async fn delete_test_db(client: &mut TestMcpClient, db_name: &str) -> Result<()> {
     client.call_tool("delete_database", Some(json!({"name": db_name}))).await
         .with_context(|| format!("Falha ao deletar banco de teste '{}'", db_name))
@@ -75,6 +119,11 @@ pub async fn delete_test_db(client: &mut TestMcpClient, db_name: &str) -> Result
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial_test::serial]
+/// Testa se `list_resources` retorna os URIs e nomes esperados para recursos estáticos.
+///
+/// Este teste verifica se os recursos "info://typeql/query_types" e
+/// "info://typedb/transactions_and_tools" estão presentes na lista de recursos
+/// e se seus nomes, tipos MIME e descrições correspondem aos valores esperados.
 pub async fn test_list_static_resources_contains_expected_uris_and_names() -> Result<()> {
     let (docker_env, server_url) = setup_test_environment().await?;
     let mut client = TestMcpClient::connect(&server_url, None, CONNECT_TIMEOUT, REQUEST_TIMEOUT).await.context("Conexão MCP falhou")?;
@@ -104,6 +153,11 @@ pub async fn test_list_static_resources_contains_expected_uris_and_names() -> Re
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial_test::serial]
+/// Testa se `list_resource_templates` retorna o template de schema esperado.
+///
+/// Este teste verifica se o template "schema://current/{database_name}?type={schema_type}"
+/// está presente na lista de templates de recursos e se seus detalhes (nome, tipo MIME, descrição)
+/// correspondem aos valores esperados.
 pub async fn test_list_resource_templates_contains_schema_template() -> Result<()> {
     let (docker_env, server_url) = setup_test_environment().await?;
     let mut client = TestMcpClient::connect(&server_url, None, CONNECT_TIMEOUT, REQUEST_TIMEOUT).await.context("Conexão MCP falhou")?;

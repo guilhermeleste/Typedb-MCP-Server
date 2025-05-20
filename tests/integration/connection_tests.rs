@@ -12,6 +12,12 @@ use tracing::{debug, error, info, warn};
 // Usar anyhow para tratamento de erro mais flexível nos helpers
 pub use anyhow::Result; // Alterado para anyhow::Result
 
+/// Representa e gerencia um ambiente Docker Compose para testes de integração.
+///
+/// Esta struct fornece métodos para iniciar (`up`), parar (`down`),
+/// e interagir com serviços definidos em um arquivo `docker-compose.yml`.
+/// Cada instância utiliza um nome de projeto único para evitar conflitos
+/// entre execuções de teste paralelas.
 #[derive(Debug)]
 pub struct DockerComposeEnv {
     compose_file: String,
