@@ -80,3 +80,5 @@ dev-certs/
 # Se NÃO estiver usando vendoring no Dockerfile, pode ignorar:
 # vendor/
 # .cargo/config.toml # Se este arquivo for específico para vendoring
+
+/project_info/
