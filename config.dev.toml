@@ -1,19 +1,57 @@
+# Configurações para o ambiente de DESENVOLVIMENTO.
+# Estes valores são tipicamente usados com `docker-compose.yml` (não o de teste).
+# 
+# Para segredos como TYPEDB_PASSWORD, use o arquivo .env na raiz do projeto.
+# Consulte .env.example para as variáveis disponíveis.
+# TYPEDB_PASSWORD definida no .env (ou como variável de ambiente) será usada.
+# 
+# Variáveis de ambiente podem sobrescrever qualquer valor definido aqui.
+# Ex: MCP_TYPEDB__ADDRESS="outro.host.dev:1729"
+
 [server]
-address = "0.0.0.0"
-port_http = 8787
-port_https = 8443
-metrics_port = 9090
-tls_enabled = false
-cert_path = "/app/certs/mcp-server.crt"
-key_path = "/app/certs/mcp-server.key"
+# bind_address é usado pela struct config::Server
+# Os campos address, port_http, port_https, metrics_port, tls_enabled, cert_path, key_path
+# parecem ser de uma estrutura antiga ou não são diretamente mapeados para config::Server.
+# Vamos focar nos campos que existem em config::Server.
+# Se `tls_enabled` for true, `tls_cert_path` e `tls_key_path` são necessários.
+
+# bind_address = "0.0.0.0:8787" # Exemplo, se não usar TLS
+# tls_enabled = false
+# tls_cert_path = "/app/certs/generated-dev/mcp-server.crt" # Se tls_enabled = true
+# tls_key_path = "/app/certs/generated-dev/mcp-server.key"   # Se tls_enabled = true
+
+# metrics_bind_address = "0.0.0.0:9090" # Exemplo para métricas
+
+# Removendo campos não mapeados diretamente para `config::Server` para clareza
+# address = "0.0.0.0" # Campo antigo/não mapeado
+# port_http = 8787 # Campo antigo/não mapeado
+# port_https = 8443 # Campo antigo/não mapeado
+# metrics_port = 9090 # Campo antigo/não mapeado
+# tls_enabled = false # Usar server.tls_enabled
+# cert_path = "/app/certs/mcp-server.crt" # Usar server.tls_cert_path
+# key_path = "/app/certs/mcp-server.key"   # Usar server.tls_key_path
 
 [typedb]
-address = "typedb-server-dev:1729"
+address = "typedb-server-dev:1729" # Nome do serviço Docker para o TypeDB de desenvolvimento
 username = "admin"
-password = ""
-tls_enabled = false
-ca_path = "/app/certs/typedb-ca.pem"
+# A SENHA (TYPEDB_PASSWORD) DEVE VIR DO AMBIENTE (.env ou exportada)
+# password = "" # REMOVER ESTA LINHA - NUNCA ARMAZENAR SENHAS EM ARQUIVOS TOML
+tls_enabled = false # Para comunicação interna no Docker, TLS pode ser desabilitado
+# tls_ca_path = "/app/certs/generated-dev/rootCA.pem" # Se typedb.tls_enabled = true e usando CA customizada
+# ca_path = "/app/certs/typedb-ca.pem" # Campo antigo/não mapeado, usar typedb.tls_ca_path
 
 [auth]
-oauth_enabled = false
-oauth_jwks_uri = ""
+oauth_enabled = false # Geralmente desabilitado para desenvolvimento local fácil
+# jwks_uri = "" # Se oauth_enabled = true, defina o URI do JWKS
+# oauth_jwks_uri = "" # Campo antigo/não mapeado, usar auth.jwks_uri
+
+[logging]
+# Exemplo de configuração de log para desenvolvimento, mais verboso para o próprio app
+rust_log = "info,typedb_mcp_server_lib=debug,typedb_driver=info"
+
+# Outras seções como [cors], [rate_limit], [tracing] podem ser adicionadas aqui
+# se os defaults não forem suficientes para o ambiente de desenvolvimento.
+# Exemplo:
+# [tracing]
+# enabled = true
+# exporter_otlp_endpoint = "http://localhost:4317" # Se tiver um coletor OTLP local

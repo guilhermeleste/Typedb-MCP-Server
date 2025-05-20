@@ -1,4 +1,3 @@
-
 # Typedb-MCP-Server
 
 Servidor Rust de alta performance, seguro e extensível, atuando como gateway MCP (Model Context Protocol) para o banco de dados TypeDB. Expõe endpoints WebSocket (MCP), HTTP REST para métricas Prometheus, integra autenticação OAuth2 opcional, tracing distribuído (OpenTelemetry) e métricas detalhadas.
@@ -92,9 +91,13 @@ Consulte o [Guia de Instalação a partir do Código-Fonte](/docs/user_guide/03_
 
 ### Configuração Essencial
 
-A configuração é feita via arquivo TOML (padrão: `typedb_mcp_server_config.toml`) e/ou variáveis de ambiente (prefixo `MCP_`).
+A configuração é feita primariamente via arquivo TOML (padrão: `typedb_mcp_server_config.toml`) e pode ser sobrescrita ou complementada por variáveis de ambiente.
 
-**Exemplo Mínimo `typedb_mcp_server_config.toml`:**
+**1. Arquivo de Configuração TOML:**
+
+Crie ou utilize o arquivo `typedb_mcp_server_config.toml` (ou `config.dev.toml`, `config.test.toml` dependendo do ambiente).
+
+**Exemplo Mínimo (`typedb_mcp_server_config.toml`):**
 
 ```toml
 [typedb]
@@ -104,20 +107,58 @@ address = "localhost:1729"  # Endereço do seu TypeDB Server
 bind_address = "0.0.0.0:8787" # Onde o MCP Server escutará
 ```
 
-**Variável de Ambiente Obrigatória (se TypeDB usa autenticação):**
+**2. Variáveis de Ambiente e Arquivos `.env`:**
 
-```bash
-export TYPEDB_PASSWORD="sua_senha_typedb"
-```
+Variáveis de ambiente têm precedência sobre as configurações do arquivo TOML. Para facilitar o gerenciamento, especialmente em desenvolvimento local, você pode usar arquivos `.env`.
 
-**Importante:** Nunca coloque `TYPEDB_PASSWORD` diretamente no arquivo TOML.
+- **`.env.example`**: Este arquivo serve como um template e documentação para as variáveis de ambiente suportadas. Copie-o para `.env`.
+- **`.env`**: Crie este arquivo na raiz do projeto (copiando de `.env.example`) e preencha com seus valores locais. **Este arquivo não deve ser versionado se contiver segredos.**
 
-Para todas as opções de configuração, consulte a [Referência Completa de Configuração](/docs/reference/configuration.md).
+**Variáveis de Ambiente Chave:**
+
+- `TYPEDB_PASSWORD`: **Obrigatória** se o TypeDB usa autenticação.
+
+    ```bash
+    export TYPEDB_PASSWORD="sua_senha_typedb"
+    # Ou defina em seu arquivo .env:
+    # TYPEDB_PASSWORD=sua_senha_typedb
+    ```
+
+    **Importante:** Nunca coloque `TYPEDB_PASSWORD` diretamente no arquivo TOML.
+
+- `MCP_CONFIG_PATH`: Permite especificar um caminho alternativo para o arquivo de configuração TOML.
+
+    ```bash
+    export MCP_CONFIG_PATH="config/custom_config.toml"
+    # Ou defina em seu arquivo .env:
+    # MCP_CONFIG_PATH=config/custom_config.toml
+    ```
+
+- `RUST_LOG`: Controla o nível de log.
+
+    ```bash
+    export RUST_LOG="info,typedb_mcp_server=debug"
+    # Ou defina em seu arquivo .env:
+    # RUST_LOG=info,typedb_mcp_server=debug
+    ```
+
+**Sobrescrevendo Configurações TOML com Variáveis de Ambiente:**
+
+Qualquer configuração do arquivo TOML pode ser sobrescrita usando variáveis de ambiente. O formato é `MCP_<NOME_DA_SECAO>__<NOME_DO_CAMPO>=<VALOR>`.
+
+Exemplos:
+
+- `MCP_SERVER__BIND_ADDRESS="127.0.0.1:9000"`
+- `MCP_TYPEDB__ADDRESS="typedb.example.com:1729"`
+- `MCP_AUTH__OAUTH_ENABLED=false`
+
+Para todas as opções de configuração e variáveis de ambiente correspondentes, consulte a [Referência Completa de Configuração](/docs/reference/configuration.md) e o arquivo `.env.example`.
 
 Veja também:
 
-- [`typedb_mcp_server_config.toml`](./typedb_mcp_server_config.toml) (exemplo completo)
-- [`config.example.toml`](./config.example.toml) (template)
+- [`typedb_mcp_server_config.toml`](./typedb_mcp_server_config.toml) (configuração padrão)
+- [`config.example.toml`](./config.example.toml) (template para TOML)
+- [`.env.example`](./.env.example) (template para variáveis de ambiente)
 
 ### Execução
 

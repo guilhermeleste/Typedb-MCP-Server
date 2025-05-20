@@ -1,0 +1,13 @@
+FROM nginx:alpine
+
+# Copia o arquivo de configuração do Nginx que define o mock OAuth2 server e o health check endpoint
+COPY ./scripts/nginx-mock-oauth2.conf /etc/nginx/conf.d/default.conf
+
+# Copia o arquivo JWKS mock
+COPY ./mock_jwks.json /usr/share/nginx/html/.well-known/jwks.json
+
+# Expõe a porta que o Nginx escutará (definida no nginx-mock-oauth2.conf como 80)
+EXPOSE 80
+
+# O healthcheck do contêiner será gerenciado pelo docker-compose.test.yml, 
+# que usará o endpoint /health definido em nginx-mock-oauth2.conf.

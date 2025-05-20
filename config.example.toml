@@ -1,7 +1,13 @@
 # config.example.toml
 # Exemplo de arquivo de configuração para Typedb-MCP-Server.
-# Copie este arquivo para 'config.toml' e ajuste os valores conforme necessário.
-# Valores aqui podem ser sobrescritos por variáveis de ambiente prefixadas com 'MCP_'.
+# Copie este arquivo para um arquivo de configuração ativo (ex: `my_config.toml` ou `typedb_mcp_server_config.toml`)
+# e ajuste os valores conforme necessário.
+# 
+# Valores aqui podem ser sobrescritos por variáveis de ambiente.
+# Para segredos como TYPEDB_PASSWORD e configurações de desenvolvimento local,
+# é RECOMENDADO usar um arquivo .env. Consulte .env.example.
+# 
+# Lembre-se: TYPEDB_PASSWORD DEVE ser configurada via variável de ambiente (ou .env) e NUNCA neste arquivo.
 
 # Configurações para a conexão com o servidor TypeDB.
 [typedb]
@@ -9,7 +15,8 @@
 address = "localhost:1729"
 # Nome de usuário para autenticação com TypeDB (opcional, default: "admin" se omitido).
 username = "admin"
-# SENHA: A senha do TypeDB (`TYPEDB_PASSWORD`) DEVE ser configurada via variável de ambiente.
+# SENHA: A senha do TypeDB (`TYPEDB_PASSWORD`) DEVE ser configurada via variável de ambiente ou .env.
+# NUNCA coloque a senha diretamente aqui.
 
 # Habilita TLS para a conexão com o TypeDB (true/false).
 tls_enabled = false

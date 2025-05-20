@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::common::{
     client::TestMcpClient,
     auth_helpers::{self, Algorithm},
-    docker_helpers::DockerComposeEnv,
+    docker_helpers::DockerComposeEnv, // DockerComposeEnv é importado aqui
 };
 use rmcp::model::{CallToolResult, RawContent};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};

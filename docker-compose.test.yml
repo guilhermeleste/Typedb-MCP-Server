@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        APP_NAME: typedb-mcp-server # Garante que estamos construindo o binário principal
+        APP_NAME: typedb_mcp_server # CORRIGIDO para consistência com Dockerfile ENV
     ports:
       - "8089" # Docker atribuirá uma porta de host aleatória, mapeada para a porta 8089 do contêiner
     depends_on:
@@ -14,26 +14,31 @@ services:
       - mock-oauth2-server # Adicionada dependência
     networks:
       - typedb_mcp_test_network
+    environment: # Adicionado para garantir a conexão correta com o TypeDB
+      - MCP_TYPEDB__ADDRESS=typedb-server-it:1729
+      - RUST_LOG=info,typedb_mcp_server_lib=trace,typedb_driver=trace # Para logs detalhados durante o teste
     restart: "no"
+    healthcheck: # Exemplo, garantir que isso seja apropriado para seu servidor MCP
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8787/health || exit 1"] # CORRIGIDO para porta 8787
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
   typedb-server-it:
     image: typedb/typedb:3.2.0
     environment:
       - TYPEDB_SERVER_OPTS=--server.authentication.enable=false
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/health" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      disable: true
     networks:
       - typedb_mcp_test_network
 
   mock-oauth2-server:
     build:
       context: .
-      dockerfile: Dockerfile # Assumindo que o Dockerfile do projeto principal pode ser usado ou adaptado
-      args:
-        APP_NAME: mock-oauth2-server # Nome do binário, se aplicável
+      dockerfile: Dockerfile.mock-oauth2 # CORRIGIDO para usar o Dockerfile do mock
+    # APP_NAME não é mais necessário aqui, pois o Dockerfile.mock-oauth2 não o utiliza
     # image: mock-oauth2-server-image # Ou use uma imagem pré-construída se disponível
     ports:
       - "8080" # Docker atribuirá uma porta de host aleatória, mapeada para a porta 8080 do contêiner
@@ -43,7 +48,17 @@ services:
     networks:
       - typedb_mcp_test_network
     restart: "no"
+    healthcheck: # Exemplo, garantir que isso seja apropriado para o Nginx
+      test: ["CMD-SHELL", "wget --spider -q http://localhost/health || exit 1"] # CORRIGIDO para corresponder ao endpoint em nginx-mock-oauth2.conf
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 networks:
   typedb_mcp_test_network:
     driver: bridge
+
+volumes:
+  typedb_data_it:
+  typedb_logs_it:

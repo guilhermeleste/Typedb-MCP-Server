@@ -10,9 +10,7 @@ key_path = "/app/certs/mcp-server.key"
 [typedb]
 address = "typedb-server-it:1729"
 username = "admin"
-password = "passaword"
 tlsEnabled = false
-ca_path = "/app/certs/typedb-ca.pem"
 
 [auth]
 oauth_enabled = false

@@ -1,14 +1,20 @@
 # -----------------------------------------------------------------------------
-# Arquivo de Configuração Exemplo para Typedb-MCP-Server
+# Arquivo de Configuração Padrão para Typedb-MCP-Server
 # -----------------------------------------------------------------------------
 # Este arquivo demonstra todas as opções de configuração disponíveis.
-# Descomente e ajuste as seções e campos conforme necessário.
+# Copie para um arquivo como `my_config.toml` e ajuste conforme necessário, 
+# ou modifique este diretamente se for o arquivo principal de configuração.
+# 
+# Para desenvolvimento local, considere usar um arquivo .env para sobrescrever
+# valores específicos e para definir segredos como TYPEDB_PASSWORD.
+# Consulte .env.example para mais detalhes.
 #
 # Ordem de Precedência da Configuração:
 # 1. Valores padrão codificados na aplicação.
 # 2. Valores deste arquivo (se presente e nomeado corretamente, ou apontado por MCP_CONFIG_PATH).
-# 3. Variáveis de ambiente (prefixo: MCP_, separador de aninhamento: __).
+# 3. Valores de variáveis de ambiente (prefixo: MCP_, separador de aninhamento: __).
 #    Ex: MCP_TYPEDB__ADDRESS="outra.host:1729" sobrescreverá typedb.address.
+#    TYPEDB_PASSWORD DEVE ser definida como variável de ambiente.
 # -----------------------------------------------------------------------------
 
 # =============================================================================

@@ -81,7 +81,7 @@ async fn test_create_database_succeeds() -> Result<()> {
     let db_name = unique_db_name("create_ok");
     let mut client = mcp_client_with_scope("typedb:manage_databases").await;
     let result = client.call_tool("create_database", Some(json!({"name": db_name}))).await;
-    assert!(result.is_ok(), "Esperado sucesso ao criar banco: {:?}", result.as_ref().err());
+    assert!(result.is_ok(), "Esperado sucesso ao criar banco: {:?}" , result.as_ref().err());
     let text_content = get_text_from_call_result(result.unwrap());
     assert_eq!(text_content, "OK");
     delete_test_db(&mut client, &db_name).await;

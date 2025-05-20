@@ -308,7 +308,7 @@ impl DockerComposeEnv {
             .arg(internal_port.to_string())
             .output()
             .context(format!(
-                "Falha ao executar 'docker compose port {} {}' para o projeto {}",
+                "Falha ao executar \'docker compose port {} {}\' para o projeto {}",
                 service_name, internal_port, self.project_name
             ))?;
 
@@ -385,21 +385,21 @@ impl DockerComposeEnv {
         &self,
         service_name: &str,
         timeout_duration: Duration,
-    ) -> Result<()> { // Alterado para anyhow::Result
-        info!("Aguardando serviço '{}' ficar saudável no projeto '{}' (timeout: {:?})", service_name, self.project_name, timeout_duration);
+    ) -> Result<()> { 
+        info!("Aguardando serviço \'{}\' ficar saudável no projeto \'{}\' (timeout: {:?})", service_name, self.project_name, timeout_duration);
         let start_time = Instant::now();
         let check_interval = Duration::from_secs(2);
 
         loop {
             if start_time.elapsed() >= timeout_duration {
-                let err_msg = format!("Timeout esperando pelo serviço '{}' no projeto '{}' ficar saudável.", service_name, self.project_name);
+                let err_msg = format!("Timeout esperando pelo serviço \'{}\' no projeto \'{}\' ficar saudável.", service_name, self.project_name);
                 error!("{}", err_msg);
-                self.logs_all_services().ok(); // Tenta logar na falha
-                bail!(err_msg); // Usa bail! de anyhow
+                self.logs_all_services().ok(); 
+                bail!(err_msg); 
             }
 
             let output = Command::new("docker")
-                .arg("compose") // Adiciona o subcomando "compose"
+                .arg("compose") 
                 .arg("-f")
                 .arg(&self.compose_file)
                 .arg("-p")
@@ -419,7 +419,7 @@ impl DockerComposeEnv {
 
             let container_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if container_id.is_empty() {
-                warn!("ID do contêiner para o serviço '{}' está vazio. Tentando novamente...", service_name);
+                warn!("ID do contêiner para o serviço \'{}\' está vazio. Tentando novamente...", service_name);
                 tokio::time::sleep(check_interval).await;
                 continue;
             }
@@ -427,26 +427,83 @@ impl DockerComposeEnv {
             let health_output = Command::new("docker")
                 .arg("inspect")
                 .arg("--format")
-                .arg("{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}")
+                .arg("{{json .State}}") 
                 .arg(&container_id)
                 .output()
-                .context(format!("Falha ao executar 'docker inspect' para o container ID '{}'", container_id))?;
-
+                .context(format!("Falha ao executar \'docker inspect\' para o container ID \'{}\'", container_id))?;
 
             if health_output.status.success() {
-                let health_status = String::from_utf8_lossy(&health_output.stdout).trim().to_lowercase();
-                debug!("Status de saúde/estado para serviço '{}' (ID: {}): '{}'", service_name, container_id, health_status);
-                if health_status == "healthy" || (health_status == "running" && !service_has_healthcheck(self, service_name).unwrap_or(false)) {
-                    info!("Serviço '{}' está saudável/rodando no projeto '{}'.", service_name, self.project_name);
-                    return Ok(());
-                } else if health_status == "unhealthy" {
-                     let err_msg = format!("Serviço '{}' no projeto '{}' está unhealthy.", service_name, self.project_name);
-                     error!("{}", err_msg);
-                     self.logs_all_services().ok();
-                     bail!(err_msg);
+                let state_json_str = String::from_utf8_lossy(&health_output.stdout);
+                debug!("Estado JSON completo para serviço \'{}\' (ID: {}): {}", service_name, container_id, state_json_str);
+
+                match serde_json::from_str::<serde_json::Value>(&state_json_str) {
+                    Ok(state_value) => {
+                        let health_status = state_value.get("Health").and_then(|h| h.get("Status")).and_then(|s| s.as_str()).unwrap_or("").to_lowercase();
+                        let container_status = state_value.get("Status").and_then(|s| s.as_str()).unwrap_or("").to_lowercase();
+                        
+                        debug!("Status de saúde extraído para serviço '{}' (ID: {}): '{}', Status do contêiner: '{}'", service_name, container_id, health_status, container_status);
+
+                        if health_status == "healthy" {
+                            info!("Serviço '{}' está saudável (health_status: healthy) no projeto '{}'.", service_name, self.project_name);
+                            return Ok(());
+                        }
+                        
+                        if health_status == "unhealthy" {
+                             let health_log_details = state_value.get("Health")
+                                .and_then(|h| h.get("Log"))
+                                .map_or_else(
+                                    || "N/A".to_string(),
+                                    |l_arr| l_arr.as_array().map_or_else(
+                                        || "N/A".to_string(),
+                                        |logs| logs.iter()
+                                            .filter_map(|log_entry| log_entry.get("Output"))
+                                            .filter_map(|output| output.as_str())
+                                            .collect::<Vec<&str>>()
+                                            .join("\n") // Usar \n para nova linha literal no log, não \\n
+                                    )
+                                );
+                            let err_msg = format!(
+                                "Serviço '{}' no projeto '{}' está unhealthy. Log de Healthcheck: {}",
+                                service_name, self.project_name, health_log_details
+                            );
+                            error!("{}", err_msg);
+                            self.logs_all_services().ok();
+                            bail!(err_msg);
+                        }
+
+                        // Se health_status não é 'healthy' nem 'unhealthy'
+                        if container_status == "running" {
+                            // Caso especial para typedb-server-it que tem healthcheck: disable: true no compose
+                            if service_name == "typedb-server-it" {
+                                info!("Serviço '{}' (typedb-server-it) está rodando (container_status: running) e seu healthcheck no compose está desabilitado. Considerando pronto. Projeto: '{}'.", service_name, self.project_name);
+                                return Ok(());
+                            }
+
+                            // Lógica refinada para outros serviços (incluindo typedb-mcp-server-it)
+                            if health_status.is_empty() { // Health.Status é "" ou Health não existe
+                                // Sem healthcheck definido ou ativo pela imagem/compose, ou ainda não reportou status.
+                                // Se está rodando, consideramos pronto.
+                                info!("Serviço '{}' está rodando (container_status: running) e Health.Status está vazio. Considerando pronto. Projeto: '{}'.", service_name, self.project_name);
+                                return Ok(());
+                            } else if health_status == "starting" {
+                                debug!("Serviço '{}' (ID: {}) está rodando, Health.Status é 'starting'. Contêiner: '{}'. Aguardando healthcheck se tornar 'healthy'...", service_name, container_id, container_status);
+                                // Continua no loop para esperar ficar 'healthy'
+                            } else {
+                                // Health.Status é algo diferente de "", "starting", "healthy", "unhealthy".
+                                // Indica um healthcheck ativo que ainda não passou ou um estado inesperado.
+                                debug!("Serviço '{}' (ID: {}) está rodando, Health.Status é '{}'. Contêiner: '{}'. Aguardando healthcheck se tornar 'healthy'...", service_name, container_id, health_status, container_status);
+                                // Continua no loop
+                            }
+                        } else {
+                             debug!("Serviço '{}' (ID: {}) não está 'running'. Saúde: '{}', Contêiner: '{}'. Aguardando...", service_name, container_id, health_status, container_status);
+                        }
+                    },
+                    Err(e) => {
+                        warn!("Falha ao parsear JSON do estado do contêiner \'{}\' (ID: {}): {}. Output: {}", service_name, container_id, e, state_json_str);
+                    }
                 }
             } else {
-                warn!("Falha ao inspecionar saúde do contêiner '{}' (ID: {}). Stderr: {}", service_name, container_id, String::from_utf8_lossy(&health_output.stderr));
+                warn!("Falha ao inspecionar saúde do contêiner \'{}\' (ID: {}). Stderr: {}", service_name, container_id, String::from_utf8_lossy(&health_output.stderr));
             }
 
             tokio::time::sleep(check_interval).await;
@@ -454,47 +511,27 @@ impl DockerComposeEnv {
     }
 }
 
-fn service_has_healthcheck(env: &DockerComposeEnv, service_name: &str) -> Result<bool> {
-    let output = Command::new("docker")
-        .arg("compose") // Adiciona o subcomando "compose"
-        .arg("-f")
-        .arg(&env.compose_file)
-        .arg("-p")
-        .arg(&env.project_name)
-        .arg("ps")
-        .arg("-q")
-        .arg(service_name)
-        .output()
-        .context(format!("Falha ao obter ID do container para o serviço {}", service_name))?;
-
-    if !output.status.success() || output.stdout.is_empty() {
-        return Ok(false);
-    }
-    let container_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if container_id.is_empty() { return Ok(false); }
-
-    let inspect_output = Command::new("docker")
-        .arg("inspect")
-        .arg("--format")
-        .arg("{{.State.Health}}")
-        .arg(&container_id)
-        .output()
-        .context(format!("Falha ao inspecionar o container {}", container_id))?;
-    
-    if inspect_output.status.success() {
-        let health_obj_str = String::from_utf8_lossy(&inspect_output.stdout).trim().to_lowercase();
-        return Ok(!(health_obj_str.is_empty() || health_obj_str == "<no value>" || health_obj_str == "null"));
-    }
-    Ok(false)
-}
-
 impl Drop for DockerComposeEnv {
     fn drop(&mut self) {
-        info!("Executando Drop para DockerComposeEnv (projeto: {}), derrubando ambiente...", self.project_name);
-        if let Err(e) = self.down(true) {
-            error!("Erro ao derrubar ambiente Docker Compose no drop para o projeto '{}': {}", self.project_name, e);
-        } else {
-            info!("Ambiente Docker Compose para o projeto '{}' derrubado com sucesso no drop.", self.project_name);
+        info!("Limpando ambiente Docker Compose para o projeto: {} (via Drop)", self.project_name);
+        // Tenta derrubar o ambiente, mas não falha o teste se `drop` falhar.
+        // Opcionalmente, pode-se decidir se `remove_volumes` deve ser true ou false aqui.
+        // Por padrão, para limpeza, `true` é geralmente melhor em testes.
+        if let Err(e) = self.down(true) { // remove_volumes = true
+            error!("Falha ao derrubar o ambiente Docker Compose no drop para o projeto {}: {}", self.project_name, e);
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_docker_compose_env_creation() {
+        let _env = DockerComposeEnv::new("caminho/para/docker-compose.yml", "teste_projeto");
+        // Adicione asserções conforme necessário para verificar a criação do ambiente
+    }
+
+    // Adicione mais testes conforme necessário
 }

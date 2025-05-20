@@ -1,4 +1,3 @@
-
 # Diretórios e arquivos de build
 /target/
 **/*.rlib
@@ -20,9 +19,10 @@ Cargo.lock
 *.orig
 *.rej
 *.DS_Store
-*.env
+# Ignora todos os arquivos .env exceto .env.example
 .env
 .env.*
+!.env.example
 
 # Configuração local e arquivos de exemplo
 config.toml
@@ -30,14 +30,17 @@ config.local.toml
 *.local.toml
 *.example.toml
 *.example.env
+# Mantém .example.toml, mas ignora outros .toml que possam ser cópias locais
+# config.example.toml # Já coberto por *.example.toml
 
 # Arquivos de configuração sensíveis
-typedb_mcp_server_config.toml
+# typedb_mcp_server_config.toml # Deve ser ignorado se contiver segredos e não for um template
 
 # Certificados e chaves privadas
 /certs/
 /certs/*
 !/certs/example-certs/
+!/certs/example-certs/*
 
 # Diretórios de IDE/editor
 /.vscode/
