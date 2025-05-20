@@ -16,7 +16,7 @@
 // limitations under the License.
 
 //! Define um cliente MCP de teste para interagir com o `Typedb-MCP-Server`
-//! durante os testes de integração e BDD.
+//! durante os testes de integração.
 
 // std imports
 use std::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
@@ -36,82 +36,81 @@ use tokio_tungstenite::{
 use futures_util::{StreamExt, SinkExt};
 
 // HTTP types import
-use http::{Request as HttpRequest, header::AUTHORIZATION};
+use http::{Request as HttpRequest, header::AUTHORIZATION, StatusCode as HttpStatus};
+// axum::body::to_bytes não é mais necessário para o fluxo de erro do handshake.
+// Se for usado em outros lugares, o import deve ser axum::body::to_bytes.
+// Para o erro, vamos manter AxumBoxError.
+use axum::BoxError as AxumBoxError;
+
 
 // URL parsing import
 use url::Url;
 
 // Serde e RMCP imports
-use serde::{Serialize, de::DeserializeOwned};
+use serde::de::DeserializeOwned;
 use serde_json::Value as JsonValue;
 use rmcp::model::{
     ClientJsonRpcMessage, ServerJsonRpcMessage, RequestId, NumberOrString,
-    JsonRpcRequest, JsonRpcResponse, JsonRpcError, JsonRpcVersion,
-    ClientRequest, ServerResult,
-    CallToolRequestParam, CallToolResult, ErrorData, ErrorCode,
-    ListToolsRequestParam, ListToolsResult,
+    JsonRpcRequest, JsonRpcResponse, JsonRpcError, JsonRpcVersion2_0,
+    ClientRequest, ServerResult, ErrorCode,
+    CallToolRequestParam, CallToolResult,
+    ListToolsResult,
     ReadResourceRequestParam, ReadResourceResult,
     InitializeRequestParam, InitializeResult,
-    // Adicionar novos tipos para as requisições e notificações
-    ShutdownRequestMethod, // Assumindo que existe para `ClientRequest::ShutdownRequest`
-    WriteResourceRequestParam, WriteResourceResult, WriteResourceRequestMethod,
-    DeleteResourceRequestParam, DeleteResourceResult, DeleteResourceRequestMethod,
-    ListResourcesRequestParam, ListResourcesResult, ListResourcesRequestMethod,
-    WatchResourceRequestParam, WatchResourceResult, WatchResourceRequestMethod,
-    UnwatchResourceRequestParam, UnwatchResourceResult, UnwatchResourceRequestMethod,
-    ClientNotification, ClientNotificationMethod, CancelRequestParams, CancelRequestMethod,
-    Method, // Para ter acesso a CallToolRequestMethod, etc.
+    ListResourcesResult, ListResourcesRequestMethod,
+    ClientNotification,
+    CancelledNotificationParam, CancelledNotificationMethod,
+    InitializeResultMethod, CallToolRequestMethod, ListToolsRequestMethod, ReadResourceRequestMethod,
+    PaginatedRequestParam, Extensions, InitializedNotificationMethod
 };
 
 // Tracing import
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 /// Próximo ID para requisições JSON-RPC.
 static NEXT_JSON_RPC_ID: AtomicU32 = AtomicU32::new(1);
 
-/// Gera um novo ID de requisição JSON-RPC.
+/// Gera um novo ID de requisição JSON-RPC numérico.
 fn new_req_id() -> RequestId {
-    NumberOrString::Number(NEXT_JSON_RPC_ID.fetch_add(1, AtomicOrdering::SeqCst).into())
+    NumberOrString::Number(NEXT_JSON_RPC_ID.fetch_add(1, AtomicOrdering::SeqCst))
 }
 
 /// Erros que podem ocorrer ao usar o `TestMcpClient`.
 #[derive(Debug, thiserror::Error)]
 pub enum McpClientError {
-    /// Erro originado na camada WebSocket (tokio-tungstenite).
     #[error("Erro WebSocket: {0}")]
     WebSocket(#[from] WsError),
 
-    /// Erro de serialização ou desserialização JSON.
     #[error("Erro JSON: {0}")]
     Json(#[from] serde_json::Error),
 
-    /// Erro ao parsear a URL do servidor.
     #[error("Erro ao parsear URL: {0}")]
     UrlParse(#[from] url::ParseError),
 
-    /// Erro ao construir a requisição HTTP para o handshake WebSocket.
-    #[error("Erro na requisição HTTP: {0}")]
+    #[error("Erro na requisição HTTP (handshake): {0}")]
     HttpRequest(#[from] http::Error),
 
-    /// O servidor MCP retornou uma resposta de erro.
-    #[error("Erro MCP do Servidor: code={code}, message='{message}', data={data:?}")]
+    #[error("Falha no handshake WebSocket: Status {0}, Body: {1:?}")]
+    HandshakeFailed(HttpStatus, Option<String>),
+
+    #[error("Erro MCP do Servidor: code={code:?}, message='{message}', data={data:?}")]
     McpErrorResponse {
         code: ErrorCode,
         message: String,
         data: Option<JsonValue>,
     },
 
-    /// Timeout esperando por uma resposta do servidor.
     #[error("Timeout esperando resposta do servidor")]
     Timeout,
 
-    /// A conexão foi fechada inesperadamente.
     #[error("Conexão fechada inesperadamente")]
     ConnectionClosed,
 
-    /// Resposta inesperada do servidor (ex: tipo de resultado não correspondente).
     #[error("Resposta inesperada do servidor: {0}")]
     UnexpectedResponse(String),
+
+    #[error("Erro ao converter corpo da resposta HTTP: {0}")]
+    BodyConversionError(AxumBoxError), // Renomeado para clareza, ainda usa AxumBoxError
 }
 
 /// Cliente de teste para interagir com o `Typedb-MCP-Server`.
@@ -123,12 +122,6 @@ pub struct TestMcpClient {
 
 impl TestMcpClient {
     /// Conecta-se ao servidor MCP no `server_url_str`.
-    ///
-    /// # Argumentos
-    /// * `server_url_str`: A URL completa do endpoint WebSocket do servidor (ex: "ws://localhost:8787/mcp/ws").
-    /// * `auth_token`: Opcional. Um token JWT para incluir no header `Authorization`.
-    /// * `connect_timeout`: Timeout para a tentativa de conexão.
-    /// * `default_request_timeout`: Timeout padrão para esperar respostas do servidor.
     pub async fn connect(
         server_url_str: &str,
         auth_token: Option<String>,
@@ -138,36 +131,38 @@ impl TestMcpClient {
         let url = Url::parse(server_url_str)?;
 
         let mut request_builder = HttpRequest::builder()
-            .method("GET") // Método padrão para handshake WebSocket
+            .method("GET")
             .uri(url.as_str());
 
         if let Some(token) = auth_token {
-            request_builder = request_builder.header(
-                AUTHORIZATION,
-                format!("Bearer {}", token)
-            );
+            let auth_value = format!("Bearer {}", token);
+            match http::HeaderValue::from_str(&auth_value) {
+                Ok(header_val) => { request_builder = request_builder.header(AUTHORIZATION, header_val); }
+                Err(e) => return Err(McpClientError::HttpRequest(http::Error::from(e))),
+            }
         }
         
-        // Adiciona headers padrão para WebSocket
         request_builder = request_builder
             .header("Connection", "Upgrade")
             .header("Upgrade", "websocket")
             .header("Sec-WebSocket-Version", "13")
-            .header("Sec-WebSocket-Key", tokio_tungstenite::tungstenite::handshake::client::generate_key()); // Chave aleatória
+            .header("Sec-WebSocket-Key", tokio_tungstenite::tungstenite::handshake::client::generate_key());
 
         let request = request_builder.body(())?;
 
         info!("Tentando conectar cliente MCP de teste a: {}", server_url_str);
 
         match timeout(connect_timeout_duration, connect_async(request)).await {
-            Ok(Ok((ws_stream, response))) => {
-                debug!("Handshake WebSocket bem-sucedido. Resposta do servidor: {:?}", response.status());
-                if !response.status().is_informational() && !response.status().is_success() {
-                    // O status 101 Switching Protocols é o esperado. Outros podem indicar erro.
-                    // A biblioteca tokio-tungstenite geralmente lida com isso, mas uma verificação extra pode ser útil.
-                    warn!("Resposta HTTP inesperada no handshake WebSocket: {}", response.status());
-                    // Mesmo com um status não-101, connect_async pode ter sucesso se o upgrade ocorrer.
-                    // Se for um erro real (ex: 401), connect_async deve falhar.
+            Ok(Ok((ws_stream, response))) => { // response é tokio_tungstenite::tungstenite::http::Response<Option<Vec<u8>>>
+                let status = response.status();
+                debug!("Handshake WebSocket. Resposta do servidor: {}", status);
+                if status != HttpStatus::SWITCHING_PROTOCOLS {
+                    // CORREÇÃO AQUI: Ler o corpo diretamente do response de tungstenite
+                    let body_option_vec_u8 = response.into_body(); // Isto retorna Option<Vec<u8>>
+                    let body_string = body_option_vec_u8.and_then(|bytes| String::from_utf8(bytes).ok());
+                    
+                    warn!("Resposta HTTP inesperada no handshake WebSocket: {}. Corpo: {:?}", status, body_string);
+                    return Err(McpClientError::HandshakeFailed(status, body_string));
                 }
                 info!("Cliente MCP de teste conectado com sucesso a: {}", server_url_str);
                 Ok(TestMcpClient { ws_stream, default_timeout: default_request_timeout })
@@ -183,43 +178,41 @@ impl TestMcpClient {
         }
     }
 
-    /// Envia uma mensagem JSON-RPC e aguarda a resposta correspondente.
-    ///
-    /// Este é um método genérico. Para maior segurança de tipo, use os métodos específicos
-    /// como `call_tool`, `list_tools`, etc.
-    ///
-    /// # Argumentos
-    /// * `method_name`: O nome do método JSON-RPC (ex: "tools/call").
-    /// * `params`: Os parâmetros para o método, que devem ser serializáveis para JSON.
-    /// * `expected_server_result_variant_fn`: Uma função que tenta converter o `ServerResult` genérico
-    ///   para o tipo de resultado específico esperado (`RespResult`).
     async fn send_request_and_get_response<R, F>(
         &mut self,
         client_request_payload: rmcp::model::ClientRequest,
         expected_server_result_variant_fn: F,
     ) -> Result<R, McpClientError>
     where
-        // rmcp::model::ClientRequest deve implementar Serialize e Debug.
         R: DeserializeOwned + std::fmt::Debug,
         F: FnOnce(ServerResult) -> Result<R, McpClientError>,
     {
         let req_id = new_req_id();
         let rpc_request = JsonRpcRequest {
-            jsonrpc: JsonRpcVersion::V2_0,
+            jsonrpc: JsonRpcVersion2_0::default(),
             id: req_id.clone(),
             request: client_request_payload,
         };
         let client_message = ClientJsonRpcMessage::Request(rpc_request);
 
         let json_payload = serde_json::to_string(&client_message)?;
-        debug!("Cliente MCP enviando (ID: {:?}): {}", req_id, json_payload);
+        let request_id_for_log = match &client_message {
+            ClientJsonRpcMessage::Request(req) => Some(&req.id),
+            _ => None,
+        };
+        debug!("Cliente MCP enviando (ID: {:?}): {}", request_id_for_log, json_payload);
 
-        self.ws_stream.send(WsMessage::Text(json_payload)).await?;
+        self.ws_stream.send(WsMessage::Text(json_payload.into())).await?;
 
+        let op_start_time = std::time::Instant::now();
         loop {
-            match timeout(self.default_timeout, self.ws_stream.next()).await {
+            if op_start_time.elapsed() > self.default_timeout {
+                error!("Timeout esperando resposta do servidor para requisição ID {:?}", req_id);
+                return Err(McpClientError::Timeout);
+            }
+            match timeout(Duration::from_millis(200), self.ws_stream.next()).await {
                 Ok(Some(Ok(WsMessage::Text(text)))) => {
-                    debug!("Cliente MCP recebeu (tentando ID: {:?}): {}", req_id, text);
+                    trace!("Cliente MCP recebeu (esperando ID: {:?}): {}", req_id, text);
                     match serde_json::from_str::<ServerJsonRpcMessage>(&text) {
                         Ok(ServerJsonRpcMessage::Response(JsonRpcResponse { id: resp_id, result, .. })) if resp_id == req_id => {
                             debug!("Resposta MCP recebida para ID {:?}: {:?}", resp_id, result);
@@ -234,18 +227,18 @@ impl TestMcpClient {
                             });
                         }
                         Ok(ServerJsonRpcMessage::Notification(notification)) => {
-                            debug!("Cliente MCP recebeu notificação (ignorando ao esperar resposta para {:?}): {:?}", req_id, notification);
-                            // Continuar esperando pela resposta da requisição
+                            debug!("Cliente MCP recebeu notificação (ignorando enquanto espera resposta para {:?}): {:?}", req_id, notification);
                         }
                         Ok(other_message_type) => {
-                             warn!("Cliente MCP recebeu tipo de mensagem inesperado (ID {:?}) enquanto esperava resposta para {:?}: {:?}", other_message_type.message_id(), req_id, other_message_type);
-                            // Continuar esperando
+                            let received_msg_id_for_log: Option<&RequestId> = other_message_type.message_id_for_logging();
+                            if received_msg_id_for_log.map_or(true, |id| id != &req_id) {
+                                trace!("Cliente MCP recebeu mensagem (ID {:?}) não relacionada à requisição pendente (ID {:?}). Mensagem: {:?}", received_msg_id_for_log, req_id, other_message_type);
+                            } else {
+                                warn!("Cliente MCP recebeu tipo de mensagem inesperado ({:?}) enquanto esperava resposta para {:?}: {:?}", received_msg_id_for_log, req_id, other_message_type);
+                            }
                         }
                         Err(e) => {
-                            error!("Erro ao desserializar mensagem do servidor (esperando ID {:?}): {}. Conteúdo: {}", req_id, e, text);
-                            // Não necessariamente um erro fatal para *esta* requisição, pode ser uma mensagem malformada não relacionada.
-                            // Mas se persistir, pode indicar um problema.
-                            // Por simplicidade, continuamos, mas em um cliente robusto, pode haver lógica de retentativa ou erro.
+                            warn!("Erro ao desserializar mensagem do servidor (esperando ID {:?}): {}. Conteúdo: '{}'", req_id, e, text);
                         }
                     }
                 }
@@ -254,8 +247,7 @@ impl TestMcpClient {
                     return Err(McpClientError::ConnectionClosed);
                 }
                 Ok(Some(Ok(other_ws_msg))) => {
-                    debug!("Cliente MCP recebeu mensagem WebSocket não-texto (esperando ID {:?}): {:?}", req_id, other_ws_msg);
-                    // Ignorar Ping, Pong, Binary, etc.
+                    trace!("Cliente MCP recebeu mensagem WebSocket não-texto (esperando ID {:?}): {:?}", req_id, other_ws_msg);
                 }
                 Ok(Some(Err(e))) => {
                     error!("Erro na stream WebSocket (esperando ID {:?}): {}", req_id, e);
@@ -266,22 +258,21 @@ impl TestMcpClient {
                     return Err(McpClientError::ConnectionClosed);
                 }
                 Err(_) => {
-                    error!("Timeout esperando resposta do servidor para requisição ID {:?}", req_id);
-                    return Err(McpClientError::Timeout);
+                    trace!("Timeout de leitura individual (200ms) para ID {:?}, continuando espera.", req_id);
                 }
             }
         }
     }
 
-    /// Chama a ferramenta `initialize`.
+    /// Envia a requisição `initialize`.
     pub async fn initialize(
         &mut self,
         params: InitializeRequestParam,
     ) -> Result<InitializeResult, McpClientError> {
         let client_request = ClientRequest::InitializeRequest(rmcp::model::Request {
-            method: Method::InitializeRequestMethod(rmcp::model::InitializeRequestMethod::default()),
+            method: InitializeResultMethod::default(),
             params,
-            extensions: Default::default(),
+            extensions: Extensions::default(),
         });
         self.send_request_and_get_response(client_request, |server_result| {
             if let ServerResult::InitializeResult(res) = server_result {
@@ -292,36 +283,40 @@ impl TestMcpClient {
         }).await
     }
 
-    /// Envia a requisição `shutdown` para o servidor.
-    pub async fn shutdown(&mut self) -> Result<(), McpClientError> {
-        let client_request = ClientRequest::ShutdownRequest(rmcp::model::Request {
-            method: Method::ShutdownRequestMethod(ShutdownRequestMethod::default()),
-            params: (), // Shutdown não tem parâmetros
-            extensions: Default::default(),
-        });
-        self.send_request_and_get_response(client_request, |server_result| {
-            if let ServerResult::ShutdownResult(_res) = server_result { // _res é ()
-                Ok(())
-            } else {
-                Err(McpClientError::UnexpectedResponse(format!("Esperado ShutdownResult, obtido {:?}", server_result)))
-            }
-        }).await
+    /// Envia a notificação `initialized` para o servidor.
+    pub async fn initialized(&mut self) -> Result<(), McpClientError> {
+        let notification_payload_no_param = rmcp::model::NotificationNoParam {
+            method: InitializedNotificationMethod::default(),
+            extensions: Extensions::default(),
+        };
+        let client_notification_enum_variant = ClientNotification::InitializedNotification(notification_payload_no_param);
+
+        let rpc_notification_wrapper = rmcp::model::JsonRpcNotification {
+            jsonrpc: JsonRpcVersion2_0::default(),
+            notification: client_notification_enum_variant,
+        };
+        let client_message = ClientJsonRpcMessage::Notification(rpc_notification_wrapper);
+
+        let json_payload = serde_json::to_string(&client_message)?;
+        debug!("Cliente MCP enviando notificação Initialized: {}", json_payload);
+        self.ws_stream.send(WsMessage::Text(json_payload.into())).await?;
+        Ok(())
     }
 
-    /// Chama a ferramenta `tools/call`.
+    /// Chama uma ferramenta MCP genérica.
     pub async fn call_tool(
         &mut self,
         tool_name: impl Into<String>,
         arguments: Option<JsonValue>,
     ) -> Result<CallToolResult, McpClientError> {
         let params = CallToolRequestParam {
-            name: tool_name.into().into(), // String -> Cow<'static, str>
-            arguments: arguments.and_then(|v| v.as_object().cloned()), // JsonValue -> Option<JsonObject>
+            name: tool_name.into().into(),
+            arguments: arguments.and_then(|v| v.as_object().cloned()),
         };
         let client_request = ClientRequest::CallToolRequest(rmcp::model::Request {
-            method: Method::CallToolRequestMethod(rmcp::model::CallToolRequestMethod::default()),
+            method: CallToolRequestMethod::default(),
             params,
-            extensions: Default::default(),
+            extensions: Extensions::default(),
         });
 
         self.send_request_and_get_response(client_request, |server_result| {
@@ -333,15 +328,15 @@ impl TestMcpClient {
         }).await
     }
 
-    /// Chama a ferramenta `tools/list`.
+    /// Lista as ferramentas disponíveis no servidor.
     pub async fn list_tools(
         &mut self,
-        params: Option<ListToolsRequestParam>,
+        params: Option<PaginatedRequestParam>,
     ) -> Result<ListToolsResult, McpClientError> {
-        let client_request = ClientRequest::ListToolsRequest(rmcp::model::Request {
-            method: Method::ListToolsRequestMethod(rmcp::model::ListToolsRequestMethod::default()),
-            params: params.unwrap_or_default(), // ListToolsRequestParam tem Default
-            extensions: Default::default(),
+        let client_request = ClientRequest::ListToolsRequest(rmcp::model::RequestOptionalParam {
+            method: ListToolsRequestMethod::default(),
+            params,
+            extensions: Extensions::default(),
         });
         self.send_request_and_get_response(client_request, |server_result| {
             if let ServerResult::ListToolsResult(res) = server_result {
@@ -352,18 +347,18 @@ impl TestMcpClient {
         }).await
     }
 
-    /// Chama a ferramenta `resources/read`.
+    /// Lê um recurso do servidor.
     pub async fn read_resource(
         &mut self,
         uri: impl Into<String>,
     ) -> Result<ReadResourceResult, McpClientError> {
         let params = ReadResourceRequestParam {
-            uri: uri.into().into(), // String -> Cow<'static, str>
+            uri: uri.into().into(),
         };
         let client_request = ClientRequest::ReadResourceRequest(rmcp::model::Request {
-            method: Method::ReadResourceRequestMethod(rmcp::model::ReadResourceRequestMethod::default()),
+            method: ReadResourceRequestMethod::default(),
             params,
-            extensions: Default::default(),
+            extensions: Extensions::default(),
         });
         self.send_request_and_get_response(client_request, |server_result| {
             if let ServerResult::ReadResourceResult(res) = server_result {
@@ -374,53 +369,15 @@ impl TestMcpClient {
         }).await
     }
 
-    /// Chama a ferramenta `resources/write`.
-    pub async fn write_resource(
-        &mut self,
-        params: WriteResourceRequestParam,
-    ) -> Result<WriteResourceResult, McpClientError> {
-        let client_request = ClientRequest::WriteResourceRequest(rmcp::model::Request {
-            method: Method::WriteResourceRequestMethod(WriteResourceRequestMethod::default()),
-            params,
-            extensions: Default::default(),
-        });
-        self.send_request_and_get_response(client_request, |server_result| {
-            if let ServerResult::WriteResourceResult(res) = server_result {
-                Ok(res)
-            } else {
-                Err(McpClientError::UnexpectedResponse(format!("Esperado WriteResourceResult, obtido {:?}", server_result)))
-            }
-        }).await
-    }
-
-    /// Chama a ferramenta `resources/delete`.
-    pub async fn delete_resource(
-        &mut self,
-        params: DeleteResourceRequestParam,
-    ) -> Result<DeleteResourceResult, McpClientError> {
-        let client_request = ClientRequest::DeleteResourceRequest(rmcp::model::Request {
-            method: Method::DeleteResourceRequestMethod(DeleteResourceRequestMethod::default()),
-            params,
-            extensions: Default::default(),
-        });
-        self.send_request_and_get_response(client_request, |server_result| {
-            if let ServerResult::DeleteResourceResult(res) = server_result {
-                Ok(res)
-            } else {
-                Err(McpClientError::UnexpectedResponse(format!("Esperado DeleteResourceResult, obtido {:?}", server_result)))
-            }
-        }).await
-    }
-
-    /// Chama a ferramenta `resources/list`.
+    /// Lista os recursos disponíveis no servidor.
     pub async fn list_resources(
         &mut self,
-        params: Option<ListResourcesRequestParam>,
+        params: Option<PaginatedRequestParam>,
     ) -> Result<ListResourcesResult, McpClientError> {
-        let client_request = ClientRequest::ListResourcesRequest(rmcp::model::Request {
-            method: Method::ListResourcesRequestMethod(ListResourcesRequestMethod::default()),
-            params: params.unwrap_or_default(),
-            extensions: Default::default(),
+        let client_request = ClientRequest::ListResourcesRequest(rmcp::model::RequestOptionalParam {
+            method: ListResourcesRequestMethod::default(),
+            params,
+            extensions: Extensions::default(),
         });
         self.send_request_and_get_response(client_request, |server_result| {
             if let ServerResult::ListResourcesResult(res) = server_result {
@@ -431,66 +388,32 @@ impl TestMcpClient {
         }).await
     }
 
-    /// Chama a ferramenta `resources/watch`.
-    pub async fn watch_resource(
-        &mut self,
-        params: WatchResourceRequestParam,
-    ) -> Result<WatchResourceResult, McpClientError> {
-        let client_request = ClientRequest::WatchResourceRequest(rmcp::model::Request {
-            method: Method::WatchResourceRequestMethod(WatchResourceRequestMethod::default()),
-            params,
-            extensions: Default::default(),
-        });
-        self.send_request_and_get_response(client_request, |server_result| {
-            if let ServerResult::WatchResourceResult(res) = server_result {
-                Ok(res)
-            } else {
-                Err(McpClientError::UnexpectedResponse(format!("Esperado WatchResourceResult, obtido {:?}", server_result)))
-            }
-        }).await
-    }
-
-    /// Chama a ferramenta `resources/unwatch`.
-    pub async fn unwatch_resource(
-        &mut self,
-        params: UnwatchResourceRequestParam,
-    ) -> Result<UnwatchResourceResult, McpClientError> {
-        let client_request = ClientRequest::UnwatchResourceRequest(rmcp::model::Request {
-            method: Method::UnwatchResourceRequestMethod(UnwatchResourceRequestMethod::default()),
-            params,
-            extensions: Default::default(),
-        });
-        self.send_request_and_get_response(client_request, |server_result| {
-            if let ServerResult::UnwatchResourceResult(res) = server_result {
-                Ok(res)
-            } else {
-                Err(McpClientError::UnexpectedResponse(format!("Esperado UnwatchResourceResult, obtido {:?}", server_result)))
-            }
-        }).await
-    }
-
-    /// Envia uma notificação `$/cancelRequest` para o servidor.
-    ///
-    /// Esta notificação instrui o servidor a cancelar uma requisição em andamento.
-    /// Não há resposta direta a esta notificação.
-    pub async fn cancel_request(&mut self, request_id_to_cancel: RequestId) -> Result<(), McpClientError> {
-        let params = CancelRequestParams {
-            id: request_id_to_cancel,
+    /// Envia uma notificação `notifications/cancelled` para o servidor.
+    pub async fn cancel_request(&mut self, request_id_to_cancel: RequestId, reason: Option<String>) -> Result<(), McpClientError> {
+        let params = CancelledNotificationParam {
+            request_id: request_id_to_cancel.clone(),
+            reason,
         };
-        let notification = ClientNotification::CancelRequest(rmcp::model::Notification {
-            method: ClientNotificationMethod::CancelRequestMethod(CancelRequestMethod::default()),
+        let notification_payload_inner = rmcp::model::Notification {
+            method: CancelledNotificationMethod::default(),
             params,
-        });
-        let client_message = ClientJsonRpcMessage::Notification(notification);
+            extensions: Extensions::default(),
+        };
+        let client_notification_enum_variant = ClientNotification::CancelledNotification(notification_payload_inner);
+
+        let rpc_notification_wrapper = rmcp::model::JsonRpcNotification {
+            jsonrpc: JsonRpcVersion2_0::default(),
+            notification: client_notification_enum_variant,
+        };
+        let client_message = ClientJsonRpcMessage::Notification(rpc_notification_wrapper);
 
         let json_payload = serde_json::to_string(&client_message)?;
-        debug!("Cliente MCP enviando notificação CancelRequest (para ID: {:?}): {}", client_message.params_id_for_logging(), json_payload);
+        debug!("Cliente MCP enviando notificação Cancelled (para ID: {:?}): {}", request_id_to_cancel, json_payload);
 
-        self.ws_stream.send(WsMessage::Text(json_payload)).await?;
+        self.ws_stream.send(WsMessage::Text(json_payload.into())).await?;
         Ok(())
     }
     
-
     /// Fecha a conexão WebSocket de forma limpa.
     pub async fn close(mut self) -> Result<(), McpClientError> {
         info!("Fechando conexão do cliente MCP de teste.");
@@ -499,10 +422,18 @@ impl TestMcpClient {
     }
 }
 
-// Nota: Este cliente de teste é simplificado. Um cliente de produção ou mais robusto
-// lidaria com:
-// - Reconexão.
-// - Gerenciamento de múltiplas requisições concorrentes de forma mais explícita (ex: com um HashMap de `req_id` para `oneshot::Sender`).
-// - Processamento de notificações não solicitadas de forma mais elaborada.
-// - Configuração TLS mais detalhada (ex: aceitar certificados autoassinados para teste).
-// - Heartbeating (Ping/Pong) para manter a conexão viva, se necessário.
+/// Trait helper para extrair ID de `ServerJsonRpcMessage` para logging, se existir.
+trait MessageIdLogger {
+    fn message_id_for_logging(&self) -> Option<&RequestId>;
+}
+
+impl MessageIdLogger for ServerJsonRpcMessage {
+    fn message_id_for_logging(&self) -> Option<&RequestId> {
+        match self {
+            ServerJsonRpcMessage::Request(req) => Some(&req.id),
+            ServerJsonRpcMessage::Response(resp) => Some(&resp.id),
+            ServerJsonRpcMessage::Error(err) => Some(&err.id),
+            _ => None,
+        }
+    }
+}

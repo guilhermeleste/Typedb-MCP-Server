@@ -15,50 +15,71 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Módulo raiz para código utilitário compartilhado entre testes.
+//! Módulo raiz para código utilitário compartilhado entre os testes de integração
+//! do Typedb-MCP-Server.
 //!
-//! Este módulo agrega e reexporta funcionalidades comuns usadas nos testes
-//! de integração. Para usar esses utilitários em um módulo de teste
-//! (ex: `tests/integration/meu_teste.rs`), adicione:
-//! `use crate::common::nome_do_submodulo;` ou `use crate::common::ItemEspecifico;`.
+//! Este módulo declara e organiza os submódulos contendo helpers para:
+//! - Clientes MCP de teste (`client`).
+//! - Geração e manipulação de tokens JWT para testes de autenticação (`auth_helpers`).
+//! - Gerenciamento de ambientes Docker Compose (`docker_helpers`).
+//! - Utilitários específicos do MCP, como parsing de respostas (`mcp_utils`).
+//!
+//! Itens frequentemente usados são reexportados para facilitar o acesso a partir
+//! dos módulos de teste de integração (ex: `use crate::common::TestMcpClient;`).
 
+// Declaração dos submódulos públicos que compõem `common`.
+// Cada um reside em seu próprio arquivo (ex: `tests/common/client.rs`).
 pub mod auth_helpers;
 pub mod client;
 pub mod docker_helpers;
+pub mod mcp_utils;
 
-// Reexportar itens frequentemente usados pode ser conveniente, mas opcional.
-// Exemplo: `pub use client::TestMcpClient;`
+// Reexportações para facilitar o acesso aos tipos e funções mais comuns.
+// Isso permite que os módulos de teste usem `crate::common::TestMcpClient`
+// em vez de `crate::common::client::TestMcpClient`.
+pub use client::{McpClientError, TestMcpClient};
+pub use auth_helpers::{
+    current_timestamp_secs, generate_test_jwt, Algorithm, TestClaims, TEST_KID,
+    TEST_RSA_PRIVATE_KEY_PEM,
+    // TEST_RSA_PUBLIC_KEY_PEM, // Descomentar se for usado diretamente em outros testes
+};
+pub use docker_helpers::DockerComposeEnv;
+pub use mcp_utils::get_text_from_call_result;
 
 #[cfg(test)]
 mod tests {
-    // Importa os itens reexportados para verificar se os `pub use` estão corretos
-    // em termos de sintaxe e visibilidade. O teste real da funcionalidade
-    // desses itens ocorreria nos testes dos submódulos ou nos testes de integração.
-    // Para que este bloco compile sem erros (além da não existência dos submódulos),
-    // os itens reexportados devem ser publicamente acessíveis.
-    #[allow(unused_imports)]
+    // Importa os itens reexportados pelo módulo `super` (que é `common`).
     use super::{
-        TestMcpClient, generate_test_jwt, 
-        // docker_compose_up, docker_compose_down, // Comentado
-        // wait_for_service_healthy, // Comentado
+        TestMcpClient, generate_test_jwt, get_text_from_call_result,
+        // Para os tipos de parâmetros de generate_test_jwt, precisamos do caminho completo
+        // se eles não foram reexportados individualmente.
+        auth_helpers::TestClaims as AuthTestClaims, // Alias para evitar colisão se TestClaims fosse definido aqui
+        auth_helpers::Algorithm as AuthAlgorithm,   // Alias para evitar colisão
     };
+    use rmcp::model::CallToolResult; // Necessário para o tipo de get_text_from_call_result
 
-    /// Testa se o módulo `common::mod.rs` compila corretamente.
-    ///
-    /// A compilação bem-sucedida deste arquivo implica que as declarações `pub mod`
-    /// e `pub use` estão sintaticamente corretas. O compilador Rust tentará resolver
-    /// os caminhos para `client.rs`, `auth_helpers.rs`, e `docker_helpers.rs`
-    /// (ou seus equivalentes de diretório com `mod.rs` dentro) no mesmo diretório
-    /// que este arquivo, e também os itens reexportados.
-    ///
-    /// Se os arquivos dos submódulos ou os itens reexportados não existirem/forem privados,
-    /// o `cargo check` ou `cargo build` do projeto como um todo falhará na resolução,
-    /// o que é o comportamento esperado até que esses elementos sejam criados.
+    /// Testa se a estrutura do módulo `common` está correta e se os
+    /// principais itens reexportados são acessíveis em tempo de compilação.
     #[test]
-    fn test_common_mod_structure_compiles() {
+    fn test_common_mod_structure_and_reexports_are_accessible() {
+        // A simples compilação destas linhas já verifica a acessibilidade dos tipos.
+        // Não é necessário instanciar ou chamar, apenas garantir que os nomes resolvem.
+
+        // Verifica TestMcpClient (do submódulo client)
+        let _client_type_check: Option<TestMcpClient> = None;
+
+        // Verifica generate_test_jwt (do submódulo auth_helpers) e seus tipos de parâmetro
+        let _jwt_fn_signature_check: fn(AuthTestClaims, AuthAlgorithm) -> String = generate_test_jwt;
+
+        // Verifica get_text_from_call_result (do submódulo mcp_utils)
+        let _get_text_fn_signature_check: fn(CallToolResult) -> String = get_text_from_call_result;
+        
+        // DockerComposeEnv é reexportado, mas não facilmente testável aqui sem mais setup.
+        // A acessibilidade do tipo é verificada pela compilação do import.
+
         assert!(
             true,
-            "Este teste apenas confirma que a estrutura de tests/common/mod.rs (declarações e reexportações) é sintaticamente válida."
+            "O módulo common e suas reexportações principais são acessíveis."
         );
     }
 }

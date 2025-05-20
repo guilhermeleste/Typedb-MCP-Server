@@ -1,5 +1,5 @@
 // tests/integration.rs
-// Ponto de entrada para o crate de testes de integração.
+// Ponto de entrada para o crate de testes de integração do Typedb-MCP-Server.
 
 // Licença Apache 2.0
 // Copyright 2025 Guilherme Leste
@@ -16,67 +16,96 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Raiz do crate de testes de integração para Typedb-MCP-Server.
+//! Raiz do crate de testes de integração para o Typedb-MCP-Server.
 //!
-//! Este arquivo (`tests/integration.rs`) é o ponto de entrada que o Cargo usa
-//! para compilar todos os testes de integração. Ele declara o módulo `common`
-//! (que reside em `tests/common/mod.rs`) e todos os arquivos de suíte de teste
-//! individuais que estão localizados no diretório `tests/integration/`.
+//! Este arquivo atua como o ponto de entrada que o Cargo utiliza para descobrir
+//! e compilar todos os testes de integração. Ele declara:
 //!
-//! A organização é a seguinte:
-//! - `tests/common/mod.rs`: Contém utilitários compartilhados por todos os testes.
-//!   - `tests/common/client.rs`: Helpers para o cliente MCP.
-//!   - `tests/common/auth_helpers.rs`: Helpers para autenticação e JWT.
-//!   - `tests/common/docker_helpers.rs` (a ser adicionado): Helpers para Docker.
-//! - `tests/integration.rs` (este arquivo): Raiz do crate de teste de integração.
-//! - `tests/integration/`: Diretório contendo os módulos de teste específicos.
-//!   - `tests/integration/connection_tests.rs`: Testes de conexão e autenticação.
-//!   - `tests/integration/db_admin_tool_tests.rs`: Testes para db_admin_tool.
-//!   - ... e outros arquivos de teste.
+//! 1.  O módulo `common` (localizado em `tests/common/mod.rs`), que contém
+//!     utilitários e helpers compartilhados por todas as suítes de teste.
+//! 2.  Cada suíte de teste de integração individual (arquivos `*_tests.rs`) como
+//!     um submódulo público. Estes arquivos residem no diretório `tests/integration/`.
 //!
-//! Cada arquivo `*_tests.rs` em `tests/integration/` é declarado como um submódulo
-//! público neste arquivo usando o atributo `#[path]` para especificar sua localização.
-//! Dentro desses submódulos, os utilitários de `tests/common/` podem ser acessados
-//! via `use crate::common::NomeDoItem;`.
+//! A organização geral da pasta `tests/` é:
+//! └── tests/
+//!     ├── common/                 # Utilitários de teste (client, auth, docker, mcp_utils)
+//!     │   └── mod.rs
+//!     │   └── ... (outros arquivos .rs)
+//!     ├── integration.rs          # Este arquivo, o ponto de entrada do crate de teste.
+//!     └── integration/            # Módulos contendo os testes de integração.
+//!         ├── connection_tests.rs
+//!         ├── db_admin_tool_tests.rs
+//!         └── ... (outros arquivos *_tests.rs)
+//!
+//! Dentro dos módulos de teste (ex: `db_admin_tool_tests`), os utilitários
+//! do módulo `common` podem ser acessados usando `crate::common::NomeDoItem;`,
+//! pois `integration.rs` define a raiz (`crate`) para esta compilação de teste.
 
-// Declara o módulo `common` que está em `tests/common/mod.rs`.
-// Este `common` será acessível como `crate::common` de dentro dos submódulos abaixo.
+// Permite que módulos/funções não sejam usados em todas as configurações de build/teste
+// sem gerar warnings, comum em arquivos raiz de bibliotecas de teste.
+#![allow(dead_code)]
+
+/// Módulo contendo utilitários compartilhados para os testes de integração.
+/// Localizado em `tests/common/mod.rs`.
 pub mod common;
 
-// Declara cada suíte de teste de integração como um submódulo público.
-// O atributo `#[path]` é usado para informar ao compilador Rust onde encontrar
-// o arquivo fonte para cada módulo, já que eles estão em um subdiretório (`integration/`).
+// --- Suítes de Teste de Integração ---
+// Cada arquivo em `tests/integration/` é declarado como um submódulo.
+// O atributo `#[path]` especifica o caminho para o arquivo fonte do módulo,
+// relativo à raiz do crate de teste (a pasta `tests/` neste caso, pois
+// `integration.rs` está nela e o Cargo o trata como um ponto de entrada).
 
-/// Testes de conexão, autenticação e TLS.
+/// Testes focados na conexão WebSocket, handshake, TLS e cenários básicos de autenticação.
 #[path = "integration/connection_tests.rs"]
 pub mod connection_tests;
 
-/// Testes para as ferramentas de administração de banco de dados (db_admin_tool).
+/// Testes para as ferramentas MCP relacionadas à administração de bancos de dados
+/// (criar, deletar, listar, verificar existência).
 #[path = "integration/db_admin_tool_tests.rs"]
 pub mod db_admin_tool_tests;
 
-/// Testes para as ferramentas de consulta e manipulação de dados (query_tool).
+/// Testes para as ferramentas MCP relacionadas a operações de observabilidade
+/// (endpoints /metrics, /livez, /readyz).
+#[path = "integration/observability_tests.rs"]
+pub mod observability_tests;
+
+/// Testes para as ferramentas MCP de consulta e manipulação de dados
+/// (query_read, insert_data, etc.).
 #[path = "integration/query_tool_tests.rs"]
 pub mod query_tool_tests;
 
-/// Testes de resiliência e tratamento de erros do servidor.
+/// Testes focados na resiliência do servidor, como tratamento de timeouts,
+/// falhas de dependência e graceful shutdown.
 #[path = "integration/resilience_tests.rs"]
 pub mod resilience_tests;
 
-/// Testes para as ferramentas de gerenciamento de recursos (resource_tool).
+/// Testes para as ferramentas MCP de gerenciamento de recursos (estáticos e dinâmicos).
 #[path = "integration/resource_tests.rs"]
 pub mod resource_tests;
 
-/// Testes para as ferramentas de operações de esquema (schema_ops_tool).
+/// Testes para as ferramentas MCP relacionadas a operações de esquema no TypeDB
+/// (define, undefine, get schema).
 #[path = "integration/schema_ops_tool_tests.rs"]
 pub mod schema_ops_tool_tests;
 
-/// Testes para cenários com TLS habilitado.
+/// Testes específicos para cenários onde a conexão TLS com o TypeDB está habilitada.
 #[path = "integration/typedb_tls_tests.rs"]
 pub mod typedb_tls_tests;
 
-// Adicione aqui outros módulos de teste do diretório `tests/integration/`
-// conforme eles forem sendo refatorados ou criados.
+// Se você adicionar novos arquivos de teste em `tests/integration/`,
+// adicione uma declaração de módulo similar para eles aqui.
 // Exemplo:
-// #[path = "integration/outro_teste_specífico.rs"]
-// pub mod outro_teste_especifico;
+// #[path = "integration/nova_suite_de_testes.rs"]
+// pub mod nova_suite_de_testes;
+
+// É uma boa prática ter um teste simples no arquivo raiz do crate de teste
+// para garantir que ele próprio compila e a estrutura básica está correta.
+#[cfg(test)]
+mod integration_crate_tests {
+    #[test]
+    fn test_integration_crate_compiles() {
+        // Este teste apenas confirma que o crate de integração (este arquivo e seus módulos)
+        // compila sem erros. A funcionalidade real é testada nos submódulos.
+        assert!(true, "O crate de testes de integração compilou com sucesso.");
+    }
+}
