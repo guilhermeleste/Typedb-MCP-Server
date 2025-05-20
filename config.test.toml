@@ -1,17 +1,17 @@
 [server]
-address = "0.0.0.0"
+bindAddress = "0.0.0.0:8787" # Corrigido para incluir a porta
 port_http = 8787
 port_https = 8443
 metrics_port = 9090
-tls_enabled = false
+tlsEnabled = false
 cert_path = "/app/certs/mcp-server.crt"
 key_path = "/app/certs/mcp-server.key"
 
 [typedb]
 address = "typedb-server-it:1729"
 username = "admin"
-password = ""
-tls_enabled = false
+password = "passaword"
+tlsEnabled = false
 ca_path = "/app/certs/typedb-ca.pem"
 
 [auth]
