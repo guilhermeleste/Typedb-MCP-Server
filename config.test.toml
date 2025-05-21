@@ -1,11 +1,8 @@
 [server]
-bindAddress = "0.0.0.0:8787" # Corrigido para incluir a porta
-port_http = 8787
-port_https = 8443
-metrics_port = 9090
+bindAddress = "0.0.0.0:8787"
 tlsEnabled = false
-cert_path = "/app/certs/mcp-server.crt"
-key_path = "/app/certs/mcp-server.key"
+tlsCertPath = "/app/certs/mcp-server.crt" # Corrigido de cert_path para tlsCertPath
+tlsKeyPath = "/app/certs/mcp-server.key"  # Corrigido de key_path para tlsKeyPath
 
 [typedb]
 address = "typedb-server-it:1729"
@@ -13,5 +10,5 @@ username = "admin"
 tlsEnabled = false
 
 [auth]
-oauth_enabled = false
-oauth_jwks_uri = ""
+enabled = false # Corrigido de oauth_enabled para enabled
+jwksUri = ""    # Corrigido de oauth_jwks_uri para jwksUri

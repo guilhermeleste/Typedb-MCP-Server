@@ -134,12 +134,12 @@ pub struct OAuth {
     #[serde(default)]
     pub audience: Option<Vec<String>>,
     /// Intervalo para recargar el JWKS. Ex: "1h", "30m", "3600s".
-    #[serde(skip)] // Se salta a deserialización directa, se maneja manualmente.
+    #[serde(skip)] // Se salta a deserialização direta, se maneja manualmente.
     pub jwks_refresh_interval: Option<Duration>,
-    /// Campo intermedio para deserialización del TOML/env. No usa default aquí.
+    /// Campo intermedio para deserialização del TOML/env. No usa default aquí.
     #[serde(rename = "jwks_refresh_interval")]
     pub jwks_refresh_interval_raw: Option<String>,
-    /// Timeout para la requisición HTTP al buscar el JWKS. En segundos.
+    /// Timeout para a requisición HTTP al buscar el JWKS. En segundos.
     pub jwks_request_timeout_seconds: Option<u64>,
     /// Escopos `OAuth2` que el token DEBE contener para acceso general.
     /// Ex: `required_scopes = ["mcp:access", "typedb:read"]` en TOML.
@@ -261,6 +261,16 @@ impl Settings {
     /// Retorna `ConfigError` se houver um problema ao construir ou desserializar as configurações,
     /// como um arquivo de configuração malformado ou variáveis de ambiente inválidas.
     pub fn new() -> Result<Self, ConfigError> {
+        // Log para depurar a variável de ambiente diretamente
+        match std::env::var("MCP_TYPEDB__ADDRESS") {
+            Ok(val) => tracing::info!("Variável de ambiente MCP_TYPEDB__ADDRESS encontrada: {}", val),
+            Err(_) => tracing::warn!("Variável de ambiente MCP_TYPEDB__ADDRESS NÃO encontrada."),
+        }
+        match std::env::var("MCP_CONFIG_PATH") {
+            Ok(val) => tracing::info!("Variável de ambiente MCP_CONFIG_PATH encontrada: {}", val),
+            Err(_) => tracing::info!("Variável de ambiente MCP_CONFIG_PATH NÃO encontrada, usando default."),
+        }
+
         let config_file_path = std::env::var("MCP_CONFIG_PATH")
             .unwrap_or_else(|_| DEFAULT_CONFIG_FILENAME.to_string());
 

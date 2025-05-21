@@ -49,7 +49,7 @@ pub mod resource_tests;
 // Validação: Declara o submódulo `typedb_tls_tests` que deve residir em `tests/integration/typedb_tls_tests.rs`.
 pub mod typedb_tls_tests;
 
-/// Suíte de testes de integração para observabilidade (endpoints /metrics, /livez, /readyz).
+/// Suíte de testes de integração para observabilidade (endpoints /metrics, /health, /readyz).
 // Validação: Declara o submódulo `observability_tests` que deve residir em `tests/integration/observability_tests.rs`.
 pub mod observability_tests;
 

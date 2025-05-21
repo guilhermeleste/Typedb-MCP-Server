@@ -49,7 +49,7 @@ Construído em Rust, o servidor foi desenvolvido com foco em performance (utiliz
   - Métricas detalhadas no formato Prometheus (`/metrics`).
   - Tracing distribuído com OpenTelemetry (exportação OTLP).
   - Logging JSON estruturado e configurável.
-  - Endpoints de Health Check (`/livez`, `/readyz`).
+  - Endpoints de Health Check (`/health`, `/readyz`).
 - **Configurabilidade Flexível:** Via arquivo TOML e variáveis de ambiente.
 - **Extensibilidade:** Arquitetura modular que facilita a adição de novas ferramentas MCP.
 - **Suporte a Docker:** `Dockerfile` e exemplos `docker-compose` para desenvolvimento e implantação.
@@ -186,7 +186,7 @@ Consulte o [Guia do Usuário - Executando o Servidor](/docs/user_guide/05_runnin
 
 - **WebSocket MCP:** `ws://<host>:<porta_servidor>/mcp/ws` (ou `wss://` com TLS). Path configurável via `server.mcp_websocket_path`.
 - **Métricas Prometheus:** `http://<host>:<porta_metricas>/metrics`. Path e porta configuráveis.
-- **Health Checks:** `/livez` e `/readyz`.
+- **Health Checks:** `/health` e `/readyz`.
 
 Consulte a [Referência da API - Endpoints HTTP](/docs/reference/api.md#2-endpoints-http) para detalhes.
 
@@ -204,7 +204,7 @@ Veja mais em [Guia do Usuário - Segurança Básica](/docs/user_guide/09_securit
 - **Métricas:** Formato Prometheus, acessível via HTTP. Veja a [Lista de Métricas](/docs/reference/metrics_list.md).
 - **Logging:** Logs JSON estruturados e configuráveis via `RUST_LOG` ou arquivo de configuração.
 - **Tracing Distribuído:** Suporte a OpenTelemetry (OTLP).
-- **Health Checks:** `/livez` para liveness e `/readyz` para readiness (incluindo dependências).
+- **Health Checks:** `/health` para liveness e `/readyz` para readiness (incluindo dependências).
 
 Detalhes em [Guia do Usuário - Observabilidade](/docs/user_guide/08_observability.md).
 

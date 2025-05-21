@@ -85,6 +85,8 @@ pub mod transport;
 // Exemplo:
 pub use config::Settings;
 pub use error::McpServerError;
+pub use error::AuthErrorDetail; // Adicionado para exportar AuthErrorDetail
+pub use ::config::ConfigError; // Corrigido para exportar ConfigError da crate config
 
 #[cfg(test)]
 mod tests {

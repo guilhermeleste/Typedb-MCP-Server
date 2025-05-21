@@ -62,7 +62,7 @@ services:
 ## Healthcheck
 
 - O endpoint `/health` é usado para liveness/readiness.
-- Endpoints adicionais: `/livez`, `/readyz`.
+- Endpoints adicionais: `/health`, `/readyz`.
 
 ## Scripts Auxiliares
 

@@ -44,7 +44,7 @@ EXPOSE 8787 8443 9090
 
 # Healthcheck customizado para o MCP Server (ajustável via compose)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8787/health || exit 1
+  CMD curl -f http://localhost:8787/livez || exit 1
 
 ENTRYPOINT ["/usr/local/bin/typedb_mcp_server"]
 CMD []

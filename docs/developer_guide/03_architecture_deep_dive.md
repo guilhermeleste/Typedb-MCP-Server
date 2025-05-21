@@ -66,7 +66,7 @@ A inicialização do servidor segue uma sequência específica para garantir que
         * Localizado em `settings.server.metrics_path` (padrão `/metrics`).
         * Associado ao `metrics_handler`, que serve as métricas do `PrometheusHandle`.
     * **Endpoints de Health Check:**
-        * `/livez` (associado a `livez_handler`).
+        * `/health` (associado a `health_handler`).
         * `/readyz` (associado a `readyz_handler`), que verifica a saúde do TypeDB e JWKS.
     * Outras configurações do Axum: CORS (via `tower_http::cors`), Request ID, Tracing Layer.
 

@@ -22,27 +22,27 @@
 //! para o `McpServiceHandler`. Também configura logging, métricas e tracing.
 
 // std imports
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration, error::Error as StdError};
 
 // axum imports
 use axum::{
-    extract::{ws::WebSocketUpgrade, Extension, State},
+    extract::{ws::WebSocketUpgrade, ConnectInfo, Extension, State},
     http::StatusCode,
     middleware::from_fn_with_state,
     response::{IntoResponse, Response as AxumResponse},
     routing::get,
     Router,
 };
-use axum_server::tls_rustls::RustlsConfig;
+use axum_server::{tls_rustls::RustlsConfig, Handle as AxumServerHandle};
 // tokio imports
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 // typedb_mcp_server_lib imports
 use typedb_mcp_server_lib::{
     auth::{ClientAuthContext, JwksCache, oauth_middleware},
-    config::{self, Settings}, // Adicionado config::
-    db,
-    error::{AuthErrorDetail, McpServerError},
+    config::{Settings, Server as AppServerConfig},
+    McpServerError, AuthErrorDetail,
+    db::{connect as connect_to_typedb},
     mcp_service_handler::McpServiceHandler,
     metrics, telemetry,
     transport::WebSocketTransport,
@@ -51,7 +51,9 @@ use typedb_mcp_server_lib::{
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use reqwest::Client as ReqwestClient;
 use rmcp::service::ServiceExt as RmcpServiceExt;
-use tracing_subscriber::{fmt as tracing_fmt, EnvFilter, prelude::*};
+use tracing::{Dispatch, Instrument}; // Instrument importado
+// Corrigido: util::SubscriberInitExt removido se .init() não for usado. Prelude é bom.
+use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry}; 
 use typedb_driver::TypeDBDriver;
 
 /// Estrutura para o estado da aplicação compartilhado com os handlers Axum.
@@ -59,17 +61,17 @@ use typedb_driver::TypeDBDriver;
 struct AppState {
     mcp_handler: Arc<McpServiceHandler>,
     settings: Arc<Settings>,
-    jwks_cache: Option<Arc<JwksCache>>, // Mantido como Option
+    jwks_cache: Option<Arc<JwksCache>>,
     typedb_driver_ref: Arc<TypeDBDriver>,
     global_shutdown_token: CancellationToken,
 }
 
-/// Configura o logging estruturado e o tracing OpenTelemetry.
-fn setup_logging_and_tracing(settings: &config::Settings) { // Usar config::Settings
+/// Configura o logging estruturado global e o tracing OpenTelemetry.
+fn setup_global_logging_and_tracing(settings: &Settings) -> Result<(), Box<dyn StdError + Send + Sync>> {
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(settings.logging.rust_log.clone()));
 
-    let formatting_layer = tracing_fmt::layer()
+    let formatting_layer = fmt::layer()
         .json()
         .with_current_span(true)
         .with_span_list(true)
@@ -77,46 +79,50 @@ fn setup_logging_and_tracing(settings: &config::Settings) { // Usar config::Sett
         .with_file(true)
         .with_line_number(true);
 
+    let subscriber_builder = Registry::default()
+        .with(env_filter)
+        .with(formatting_layer);
+
     if settings.tracing.enabled {
-        if telemetry::init_tracing_pipeline(&settings.tracing).is_ok() {
-            let telemetry_layer = tracing_opentelemetry::layer();
-            tracing_subscriber::registry()
-                .with(env_filter)
-                .with(formatting_layer)
-                .with(telemetry_layer)
-                .init();
-            tracing::info!(
-                "OpenTelemetry tracing habilitado e configurado para exportar para: {:?}",
-                settings.tracing.exporter_otlp_endpoint
-            );
-        } else {
-            tracing_subscriber::registry().with(env_filter).with(formatting_layer).init();
-            tracing::warn!(
-                "Falha ao inicializar OpenTelemetry pipeline. Tracing distribuído desabilitado."
-            );
+        match telemetry::init_tracing_pipeline(&settings.tracing) {
+            Ok(()) => {
+                let telemetry_layer = tracing_opentelemetry::layer();
+                let subscriber = subscriber_builder.with(telemetry_layer);
+                tracing::dispatcher::set_global_default(Dispatch::new(subscriber))?;
+                tracing::info!(
+                    "OpenTelemetry tracing habilitado e configurado para exportar para: {:?}",
+                    settings.tracing.exporter_otlp_endpoint
+                );
+            }
+            Err(e) => {
+                let subscriber = subscriber_builder;
+                tracing::dispatcher::set_global_default(Dispatch::new(subscriber))?;
+                tracing::warn!(
+                    "Falha ao inicializar OpenTelemetry pipeline: {}. Tracing distribuído desabilitado.", e
+                );
+            }
         }
     } else {
-        tracing_subscriber::registry().with(env_filter).with(formatting_layer).init();
+        let subscriber = subscriber_builder;
+        tracing::dispatcher::set_global_default(Dispatch::new(subscriber))?;
         tracing::info!("OpenTelemetry tracing desabilitado.");
     }
+    Ok(())
 }
 
-/// Configura e inicia o servidor de métricas Prometheus.
-/// Retorna um handle para o recorder Prometheus ou um erro.
-fn setup_metrics_server(
-    server_settings: &config::Server, // Usar config::Server
-) -> Result<PrometheusHandle, Box<dyn std::error::Error + Send + Sync>> {
-    metrics::register_metrics_descriptions();
 
+/// Configura e inicia o servidor de métricas Prometheus.
+fn setup_metrics_server(
+    server_settings: &AppServerConfig,
+) -> Result<PrometheusHandle, Box<dyn StdError + Send + Sync>> {
+    metrics::register_metrics_descriptions();
     let metrics_bind_addr_str = server_settings
         .metrics_bind_address
         .clone()
         .unwrap_or_else(|| "0.0.0.0:9090".to_string());
-
     let metrics_socket_addr: SocketAddr = metrics_bind_addr_str.parse().map_err(|e| {
         format!("Endereço de bind inválido para métricas '{metrics_bind_addr_str}': {e}")
     })?;
-
     PrometheusBuilder::new()
         .with_http_listener(metrics_socket_addr)
         .install_recorder()
@@ -124,23 +130,22 @@ fn setup_metrics_server(
             let err_msg = format!(
                 "Não foi possível iniciar o servidor de métricas Prometheus em {metrics_socket_addr}: {e}"
             );
-            tracing::error!("{}", err_msg);
-            Box::new(std::io::Error::other(err_msg)) as Box<dyn std::error::Error + Send + Sync>
+            eprintln!("[ERROR] {}", err_msg);
+            Box::new(std::io::Error::other(err_msg)) as Box<dyn StdError + Send + Sync>
         })
 }
 
-/// Inicializa os serviços principais: conexão com `TypeDB` e cache JWKS (se habilitado).
+/// Inicializa os serviços principais.
 async fn initialize_core_services(
     settings: &Arc<Settings>,
-) -> Result<(Arc<TypeDBDriver>, Option<Arc<JwksCache>>), Box<dyn std::error::Error + Send + Sync>> {
-    // Conectar ao TypeDB
+) -> Result<(Arc<TypeDBDriver>, Option<Arc<JwksCache>>), Box<dyn StdError + Send + Sync>> {
     tracing::info!(
-        "Conectando ao TypeDB em: {} (TLS: {})",
+        "Tentando conectar ao TypeDB. Configurado em: {} (TLS: {})",
         settings.typedb.address,
         settings.typedb.tls_enabled
     );
     let typedb_password_from_env = std::env::var("TYPEDB_PASSWORD").ok();
-    let typedb_driver = match db::connect(
+    let typedb_driver_instance = match connect_to_typedb(
         Some(settings.typedb.address.clone()),
         settings.typedb.username.clone(),
         typedb_password_from_env,
@@ -154,21 +159,18 @@ async fn initialize_core_services(
             Arc::new(driver)
         }
         Err(e) => {
-            tracing::error!("Falha fatal ao conectar com TypeDB: {}", e.message());
-            return Err(Box::new(e));
+            let mcp_error = McpServerError::from(typedb_mcp_server_lib::error::TypeDBErrorWrapper::from(e));
+            tracing::error!("Falha fatal ao conectar com TypeDB: {}", mcp_error);
+            return Err(Box::new(mcp_error));
         }
     };
 
-    // Inicializar JWKS Cache se OAuth estiver habilitado
     let jwks_cache = if settings.oauth.enabled {
         let jwks_uri = settings.oauth.jwks_uri.as_ref().ok_or_else(|| {
             let msg = "OAuth2 habilitado, mas oauth.jwks_uri não configurado.";
             tracing::error!("{}", msg);
-            // Usar o tipo de erro apropriado definido em seu crate
-            Box::new(McpServerError::Auth(AuthErrorDetail::InvalidAuthConfig(msg.to_string())))
-                as Box<dyn std::error::Error + Send + Sync>
+            McpServerError::Auth(AuthErrorDetail::InvalidAuthConfig(msg.to_string()))
         })?;
-
         let http_client = ReqwestClient::builder()
             .timeout(
                 settings
@@ -176,28 +178,22 @@ async fn initialize_core_services(
                     .jwks_request_timeout_seconds
                     .map_or(Duration::from_secs(10), Duration::from_secs),
             )
-            .build()?; // Propaga o erro de build do ReqwestClient
-
+            .build()?;
         let cache = Arc::new(JwksCache::new(
             jwks_uri.clone(),
             settings.oauth.jwks_refresh_interval.unwrap_or(Duration::from_secs(3600)),
             http_client,
         ));
-
         if let Err(e) = cache.refresh_keys().await {
-            tracing::warn!(
-                "Falha no refresh inicial do JWKS (servidor continuará tentando em background): {}",
-                e
-            );
+            tracing::warn!("Falha no refresh inicial do JWKS: {}", e);
         } else {
-            tracing::info!("JWKS cache inicializado e chaves buscadas (ou tentativa).");
+            tracing::info!("JWKS cache inicializado.");
         }
         Some(cache)
     } else {
         None
     };
-
-    Ok((typedb_driver, jwks_cache))
+    Ok((typedb_driver_instance, jwks_cache))
 }
 
 /// Cria o estado da aplicação compartilhado.
@@ -211,7 +207,6 @@ fn create_app_state(
         typedb_driver.clone(),
         settings.clone(),
     ));
-
     AppState {
         mcp_handler,
         settings,
@@ -221,7 +216,7 @@ fn create_app_state(
     }
 }
 
-/// Constrói o router Axum com todos os endpoints.
+/// Constrói o router Axum.
 fn build_axum_router(
     app_state: AppState,
     settings: &Arc<Settings>,
@@ -251,30 +246,27 @@ fn build_axum_router(
     if settings.oauth.enabled {
         if let Some(jwks_cache_for_middleware) = app_state.jwks_cache.clone() {
             let oauth_config_for_middleware = Arc::new(settings.oauth.clone());
-            tracing::info!("Middleware OAuth2 habilitado para o endpoint MCP WebSocket: {}", mcp_ws_path_str);
+            tracing::info!("Middleware OAuth2 habilitado para: {}", mcp_ws_path_str);
             mcp_ws_router = mcp_ws_router.route_layer(from_fn_with_state(
                 (jwks_cache_for_middleware, oauth_config_for_middleware),
                 oauth_middleware,
             ));
         } else {
-            // Este caso não deveria ocorrer se initialize_core_services e create_app_state
-            // foram chamados corretamente e OAuth está habilitado.
-            tracing::error!("OAuth está habilitado, mas JwksCache não está presente no AppState. Autenticação falhará.");
+            tracing::error!("OAuth habilitado, mas JwksCache ausente. Autenticação falhará.");
         }
     } else {
         tracing::info!("Autenticação OAuth2 desabilitada.");
     }
 
-    let router_with_mcp_and_app_state = mcp_ws_router.with_state(app_state);
-    base_router.merge(router_with_mcp_and_app_state)
+    base_router.merge(mcp_ws_router.with_state(app_state))
 }
 
-/// Inicia o servidor Axum, com ou sem TLS.
+/// Inicia o servidor Axum.
 async fn run_axum_server(
     router: Router,
     settings: &Arc<Settings>,
     global_shutdown_token: CancellationToken,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(), Box<dyn StdError + Send + Sync>> {
     let bind_address_str = settings.server.bind_address.clone();
     let bind_addr: SocketAddr = bind_address_str.parse().map_err(|e| {
         format!("Endereço de bind inválido '{bind_address_str}': {e}")
@@ -300,41 +292,41 @@ async fn run_axum_server(
             .await
             .map_err(|e| format!("Erro ao carregar certificado/chave PEM: {e}"))?;
 
-        use axum_server::Handle;
-        let handle = Handle::new();
-        // Spawn task para shutdown gracioso
-        let shutdown_token = global_shutdown_token.clone();
-        tokio::spawn({
-            let handle = handle.clone();
-            async move {
-                shutdown_token.cancelled_owned().await;
-                handle.graceful_shutdown(None);
-            }
+        let server_handle = AxumServerHandle::new();
+        let shutdown_task_handle = server_handle.clone();
+
+        let shutdown_token_for_server = global_shutdown_token.clone();
+        tokio::spawn(async move {
+            shutdown_token_for_server.cancelled().await;
+            shutdown_task_handle.graceful_shutdown(Some(Duration::from_secs(30)));
+            tracing::info!("Graceful shutdown do servidor HTTP/TLS solicitado via token.");
         });
 
         axum_server::bind_rustls(bind_addr, tls_config)
-            .handle(handle)
+            .handle(server_handle)
             .serve(router.into_make_service())
             .await?;
     } else {
         tracing::info!("Servidor MCP (HTTP/WS) escutando em {}", bind_addr);
         let listener = TcpListener::bind(bind_addr).await?;
-        let server = axum::serve(listener, router);
-        server
+        axum::serve(listener, router)
             .with_graceful_shutdown(global_shutdown_token.cancelled_owned())
             .await?;
     }
     Ok(())
 }
 
-/// Executa a limpeza de recursos antes de encerrar.
+/// Executa a limpeza de recursos.
 async fn cleanup_resources(
     typedb_driver: Arc<TypeDBDriver>,
     settings: &Arc<Settings>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    tracing::info!("Graceful shutdown: Aguardando finalização de tasks pendentes...");
-    typedb_driver.force_close()?; // Propaga o Result de force_close
-    tracing::info!("Conexão com TypeDB fechada.");
+) -> Result<(), Box<dyn StdError + Send + Sync>> {
+    tracing::info!("Graceful shutdown: Iniciando limpeza de recursos...");
+    if let Err(e) = typedb_driver.force_close() {
+        tracing::error!("Erro ao fechar conexão com TypeDB: {}", e);
+    } else {
+        tracing::info!("Conexão com TypeDB fechada.");
+    }
 
     if settings.tracing.enabled {
         telemetry::shutdown_tracer_provider();
@@ -344,63 +336,81 @@ async fn cleanup_resources(
 }
 
 /// Ponto de entrada principal da aplicação.
-fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Tenta carregar variáveis de ambiente do arquivo .env.
-    // Falhar em carregar o .env não é um erro fatal, pois as variáveis podem ser definidas no sistema.
+fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
     if dotenvy::dotenv().is_err() {
-        // Usar tracing::info aqui pode não ser ideal se o logging ainda não foi configurado.
-        // Um println! pode ser mais seguro para este log inicial.
         println!("[INFO] Arquivo .env não encontrado ou falha ao carregar. Usando variáveis de ambiente do sistema se disponíveis.");
     }
 
-    // Carrega as configurações da aplicação.
-    // Esta é uma etapa crítica; se falhar, a aplicação não pode continuar.
-    let settings = match Settings::new() {
-        Ok(s) => Arc::new(s),
-        Err(e) => {
-            // Usar tracing::error aqui também pode ser problemático antes do setup do logging.
-            eprintln!("[ERROR] Erro fatal ao carregar a configuração: {e}. Encerrando.");
-            // Retorna um erro que pode ser tratado pelo chamador (sistema operacional).
-            return Err(Box::new(std::io::Error::other(e.to_string())));
+    // Escopo para garantir drop do guard temporário ANTES de qualquer nova inicialização
+    {
+        let temp_env_filter = EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| EnvFilter::new("info"));
+        let temp_subscriber = fmt::Subscriber::builder()
+            .with_env_filter(temp_env_filter)
+            .with_writer(std::io::stderr) // Logar para stderr
+            .json()
+            .finish();
+        let _temp_guard = tracing::dispatcher::set_default(&Dispatch::new(temp_subscriber));
+
+        tracing::info!("Iniciando Typedb-MCP-Server versão {}...", env!("CARGO_PKG_VERSION"));
+        tracing::info!("Carregando configurações...");
+
+        // Carrega as configurações dentro do escopo temporário
+        let settings = match Settings::new() {
+            Ok(s) => Arc::new(s),
+            Err(config_err) => {
+                tracing::error!("Erro fatal ao carregar a configuração: {}", config_err);
+                if let Some(source) = config_err.source() {
+                    tracing::error!("   Fonte do erro de configuração: {}", source);
+                }
+                panic!("Falha ao carregar configurações: {}", config_err);
+            }
+        };
+
+        // O guard é dropado aqui, antes de qualquer nova inicialização
+
+        // Inicializa o sistema de logging/tracing global completo
+        if let Err(e) = setup_global_logging_and_tracing(&settings) {
+            eprintln!("[AVISO] Falha ao configurar o sistema de logging/tracing global completo: {}. O servidor pode ter observabilidade limitada.", e);
         }
-    };
 
-    // Configura o logging e tracing.
-    // Esta função deve ser chamada o mais cedo possível após carregar as configurações.
-    setup_logging_and_tracing(&settings);
+        tracing::info!("Configurações carregadas e sistema de logging/tracing global inicializado.");
+        tracing::debug!(config = ?settings, "Configurações da aplicação carregadas e prontas para uso.");
 
-    tracing::info!("Iniciando Typedb-MCP-Server versão {}", env!("CARGO_PKG_VERSION"));
-    tracing::debug!(config = ?settings, "Configurações carregadas.");
+        let worker_threads = settings.server.worker_threads.unwrap_or_else(|| {
+            let cores = num_cpus::get();
+            tracing::info!("server.worker_threads não configurado, usando default: {}", cores);
+            cores
+        });
+        tracing::info!("Usando {} threads de worker para o runtime Tokio.", worker_threads);
 
-    // Determina o número de threads de worker para o runtime Tokio.
-    let worker_threads = settings.server.worker_threads.unwrap_or_else(|| {
-        let cores = num_cpus::get();
-        tracing::info!("server.worker_threads não configurado, usando default: {}", cores);
-        cores
-    });
-    tracing::info!("Usando {} threads de worker para o runtime Tokio.", worker_threads);
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .worker_threads(worker_threads)
+            .thread_name("typedb-mcp-worker")
+            .build()?;
 
-    // Constrói e inicia o runtime Tokio.
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all() // Habilita todos os features do Tokio (io, time, etc.)
-        .worker_threads(worker_threads)
-        .thread_name("typedb-mcp-worker") // Nomeia as threads para facilitar o debugging.
-        .build()?; // Propaga o erro se o runtime não puder ser construído.
-
-    // Executa a lógica principal assíncrona dentro do runtime Tokio.
-    rt.block_on(async_main(settings))
+        return rt.block_on(async_main(settings));
+    }
+    // O código não deve alcançar este ponto devido ao retorno ou pânico dentro do bloco.
+    // Se alcançado, indica um erro lógico na estrutura do main.
+    // No entanto, o compilador já detecta que o código acima sempre retorna ou entra em pânico.
+    // Portanto, a macro unreachable!() aqui seria, ela mesma, inalcançável e geraria um aviso.
+    // A função main já tem seu tipo de retorno satisfeito pelo `return` acima.
 }
 
-/// Função principal assíncrona que configura e executa o servidor.
-#[tracing::instrument(name = "server_main_async_logic", skip_all)]
-async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+/// Função principal assíncrona.
+// [REMOVIDO]: #[tracing::instrument] removido para evitar pânico de ciclo de vida de spans
+// em função executada via block_on fora do contexto natural do executor async.
+// O tracing deve ser feito apenas em tasks spawnadas ou handlers HTTP.
+async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Send + Sync>> {
     let global_shutdown_token = CancellationToken::new();
     setup_signal_handler(global_shutdown_token.clone());
 
-    // O PrometheusHandle é opcional; o servidor pode rodar sem métricas se o setup falhar.
     let metrics_handle_opt = match setup_metrics_server(&settings.server) {
         Ok(handle) => {
-            tracing::info!("Servidor de métricas Prometheus iniciado com sucesso.");
+            tracing::info!("Servidor de métricas Prometheus iniciado com sucesso em {}.", 
+                           settings.server.metrics_bind_address.as_deref().unwrap_or("0.0.0.0:9090"));
             Some(handle)
         }
         Err(e) => {
@@ -420,58 +430,97 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn std::error::E
 
     let router = build_axum_router(app_state, &settings, metrics_handle_opt);
 
-    run_axum_server(router, &settings, global_shutdown_token).await?;
+    if let Err(e) = run_axum_server(router, &settings, global_shutdown_token.clone()).await {
+        tracing::error!("Erro fatal ao executar o servidor Axum: {}", e);
+        if !global_shutdown_token.is_cancelled() {
+            global_shutdown_token.cancel();
+        }
+        return Err(e);
+    }
+
+    global_shutdown_token.cancelled().await;
+    tracing::info!("Token de desligamento global recebido, iniciando limpeza de recursos...");
 
     cleanup_resources(typedb_driver, &settings).await?;
 
     Ok(())
 }
 
-/// Handler para o endpoint de liveness (`/livez`). Indica se a aplicação está rodando.
+/// Handler para o endpoint de liveness (`/livez`).
 async fn livez_handler() -> StatusCode {
+    tracing::trace!("Recebida requisição /livez");
     StatusCode::OK
 }
 
-/// Handler para o endpoint de readiness (`/readyz`). Indica se a aplicação está pronta para receber tráfego.
-async fn readyz_handler(State(app_state): State<AppState>) -> Result<AxumResponse, StatusCode> {
+/// Handler para o endpoint de readiness (`/readyz`).
+async fn readyz_handler(State(app_state): State<AppState>) -> impl IntoResponse {
+    tracing::debug!("Verificando prontidão do servidor para /readyz...");
+    let mut ready_components = serde_json::Map::new();
+    let mut overall_ready = true;
+
     if !app_state.typedb_driver_ref.is_open() {
         tracing::warn!("/readyz: Conexão com TypeDB não está aberta.");
-        // Idealmente, retornar um JSON body aqui também
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
+        ready_components.insert("typedb".to_string(), serde_json::json!("DOWN"));
+        overall_ready = false;
+    } else {
+        ready_components.insert("typedb".to_string(), serde_json::json!("UP"));
     }
 
     if app_state.settings.oauth.enabled {
         if let Some(cache) = &app_state.jwks_cache {
             if !cache.is_cache_ever_populated().await {
                 tracing::warn!("/readyz: Cache JWKS ainda não foi populado (OAuth habilitado).");
-                return Err(StatusCode::SERVICE_UNAVAILABLE);
+                ready_components.insert("jwks".to_string(), serde_json::json!("DOWN"));
+                overall_ready = false;
+            } else {
+                ready_components.insert("jwks".to_string(), serde_json::json!("UP"));
             }
         } else {
             tracing::error!("/readyz: OAuth habilitado mas JwksCache ausente. Erro de configuração.");
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            ready_components.insert("jwks".to_string(), serde_json::json!("CONFIG_ERROR"));
+            overall_ready = false; 
         }
+    } else {
+        ready_components.insert("jwks".to_string(), serde_json::json!("NOT_CONFIGURED"));
     }
-    // Considerar adicionar mais checagens se necessário (ex: outras dependências críticas)
-    Ok(StatusCode::OK.into_response()) // Retorna 200 OK se tudo estiver pronto
+    
+    let response_body = serde_json::json!({
+        "status": if overall_ready { "UP" } else { "DOWN" },
+        "components": ready_components
+    });
+
+    let status_code = if overall_ready {
+        tracing::info!("/readyz: Servidor pronto.");
+        StatusCode::OK
+    } else {
+        tracing::warn!("/readyz: Servidor não está pronto. Detalhes: {}", response_body);
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status_code, axum::Json(response_body)).into_response()
 }
 
-/// Handler para o endpoint de métricas (`/metrics`). Retorna as métricas no formato Prometheus.
+/// Handler para o endpoint de métricas (`/metrics`).
 async fn metrics_handler(State(prom_handle): State<PrometheusHandle>) -> AxumResponse {
     prom_handle.render().into_response()
 }
 
 /// Handler para conexões WebSocket MCP.
-#[tracing::instrument(skip_all, name = "mcp_websocket_handler", fields(client.user_id))]
 async fn websocket_handler(
     ws: WebSocketUpgrade,
     State(app_state): State<AppState>,
     maybe_auth_context: Option<Extension<Arc<ClientAuthContext>>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> impl IntoResponse {
     let user_id_for_log = maybe_auth_context
         .as_ref()
-        .map_or_else(|| "não_autenticado".to_string(), |Extension(ctx)| ctx.user_id.clone());
+        .map_or_else(|| "<não_autenticado>".to_string(), |Extension(ctx)| ctx.user_id.clone());
+    
+    // Clonar para usar no span, pois o original será movido para a task
+    let user_id_for_span = user_id_for_log.clone(); 
+    let addr_for_span = addr; // SocketAddr é Copy
 
-    tracing::Span::current().record("client.user_id", tracing::field::display(&user_id_for_log));
+    tracing::Span::current().record("client.user_id", &tracing::field::display(&user_id_for_span));
+    tracing::Span::current().record("client.addr", &tracing::field::display(&addr_for_span));
     tracing::info!("Nova tentativa de conexão WebSocket MCP.");
 
     if app_state.settings.oauth.enabled && maybe_auth_context.is_none() {
@@ -479,40 +528,44 @@ async fn websocket_handler(
         return (StatusCode::UNAUTHORIZED, "Autenticação OAuth2 falhou ou está ausente.").into_response();
     }
 
-    // Cria um token de cancelamento filho para esta conexão específica.
-    // Quando o token de desligamento global é cancelado, este também será.
     let conn_cancellation_token = app_state.global_shutdown_token.child_token();
-    // Clone para o serviço e para o adaptador, garantindo que ambos respeitem o shutdown.
-    let service_shutdown_token = conn_cancellation_token;
+    
+    ws.on_upgrade(move |socket| {
+        // user_id_for_log (String) é movido para esta closure externa
+        // addr (SocketAddr) também é movido
+        async move {
+            tracing::info!("Conexão WebSocket MCP estabelecida.");
+            let mcp_handler_instance = (*app_state.mcp_handler).clone();
+            let adapter = WebSocketTransport::new(socket);
+            let service_shutdown_token_for_task = conn_cancellation_token.clone();
+            
+            // user_id_for_log já é uma String possuída aqui.
+            // Movê-la diretamente para a task interna.
+            let user_id_for_inner_task = user_id_for_log; 
 
-    ws.on_upgrade(move |socket| async move {
-        tracing::info!("Conexão WebSocket MCP estabelecida.");
-
-        let mcp_handler_instance = (*app_state.mcp_handler).clone();
-        let adapter = WebSocketTransport::new(socket);
-
-        // Executa o serviço MCP para esta conexão em uma nova task.
-        // O serviço respeitará o `service_shutdown_token`.
-        tokio::spawn(async move {
-            if let Err(e) = mcp_handler_instance.serve_with_ct(adapter, service_shutdown_token).await {
-                let error_string = e.to_string();
-                // Filtrar erros comuns de desconexão para não poluir os logs como erros críticos.
-                if error_string.contains("operação cancelada")
-                    || error_string.contains("Connection reset by peer")
-                    || error_string.contains("Broken pipe")
-                    || error_string.to_lowercase().contains("connection closed")
-                    || error_string.to_lowercase().contains("channel closed")
-                {
-                    tracing::info!(client.user_id = %user_id_for_log, "Serviço MCP para conexão WebSocket encerrado (cancelado ou desconectado): {}", e);
+            tokio::spawn(async move {
+                let service_result = mcp_handler_instance.serve_with_ct(adapter, service_shutdown_token_for_task).await;
+                if let Err(e) = service_result {
+                    let error_string = e.to_string();
+                    if error_string.contains("operação cancelada")
+                        || error_string.contains("Connection reset by peer")
+                        || error_string.contains("Broken pipe")
+                        || error_string.to_lowercase().contains("connection closed")
+                        || error_string.to_lowercase().contains("channel closed")
+                    {
+                        tracing::info!(client.user_id = %user_id_for_inner_task, "Serviço MCP para conexão WebSocket encerrado (cancelado ou desconectado): {}", e);
+                    } else {
+                        tracing::error!(client.user_id = %user_id_for_inner_task, error.message = %e, "Erro no serviço MCP para a conexão WebSocket.");
+                    }
                 } else {
-                    tracing::error!(client.user_id = %user_id_for_log, error.message = %e, "Erro no serviço MCP para a conexão WebSocket.");
+                     tracing::info!(client.user_id = %user_id_for_inner_task, "Serviço MCP para conexão WebSocket finalizado sem erro explícito do serve_with_ct.");
                 }
-            } else {
-                 tracing::info!(client.user_id = %user_id_for_log, "Serviço MCP para conexão WebSocket finalizado sem erro explícito do serve_with_ct.");
-            }
-            // conn_cancellation_token será dropado aqui, o que pode ou não ser relevante dependendo de como é usado.
-            // O importante é que service_shutdown_token foi usado para o serve_with_ct.
-        });
+            }.instrument(tracing::info_span!( // O span é criado aqui, antes da task ser executada
+                "mcp_connection_task",
+                client.user_id = %user_id_for_span, // Usa o user_id_for_span (clone)
+                client.addr = %addr_for_span     // Usa o addr_for_span (clone/copy)
+            )));
+        }
     })
 }
 
@@ -525,21 +578,21 @@ fn setup_signal_handler(token: CancellationToken) {
             let mut sigint = match signal(SignalKind::interrupt()) {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("[ERROR] Falha crítica ao instalar handler SIGINT: {e}. Encerrando.");
-                    std::process::exit(1); // Encerrar se não puder ouvir sinais
+                    eprintln!("[ERROR] Falha crítica ao instalar handler SIGINT: {}. Encerrando.", e);
+                    std::process::exit(1);
                 }
             };
             let mut sigterm = match signal(SignalKind::terminate()) {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("[ERROR] Falha crítica ao instalar handler SIGTERM: {e}. Encerrando.");
+                    eprintln!("[ERROR] Falha crítica ao instalar handler SIGTERM: {}. Encerrando.", e);
                     std::process::exit(1);
                 }
             };
 
             tokio::select! {
-                biased; // Prioriza o token cancelado externamente se ocorrer ao mesmo tempo.
-                () = token.cancelled() => {
+                biased;
+                _ = token.cancelled() => {
                     tracing::debug!("Handler de sinal: Token de cancelamento global já ativo.");
                 },
                 _ = sigint.recv() => {
@@ -565,7 +618,6 @@ fn setup_signal_handler(token: CancellationToken) {
                 }
             }
         }
-        // Se o loop terminou por um sinal, mas o token ainda não foi cancelado (improvável devido ao biased), cancela agora.
         if !token.is_cancelled() {
             tracing::warn!("Handler de sinal terminou sem que o token global fosse cancelado. Cancelando agora.");
             token.cancel();

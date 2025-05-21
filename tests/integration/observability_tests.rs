@@ -1,6 +1,6 @@
 // tests/integration/observability_tests.rs
 // Testes de integração para endpoints de observabilidade do Typedb-MCP-Server.
-// Valida /livez, /readyz e /metrics sob diferentes condições.
+// Valida /health, /readyz e /metrics sob diferentes condições.
 // Copyright 2025 Guilherme Leste
 // Licença Apache 2.0
 
@@ -126,15 +126,15 @@ async fn wait_for_readyz_status(base_url: &str, expected_overall_status: &str, t
 #[serial_test::serial]
 async fn test_liveness_probe_returns_ok() {
     let docker_env = setup_env("live_ok").await;
-    let url = format!("{}/livez", mcp_base_url());
-    let resp = reqwest::get(&url).await.expect("Falha na requisição /livez");
+    let url = format!("{}/health", mcp_base_url());
+    let resp = reqwest::get(&url).await.expect("Falha na requisição /health");
     assert_eq!(resp.status(), StatusCode::OK);
-    let body = resp.text().await.expect("Falha ao ler corpo /livez");
+    let body = resp.text().await.expect("Falha ao ler corpo /health");
     // O corpo exato pode variar, verificamos a presença de um status OK.
     // O handler em `main.rs` apenas retorna StatusCode::OK, então o corpo pode ser vazio ou default do Axum.
-    // Para ser mais robusto, o handler /livez poderia retornar um JSON `{"status": "OK"}`.
+    // Para ser mais robusto, o handler /health poderia retornar um JSON `{"status": "OK"}`.
     // Por enquanto, o status HTTP 200 é a principal verificação.
-    info!("/livez body: {}", body); // Logar o corpo para inspeção
+    info!("/health body: {}", body); // Logar o corpo para inspeção
     docker_env.down(true).expect("Falha ao derrubar docker_env");
 }
 

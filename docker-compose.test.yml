@@ -19,7 +19,7 @@ services:
       - RUST_LOG=info,typedb_mcp_server_lib=trace,typedb_driver=trace # Para logs detalhados durante o teste
     restart: "no"
     healthcheck: # Exemplo, garantir que isso seja apropriado para seu servidor MCP
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8787/health || exit 1"] # CORRIGIDO para porta 8787
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8787/livez || exit 1"] # MODIFICADO para usar curl e ser silencioso (-s)
       interval: 10s
       timeout: 5s
       retries: 6
@@ -29,8 +29,12 @@ services:
     image: typedb/typedb:3.2.0
     environment:
       - TYPEDB_SERVER_OPTS=--server.authentication.enable=false
-    healthcheck:
-      disable: true
+    healthcheck: # Modificado para usar nc para verificação TCP na porta 1729
+      test: ["CMD-SHELL", "nc -z localhost 1729 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10 # Mais retries para TypeDB
+      start_period: 45s # Período de inicialização maior para TypeDB
     networks:
       - typedb_mcp_test_network
 
@@ -49,7 +53,7 @@ services:
       - typedb_mcp_test_network
     restart: "no"
     healthcheck: # Exemplo, garantir que isso seja apropriado para o Nginx
-      test: ["CMD-SHELL", "wget --spider -q http://localhost/health || exit 1"] # CORRIGIDO para corresponder ao endpoint em nginx-mock-oauth2.conf
+      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"] # CORRIGIDO para usar curl e corresponder ao endpoint
       interval: 10s
       timeout: 5s
       retries: 3
