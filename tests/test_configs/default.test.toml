@@ -1,0 +1,67 @@
+# Arquivo: tests/test_configs/default.test.toml
+# Propósito: Configuração base para testes de integração.
+# - OAuth2 desabilitado.
+# - TLS para o servidor MCP desabilitado.
+# - TLS para conexão com TypeDB desabilitado.
+# - Aponta para o serviço TypeDB padrão ('typedb-server-it').
+
+[server]
+# Endereço de bind INTERNO ao contêiner para o servidor MCP (HTTP/WS).
+bind_address = "0.0.0.0:8787"
+# Endereço de bind INTERNO ao contêiner para o endpoint de métricas Prometheus.
+metrics_bind_address = "0.0.0.0:9090"
+# Caminho do endpoint WebSocket MCP.
+mcp_websocket_path = "/mcp/ws"
+# Caminho do endpoint de métricas Prometheus.
+metrics_path = "/metrics"
+# TLS (HTTPS/WSS) para o servidor MCP.
+tls_enabled = false
+# tls_cert_path = "/app/test_certs/mcp-server.crt" # Necessário se tls_enabled = true
+# tls_key_path = "/app/test_certs/mcp-server.key"   # Necessário se tls_enabled = true
+# Número de threads worker para o runtime Tokio (None usa o default da lib num_cpus).
+# worker_threads = 4
+
+[typedb]
+# Endereço do servidor TypeDB (nome do serviço na rede Docker).
+address = "typedb-server-it:1729"
+# Nome de usuário para autenticação com TypeDB.
+username = "admin"
+# A SENHA (TYPEDB_PASSWORD) é injetada via variável de ambiente no docker-compose.test.yml.
+# Habilita TLS para a conexão com o TypeDB.
+tls_enabled = false
+# tls_ca_path = "/app/test_certs/rootCA.pem" # Necessário se tls_enabled = true e CA customizada
+
+[oauth]
+# Habilita a autenticação OAuth 2.0 para clientes MCP.
+enabled = false
+# jwks_uri = "http://mock-oauth2-server/.well-known/jwks.json" # Necessário se enabled = true
+# issuer = ["test-issuer"] # Necessário se enabled = true e validação de issuer ativa
+# audience = ["test-audience"] # Necessário se enabled = true e validação de audience ativa
+# required_scopes = [] # Opcional: escopos globais
+# jwks_refresh_interval = "5m" # Opcional: default é 1h
+# jwks_request_timeout_seconds = 10 # Opcional: default é 30s
+
+[logging]
+# Nível de log. Formato: "geral,crate1=nivel,crate2=nivel".
+# Para testes, é útil ter logs mais verbosos do servidor e driver.
+rust_log = "info,typedb_mcp_server_lib=debug,typedb_mcp_server=debug,typedb_driver=info,hyper=warn,h2=warn,tower=warn"
+
+[rate_limit]
+# Habilita limitação de taxa.
+enabled = true
+# Requisições por segundo por IP. Elevado para não impactar testes normais.
+requests_per_second = 1000
+# Rajada permitida por IP. Elevado para não impactar testes normais.
+burst_size = 2000
+
+[cors]
+# Origens permitidas. "*" é permissivo para testes.
+allowed_origins = ["*"]
+
+[tracing]
+# Habilita tracing OpenTelemetry. Desabilitado por padrão para testes.
+enabled = false
+# exporter_otlp_endpoint = "http://jaeger-collector:4317" # Exemplo
+service_name = "typedb-mcp-server-test-default"
+# sampler = "always_on" # Default
+# sampler_arg = "1.0" # Default

@@ -1,0 +1,41 @@
+# Arquivo: tests/test_configs/server_tls.test.toml
+# Propósito: Configuração para testes onde o próprio Typedb-MCP-Server
+# expõe seus endpoints MCP e HTTP sobre TLS (HTTPS/WSS).
+
+[server]
+# Endereço de bind INTERNO ao contêiner para o servidor MCP (HTTPS/WSS).
+bind_address = "0.0.0.0:8443"
+# Endereço de métricas pode permanecer HTTP ou ser configurado para HTTPS separadamente se necessário.
+metrics_bind_address = "0.0.0.0:9090"
+mcp_websocket_path = "/mcp/ws"
+metrics_path = "/metrics"
+# Habilita TLS (HTTPS/WSS) para o servidor MCP.
+tls_enabled = true
+# Caminho DENTRO do contêiner para o certificado do servidor MCP.
+tls_cert_path = "/app/test_certs/mcp-server.crt"
+# Caminho DENTRO do contêiner para a chave privada do servidor MCP.
+tls_key_path = "/app/test_certs/mcp-server.key"
+
+[typedb]
+address = "typedb-server-it:1729"
+username = "admin"
+tls_enabled = false
+
+[oauth]
+enabled = false
+
+[logging]
+# Nível de log com trace para a camada de servidor TLS (axum_server).
+rust_log = "info,typedb_mcp_server_lib=debug,typedb_mcp_server=debug,typedb_driver=info,axum_server=trace,hyper=warn,h2=warn,tower=warn"
+
+[rate_limit]
+enabled = true
+requests_per_second = 1000
+burst_size = 2000
+
+[cors]
+allowed_origins = ["*"]
+
+[tracing]
+enabled = false
+service_name = "typedb-mcp-server-test-servertls"

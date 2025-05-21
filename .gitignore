@@ -52,6 +52,12 @@ config.local.toml
 /tests/**/tmp/
 /tests/**/mock/
 
+# Certificados de teste
+/tests/test_certs
+
+# Diretório de informações de projeto
+/project_info
+
 # Arquivos de cobertura de testes
 /coverage/
 *.lcov

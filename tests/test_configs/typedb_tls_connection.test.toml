@@ -1,0 +1,38 @@
+# Arquivo: tests/test_configs/typedb_tls_connection.test.toml
+# Propósito: Configuração para testes onde o Typedb-MCP-Server
+# se conecta a uma instância do TypeDB que requer TLS.
+
+[server]
+bind_address = "0.0.0.0:8787"
+metrics_bind_address = "0.0.0.0:9090"
+mcp_websocket_path = "/mcp/ws"
+metrics_path = "/metrics"
+tls_enabled = false
+
+[typedb]
+# Endereço do servidor TypeDB configurado com TLS (outro serviço Docker).
+address = "typedb-server-tls-it:1729"
+username = "admin"
+# Habilita TLS para a conexão com o TypeDB.
+tls_enabled = true
+# Caminho DENTRO do contêiner para o certificado da CA raiz que assinou o certificado do typedb-server-tls-it.
+tls_ca_path = "/app/test_certs/rootCA.pem"
+
+[oauth]
+enabled = false
+
+[logging]
+# Nível de log com trace para o driver TypeDB para depurar conexões TLS.
+rust_log = "info,typedb_mcp_server_lib=debug,typedb_mcp_server=debug,typedb_driver=trace,hyper=warn,h2=warn,tower=warn"
+
+[rate_limit]
+enabled = true
+requests_per_second = 1000
+burst_size = 2000
+
+[cors]
+allowed_origins = ["*"]
+
+[tracing]
+enabled = false
+service_name = "typedb-mcp-server-test-typedbtls"

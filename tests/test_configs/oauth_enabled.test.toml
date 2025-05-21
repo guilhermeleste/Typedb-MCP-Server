@@ -1,0 +1,47 @@
+# Arquivo: tests/test_configs/oauth_enabled.test.toml
+# Propósito: Configuração para testes que exigem autenticação OAuth2 habilitada.
+# - Aponta para o 'mock-oauth2-server' para JWKS.
+# - Define issuer e audience esperados.
+
+[server]
+bind_address = "0.0.0.0:8787"
+metrics_bind_address = "0.0.0.0:9090"
+mcp_websocket_path = "/mcp/ws"
+metrics_path = "/metrics"
+tls_enabled = false
+
+[typedb]
+address = "typedb-server-it:1729"
+username = "admin"
+tls_enabled = false
+
+[oauth]
+enabled = true
+# URI do endpoint JWKS do mock-oauth2-server (acessível dentro da rede Docker).
+jwks_uri = "http://mock-oauth2-server/.well-known/jwks.json"
+# Issuer esperado no token JWT (deve corresponder ao que auth_helpers.rs gera).
+issuer = ["test-issuer"]
+# Audience esperado no token JWT (deve corresponder ao que auth_helpers.rs gera).
+audience = ["test-audience"]
+# Escopos OAuth2 que um token DEVE conter para acesso geral (opcional, default é nenhum).
+# required_scopes = ["mcp:base_access"]
+# Intervalo para recarregar o JWKS (menor para testes, se for testar o refresh).
+jwks_refresh_interval = "5m"
+# Timeout para a requisição HTTP ao buscar o JWKS.
+jwks_request_timeout_seconds = 10
+
+[logging]
+# Nível de log mais verboso para módulos de autenticação.
+rust_log = "info,typedb_mcp_server_lib=trace,typedb_mcp_server=trace,typedb_driver=info,typedb_mcp_server_lib::auth=trace,hyper=warn,h2=warn,tower=warn"
+
+[rate_limit]
+enabled = true
+requests_per_second = 1000
+burst_size = 2000
+
+[cors]
+allowed_origins = ["*"]
+
+[tracing]
+enabled = false
+service_name = "typedb-mcp-server-test-oauth"
