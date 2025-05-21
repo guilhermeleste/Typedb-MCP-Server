@@ -295,6 +295,12 @@ impl Settings {
             .build()?;
 
         let mut settings: Self = s.try_deserialize()?;
+        // Workaround: Forçar precedência da variável de ambiente MCP_TYPEDB__ADDRESS
+        if let Ok(addr_env) = std::env::var("MCP_TYPEDB__ADDRESS") {
+            tracing::warn!("[WORKAROUND] Sobrescrevendo settings.typedb.address com valor da variável de ambiente MCP_TYPEDB__ADDRESS: {}", addr_env);
+            settings.typedb.address = addr_env;
+        }
+        tracing::info!("[DEBUG MCP CONFIG] Valor final de settings.typedb.address: {}", settings.typedb.address);
 
         // Conversão manual del campo jwks_refresh_interval
         if let Some(ref raw_interval_str) = settings.oauth.jwks_refresh_interval_raw {
