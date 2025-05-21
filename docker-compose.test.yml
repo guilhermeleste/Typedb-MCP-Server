@@ -5,32 +5,32 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        APP_NAME: typedb_mcp_server # CORRIGIDO para consistência com Dockerfile ENV
     ports:
-      - "8089" # Docker atribuirá uma porta de host aleatória, mapeada para a porta 8089 do contêiner
+      - "8787:8787" # Porta HTTP/WebSocket padrão do MCP Server
+      - "8443:8443" # Porta HTTPS/WSS opcional (caso TLS seja ativado nos testes)
     depends_on:
       - typedb-server-it
       - mock-oauth2-server # Adicionada dependência
     networks:
       - typedb_mcp_test_network
     environment: # Adicionado para garantir a conexão correta com o TypeDB
+      - MCP_CONFIG_PATH=/app/config.test.toml # Adicionado para garantir o uso do config de teste
       - MCP_TYPEDB__ADDRESS=typedb-server-it:1729
-      - RUST_LOG=info,typedb_mcp_server_lib=trace,typedb_driver=trace # Para logs detalhados durante o teste
+      - RUST_LOG=info,typedb_mcp_server_lib=trace,typedb_driver=trace,hyper=trace # Adicionado hyper=trace
     restart: "no"
-    healthcheck: # Exemplo, garantir que isso seja apropriado para seu servidor MCP
-      test: ["CMD-SHELL", "curl -f -s http://localhost:8787/livez || exit 1"] # MODIFICADO para usar curl e ser silencioso (-s)
+    healthcheck: # Ajustado para maior robustez em ambientes de CI/CD
+      test: ["CMD-SHELL", "curl -f -v http://localhost:8787/livez 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 6
-      start_period: 30s
+      retries: 12
+      start_period: 60s
 
   typedb-server-it:
     image: typedb/typedb:3.2.0
     environment:
       - TYPEDB_SERVER_OPTS=--server.authentication.enable=false
-    healthcheck: # Modificado para usar nc para verificação TCP na porta 1729
-      test: ["CMD-SHELL", "nc -z localhost 1729 || exit 1"]
+    healthcheck: # Corrigido para não depender de nc (netcat)
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/1729' || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10 # Mais retries para TypeDB
@@ -39,25 +39,25 @@ services:
       - typedb_mcp_test_network
 
   mock-oauth2-server:
-    build:
-      context: .
-      dockerfile: Dockerfile.mock-oauth2 # CORRIGIDO para usar o Dockerfile do mock
-    # APP_NAME não é mais necessário aqui, pois o Dockerfile.mock-oauth2 não o utiliza
-    # image: mock-oauth2-server-image # Ou use uma imagem pré-construída se disponível
+    image: nginx:1.25-alpine
     ports:
-      - "8080" # Docker atribuirá uma porta de host aleatória, mapeada para a porta 8080 do contêiner
+      - "8088" # Porta dinâmica será atribuída pelo Docker
     volumes:
       - ./mock_jwks.json:/usr/share/nginx/html/.well-known/jwks.json:ro
       - ./scripts/nginx-mock-oauth2.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - typedb_mcp_test_network
-    restart: "no"
-    healthcheck: # Exemplo, garantir que isso seja apropriado para o Nginx
-      test: ["CMD-SHELL", "curl -f http://localhost/health || exit 1"] # CORRIGIDO para usar curl e corresponder ao endpoint
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/livez || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   typedb_mcp_test_network:

@@ -65,7 +65,7 @@ pub mod connection_tests;
 pub mod db_admin_tool_tests;
 
 /// Testes para as ferramentas MCP relacionadas a operações de observabilidade
-/// (endpoints /metrics, /health, /readyz).
+/// (endpoints /metrics, livez, /readyz).
 #[path = "integration/observability_tests.rs"]
 pub mod observability_tests;
 

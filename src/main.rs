@@ -34,8 +34,6 @@ use axum::{
     Router,
 };
 use axum_server::{tls_rustls::RustlsConfig, Handle as AxumServerHandle};
-// tokio imports
-use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 // typedb_mcp_server_lib imports
 use typedb_mcp_server_lib::{
@@ -241,7 +239,8 @@ fn build_axum_router(
         base_router = base_router.route(&metrics_path_str, get(metrics_handler).with_state(metrics_h));
     }
 
-    let mut mcp_ws_router = Router::new().route(&mcp_ws_path_str, get(websocket_handler));
+    let mut mcp_ws_router = Router::new()
+        .route(&mcp_ws_path_str, get(websocket_handler));
 
     if settings.oauth.enabled {
         if let Some(jwks_cache_for_middleware) = app_state.jwks_cache.clone() {
@@ -304,13 +303,12 @@ async fn run_axum_server(
 
         axum_server::bind_rustls(bind_addr, tls_config)
             .handle(server_handle)
-            .serve(router.into_make_service())
+            .serve(router.into_make_service_with_connect_info::<SocketAddr>())
             .await?;
     } else {
         tracing::info!("Servidor MCP (HTTP/WS) escutando em {}", bind_addr);
-        let listener = TcpListener::bind(bind_addr).await?;
-        axum::serve(listener, router)
-            .with_graceful_shutdown(global_shutdown_token.cancelled_owned())
+        axum_server::bind(bind_addr)
+            .serve(router.into_make_service_with_connect_info::<SocketAddr>())
             .await?;
     }
     Ok(())

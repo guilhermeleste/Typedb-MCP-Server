@@ -53,7 +53,7 @@ O projeto utiliza principalmente os seguintes tipos de testes:
 * **Exemplos:**
   * Conectar um cliente, chamar a ferramenta `create_database`, verificar se o banco foi criado no TypeDB e se o cliente recebeu a resposta correta.
   * Testar cenários de autenticação OAuth2 com tokens válidos, inválidos e expirados.
-  * Verificar se os endpoints `/health`, `/readyz` e `/metrics` respondem corretamente.
+  * Verificar se os endpoints `livez`, `/readyz` e `/metrics` respondem corretamente.
 * **Execução:**
 
     ```bash

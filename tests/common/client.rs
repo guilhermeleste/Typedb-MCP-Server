@@ -138,11 +138,19 @@ impl TestMcpClient {
         connect_timeout_duration: Duration,
         default_request_timeout: Duration,
     ) -> Result<Self, McpClientError> {
+
         let url = Url::parse(server_url_str)?;
+
+        // Extrai o host (e porta, se houver) para o header Host
+        let host_header = match url.port() {
+            Some(port) => format!("{}:{}", url.host_str().unwrap_or("localhost"), port),
+            None => url.host_str().unwrap_or("localhost").to_string(),
+        };
 
         let mut request_builder = HttpRequest::builder()
             .method("GET")
-            .uri(url.as_str());
+            .uri(url.as_str())
+            .header("Host", host_header.clone());
 
         if let Some(token) = auth_token {
             let auth_value = format!("Bearer {}", token);
@@ -151,7 +159,7 @@ impl TestMcpClient {
                 Err(e) => return Err(McpClientError::HttpRequest(http::Error::from(e))),
             }
         }
-        
+
         request_builder = request_builder
             .header("Connection", "Upgrade")
             .header("Upgrade", "websocket")
@@ -161,6 +169,11 @@ impl TestMcpClient {
         let request = request_builder.body(())?;
 
         info!("Tentando conectar cliente MCP de teste a: {}", server_url_str);
+        // Log dos cabeçalhos da requisição
+        info!("Cabeçalhos da requisição de handshake WebSocket:");
+        for (name, value) in request.headers() {
+            info!("  {}: {:?}", name, value);
+        }
 
         match timeout(connect_timeout_duration, connect_async(request)).await {
             Ok(Ok((ws_stream, response))) => {

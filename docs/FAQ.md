@@ -72,7 +72,7 @@ R: Se o OAuth2 estiver habilitado, isso geralmente significa que o token JWT for
 
 **P16: Como posso monitorar a saúde do servidor?**
 R: O servidor expõe dois endpoints de health check:
-    *`/health`: Indica se o processo do servidor está em execução.
+    *`livez`: Indica se o processo do servidor está em execução.
     *   `/readyz`: Indica se o servidor e suas dependências (TypeDB, JWKS se OAuth2 habilitado) estão prontos para aceitar tráfego.
     Consulte [Observabilidade](./user_guide/08_observability.md) para mais detalhes.
 

@@ -13,4 +13,4 @@ COPY ./mock_jwks.json /usr/share/nginx/html/.well-known/jwks.json
 EXPOSE 80
 
 # O healthcheck do contêiner será gerenciado pelo docker-compose.test.yml, 
-# que usará o endpoint /health definido em nginx-mock-oauth2.conf.
+# que usará o endpoint livez definido em nginx-mock-oauth2.conf.

@@ -480,7 +480,7 @@ Estas ferramentas são usadas para administrar os bancos de dados no servidor Ty
 
 Além da API MCP via WebSocket, o servidor expõe alguns endpoints HTTP para monitoramento e observabilidade.
 
-### `/health`
+### `livez`
 
 * **Método:** `GET`
 * **Descrição:** Endpoint de Liveness. Indica se a aplicação está rodando e respondendo a requisições HTTP básicas.

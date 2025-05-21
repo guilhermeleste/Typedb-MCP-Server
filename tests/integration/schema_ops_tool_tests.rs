@@ -13,6 +13,10 @@ use std::time::Duration;
 use serde_json::json;
 use crate::common::{client::TestMcpClient, auth_helpers, docker_helpers::{DockerComposeEnv, Result as DockerResult}};
 
+const TYPEDB_SERVICE: &str = "typedb-server-it";
+const MCP_SERVER_SERVICE: &str = "typedb-mcp-server-it";
+const MOCK_AUTH_SERVICE: &str = "mock-oauth2-server";
+
 const DOCKER_COMPOSE_FILE: &str = "docker-compose.test.yml";
 const PROJECT_PREFIX: &str = "schemaopstest";
 const MCP_WS_ENDPOINT: &str = "ws://localhost:8787/mcp/ws";
@@ -31,19 +35,17 @@ async fn setup_env() -> std::result::Result<DockerComposeEnv, String> {
         DockerResult::Err(e) => return Err(format!("env.up() failed: {}", e)),
     }
 
-    match env.wait_for_service_healthy("typedb-mcp-server", Duration::from_secs(60)).await {
+    match env.wait_for_service_healthy(MCP_SERVER_SERVICE, Duration::from_secs(60)).await {
         DockerResult::Ok(_) => (),
-        DockerResult::Err(e) => return Err(format!("wait_for_service_healthy typedb-mcp-server failed: {}", e)),
+        DockerResult::Err(e) => return Err(format!("wait_for_service_healthy {} failed: {}", MCP_SERVER_SERVICE, e)),
     }
-    
-    match env.wait_for_service_healthy("typedb", Duration::from_secs(60)).await {
+    match env.wait_for_service_healthy(TYPEDB_SERVICE, Duration::from_secs(60)).await {
         DockerResult::Ok(_) => (),
-        DockerResult::Err(e) => return Err(format!("wait_for_service_healthy typedb failed: {}", e)),
+        DockerResult::Err(e) => return Err(format!("wait_for_service_healthy {} failed: {}", TYPEDB_SERVICE, e)),
     }
-
-    match env.wait_for_service_healthy("mock-auth-server", Duration::from_secs(30)).await {
+    match env.wait_for_service_healthy(MOCK_AUTH_SERVICE, Duration::from_secs(30)).await {
         DockerResult::Ok(_) => (),
-        DockerResult::Err(e) => return Err(format!("wait_for_service_healthy mock-auth-server failed: {}", e)),
+        DockerResult::Err(e) => return Err(format!("wait_for_service_healthy {} failed: {}", MOCK_AUTH_SERVICE, e)),
     }
     
     Ok(env)

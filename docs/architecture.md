@@ -98,7 +98,7 @@ O Typedb-MCP-Server é um servidor Rust de alta performance, seguro e extensíve
 
 - Tracing distribuído via OpenTelemetry (OTLP).
 - Métricas detalhadas via Prometheus.
-- Endpoints de healthcheck (`/health`, `/readyz`).
+- Endpoints de healthcheck (`livez`, `/readyz`).
 
 ## Extensibilidade
 

@@ -49,9 +49,9 @@ Embora uma [lista completa de métricas esteja disponível na referência](../re
 
 O servidor expõe dois endpoints HTTP para verificação de saúde, comumente usados por orquestradores de contêineres (como Kubernetes) ou balanceadores de carga.
 
-### Liveness Probe (`/health`)
+### Liveness Probe (`livez`)
 
-* **Endpoint:** `http://<host_do_servidor_mcp>:<porta_do_servidor_mcp>/health`
+* **Endpoint:** `http://<host_do_servidor_mcp>:<porta_do_servidor_mcp>livez`
 * **Método:** `GET`
 * **Descrição:** Indica se a aplicação está rodando e o servidor HTTP base está respondendo. Uma falha aqui geralmente significa que o processo do servidor travou ou parou.
 * **Resposta:**

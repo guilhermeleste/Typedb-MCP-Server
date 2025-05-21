@@ -86,7 +86,7 @@ O objetivo principal foi compreender, documentar e aprimorar os scripts de shell
               add_header 'Content-Type' 'application/json';
           }
 
-          location /health {
+          location livez {
               access_log off;
               return 200 "OK";
               add_header Content-Type text/plain;

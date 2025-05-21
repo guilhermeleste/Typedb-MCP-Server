@@ -12,7 +12,7 @@ A pasta `src/` contém todo o código Rust que compõe a lógica do Typedb-MCP-S
     * Estabelecer a conexão com o servidor TypeDB (usando o módulo `db`).
     * Configurar e iniciar o servidor HTTP/WebSocket Axum.
     * Montar os middlewares (OAuth2, CORS, tracing, etc.).
-    * Definir as rotas HTTP (para `/metrics`, `/health`, `/readyz`) e a rota WebSocket MCP.
+    * Definir as rotas HTTP (para `/metrics`, `livez`, `/readyz`) e a rota WebSocket MCP.
     * Instanciar e compartilhar o estado da aplicação (`AppState`), incluindo o `McpServiceHandler`.
     * Gerenciar o graceful shutdown da aplicação.
 

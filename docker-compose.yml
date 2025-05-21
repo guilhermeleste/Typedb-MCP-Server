@@ -43,7 +43,7 @@ services:
     environment:
       - TYPEDB_SERVER_OPTS=--server.authentication.enable=false
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/health" ]
+      test: ["CMD", "curl", "-f", "http://localhost:80livez" ]
       interval: 10s
       timeout: 5s
       retries: 10
