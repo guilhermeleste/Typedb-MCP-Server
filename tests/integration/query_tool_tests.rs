@@ -2,302 +2,363 @@
 // Licença Apache 2.0
 // Copyright 2025 Guilherme Leste
 
-use std::time::Duration;
-use serde_json::json;
-// Ajustado para usar o common do crate de teste de integração
+//! Testes de integração para as ferramentas MCP de consulta e manipulação de dados
+//! (query_read, insert_data, delete_data, update_data, validate_query).
+
 use crate::common::{
-    client::TestMcpClient,
-    auth_helpers::{self, Algorithm},
-    docker_helpers::DockerComposeEnv, // DockerComposeEnv é importado aqui
+    client::McpClientError,
+    constants,
+    test_env::TestEnvironment,
+    mcp_utils::get_text_from_call_result,
 };
-use rmcp::model::{CallToolResult, RawContent};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use anyhow::{Context as AnyhowContext, Result};
+use rmcp::model::ErrorCode as McpErrorCode;
+use serde_json::{json, Value as JsonValue}; // Adicionado JsonValue
+use serial_test::serial;
+use tracing::info;
+use uuid::Uuid;
 
-
-const DOCKER_COMPOSE_FILE: &str = "docker-compose.test.yml";
-const PROJECT_PREFIX: &str = "querytooltest";
-// REMOVIDO: const MCP_WS_ENDPOINT: &str = "ws://localhost:8788/mcp/ws";
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
-
-
+/// Gera um nome de banco de dados único para evitar conflitos entre testes.
 fn unique_db_name(suffix: &str) -> String {
-    format!("test_query_ops_{}_{}", suffix, uuid::Uuid::new_v4().simple().to_string())
+    format!("test_query_ops_{}_{}", suffix, Uuid::new_v4().as_simple())
 }
 
-async fn setup_env() -> std::result::Result<DockerComposeEnv, String> {
-    let env = DockerComposeEnv::new(DOCKER_COMPOSE_FILE, PROJECT_PREFIX);
-    
-    match env.up() {
-        Ok(_) => (),
-        Err(e) => return Err(format!("env.up() failed: {}", e)),
-    }
+/// Helper para criar um banco de dados de teste e definir um esquema base.
+/// Retorna o cliente MCP usado para o setup, que já tem a sessão inicializada.
+async fn setup_database_with_base_schema(
+    test_env: &TestEnvironment,
+    db_name: &str,
+    scopes_for_setup: &str,
+) -> Result<crate::common::client::TestMcpClient> {
+    let mut client = test_env.mcp_client_with_auth(Some(scopes_for_setup)).await?;
 
-    match env.wait_for_service_healthy("typedb-server-it", Duration::from_secs(90)).await {
-        Ok(_) => (),
-        Err(e) => return Err(format!("wait_for_service_healthy typedb-server-it failed: {}", e)),
-    }
-    
-    match env.wait_for_service_healthy("typedb-mcp-server-it", Duration::from_secs(60)).await {
-        Ok(_) => (),
-        Err(e) => return Err(format!("wait_for_service_healthy typedb-mcp-server-it failed: {}", e)),
-    }
-    
-    match env.wait_for_service_healthy("mock-oauth2-server", Duration::from_secs(30)).await {
-        Ok(_) => (),
-        Err(e) => return Err(format!("wait_for_service_healthy mock-oauth2-server failed: {}", e)),
-    }
-    
-    Ok(env)
-}
+    info!("Helper: Criando banco de dados de teste: {}", db_name);
+    let create_result = client
+        .call_tool("create_database", Some(json!({ "name": db_name })))
+        .await;
+    assert!(
+        create_result.is_ok(),
+        "Falha ao criar banco de teste '{}' via helper: {:?}",
+        db_name,
+        create_result.err()
+    );
 
-
-async fn teardown_env(env: DockerComposeEnv) {
-    let _ = env.down(true);
-}
-
-async fn mcp_client_with_scope(env: &DockerComposeEnv, scope: &str) -> TestMcpClient {
-    let mcp_service_internal_port = 8089; // Porta interna do typedb-mcp-server-it
-    let mapped_host_port = env.get_service_port("typedb-mcp-server-it", mcp_service_internal_port)
-        .expect("Falha ao obter a porta do host mapeada para typedb-mcp-server-it");
-    let mcp_ws_endpoint = format!("ws://localhost:{}/mcp/ws", mapped_host_port);
-
-    let now = auth_helpers::current_timestamp_secs();
-    let claims = auth_helpers::TestClaims {
-        sub: "integration-test-user".to_string(),
-        exp: now + 3600,
-        iat: Some(now),
-        nbf: Some(now),
-        iss: Some("test-issuer".to_string()),
-        aud: Some(serde_json::json!("test-audience")),
-        scope: Some(scope.to_string()),
-        custom_claim: None,
-    };
-    let token = auth_helpers::generate_test_jwt(claims, Algorithm::RS256);
-    TestMcpClient::connect(&mcp_ws_endpoint, Some(token), CONNECT_TIMEOUT, REQUEST_TIMEOUT)
-        .await
-        .expect("Falha ao conectar MCP client")
-}
-
-// Helpers para criar e deletar banco de dados de teste
-async fn create_test_db(client: &mut TestMcpClient, db_name: &str) {
-    let result = client.call_tool("create_database", Some(json!({"name": db_name}))).await;
-    assert!(result.is_ok(), "Falha ao criar banco de teste '{}': {:?}", db_name, result.err());
-}
-async fn delete_test_db(client: &mut TestMcpClient, db_name: &str) {
-    let _ = client.call_tool("delete_database", Some(json!({"name": db_name}))).await;
-}
-
-// Helper para definir um esquema base para os testes
-async fn define_base_schema(client: &mut TestMcpClient, db_name: &str) {
     let schema = r#"
         define
-            person sub entity, owns name, owns age;
+            person sub entity,
+                owns name,
+                owns age,
+                plays employment:employee;
+            company sub entity,
+                owns company-name,
+                plays employment:employer;
+            employment sub relation,
+                relates employee,
+                relates employer,
+                owns salary;
             name sub attribute, value string;
+            company-name sub attribute, value string;
             age sub attribute, value long;
-    "#; // Removido employment para simplificar, pode ser adicionado se necessário
-    let result = client.call_tool("define_schema", Some(json!({"database_name": db_name, "schema_definition": schema}))).await;
-    assert!(result.is_ok(), "Falha ao definir schema base para '{}': {:?}", db_name, result.err());
+            salary sub attribute, value double;
+    "#;
+    info!("Helper: Definindo esquema base para o banco: {}", db_name);
+    let define_result = client
+        .call_tool(
+            "define_schema",
+            Some(json!({ "database_name": db_name, "schema_definition": schema })),
+        )
+        .await;
+    assert!(
+        define_result.is_ok(),
+        "Falha ao definir esquema base para '{}': {:?}",
+        db_name,
+        define_result.err()
+    );
+    info!("Helper: Banco '{}' e esquema base configurados.", db_name);
+    Ok(client) // Retorna o cliente usado para o setup
 }
 
-/// Helper para extrair o conteúdo de texto de um CallToolResult.
-fn get_text_from_call_result(call_result: CallToolResult) -> String {
-    assert!(!call_result.content.is_empty(), "A resposta da ferramenta MCP não pode estar vazia.");
-    let content_item = &call_result.content[0]; // Pega o primeiro item de conteúdo
-    match &content_item.raw { // Acessa o RawContent através do Deref implícito
-        RawContent::Text(text_content) => {
-            text_content.text.clone()
-        },
-        RawContent::Resource(resource_content) => {
-            // Se o recurso for texto, extrai. Útil se query_read retornar ResourceContents::TextResourceContents.
-            match &resource_content.resource {
-                rmcp::model::ResourceContents::TextResourceContents { text, .. } => text.clone(),
-                rmcp::model::ResourceContents::BlobResourceContents { blob, .. } => {
-                    let decoded_bytes = BASE64_STANDARD.decode(blob).expect("Falha ao decodificar blob base64 no helper");
-                    String::from_utf8(decoded_bytes).expect("Blob decodificado não é UTF-8 válido no helper")
-                }
-                // _ => panic!("Conteúdo do recurso não é texto no helper: {:?}", resource_content.resource),
-            }
-        }
-        _ => panic!("Conteúdo da resposta não é Texto ou Recurso textual como esperado. Conteúdo: {:?}", content_item.raw),
-    }
+/// Helper para deletar um banco de dados de teste (melhor esforço).
+async fn delete_test_db(
+    client: &mut crate::common::client::TestMcpClient,
+    db_name: &str,
+) {
+    info!("Helper: Deletando banco de dados de teste: {}", db_name);
+    let _ = client
+        .call_tool("delete_database", Some(json!({ "name": db_name })))
+        .await;
 }
-
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_insert_person_and_query_by_name() {
-    let docker_env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name("insert_person");
-    let mut client = mcp_client_with_scope(&docker_env, "typedb:manage_databases typedb:manage_schema typedb:write_data typedb:read_data").await;
-    create_test_db(&mut client, &db_name).await;
-    define_base_schema(&mut client, &db_name).await;
+#[serial]
+async fn test_insert_and_query_read_person() -> Result<()> {
+    let test_env =
+        TestEnvironment::setup("insert_query_person", constants::DEFAULT_TEST_CONFIG_FILENAME)
+            .await?;
+    let db_name = unique_db_name("person_iq");
+    let mut client = setup_database_with_base_schema(
+        &test_env,
+        &db_name,
+        "typedb:manage_databases typedb:manage_schema typedb:write_data typedb:read_data",
+    )
+    .await?;
 
     let insert_query = r#"insert $p isa person, has name "Alice", has age 30;"#;
-    let result = client.call_tool("insert_data", Some(json!({"database_name": db_name, "query": insert_query}))).await;
-    assert!(result.is_ok(), "Falha ao inserir dados: {:?}", result.err());
+    info!("Teste: Inserindo dados com query: {}", insert_query);
+    let insert_result = client
+        .call_tool(
+            "insert_data",
+            Some(json!({ "database_name": db_name, "query": insert_query })),
+        )
+        .await
+        .context("Falha na ferramenta insert_data")?;
+    assert_eq!(insert_result.is_error.unwrap_or(false), false, "insert_data retornou is_error=true");
 
-    let read_query = "match $p isa person, has name $n; get $n;";
-    let result = client.call_tool("query_read", Some(json!({"database_name": db_name, "query": read_query}))).await;
-    assert!(result.is_ok(), "Falha ao consultar dados: {:?}", result.err());
-    
-    let text_content = get_text_from_call_result(result.unwrap());
-    let json_value: serde_json::Value = serde_json::from_str(&text_content).expect("Falha ao parsear JSON da resposta de query_read");
-    
-    assert!(json_value.is_array() && !json_value.as_array().unwrap().is_empty(), "Resultado deveria ser um array não vazio");
-    assert!(json_value.to_string().contains("Alice"), "Resultado não contém 'Alice'");
-    
+    let read_query = r#"match $p isa person, has name $n, has age $a; get $n, $a; sort $n asc;"#;
+    info!("Teste: Consultando dados com query: {}", read_query);
+    let read_result = client
+        .call_tool(
+            "query_read",
+            Some(json!({ "database_name": db_name, "query": read_query })),
+        )
+        .await
+        .context("Falha na ferramenta query_read")?;
+
+    let text_content = get_text_from_call_result(read_result);
+    let json_value: JsonValue = // Usar JsonValue aqui
+        serde_json::from_str(&text_content).context("Falha ao parsear JSON da resposta de query_read")?;
+
+    info!("Resposta de query_read: {}", json_value);
+    let expected_json = json!([
+        {
+            // A ordem dos campos dentro de 'a' e 'n' pode variar, mas os valores devem ser os mesmos.
+            // O TypeDB driver pode não garantir a ordem dos atributos dentro de um ConceptMap.
+            // Para uma comparação robusta, seria ideal parsear para uma struct ou comparar campos individualmente.
+            // Por simplicidade, vamos manter a comparação direta, mas cientes dessa possível fragilidade.
+            "a": { "value": {"integer": 30}, "typeLabel": "age", "valueType": "integer" },
+            "n": { "value": {"string": "Alice"}, "typeLabel": "name", "valueType": "string" }
+        }
+    ]);
+    assert_eq!(json_value, expected_json, "Resultado da consulta de pessoa não corresponde ao esperado.");
+
     delete_test_db(&mut client, &db_name).await;
-    docker_env.down(true).expect("Falha ao derrubar ambiente docker-compose");
+    Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_query_read_aggregate_count() {
-    let docker_env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name("aggregate_count");
-    let mut client = mcp_client_with_scope(&docker_env, "typedb:manage_databases typedb:manage_schema typedb:write_data typedb:read_data").await;
-    create_test_db(&mut client, &db_name).await;
-    define_base_schema(&mut client, &db_name).await;
+#[serial]
+async fn test_query_read_aggregate_count() -> Result<()> {
+    let test_env = TestEnvironment::setup("query_agg_count", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
+    let db_name = unique_db_name("agg_count");
+    let mut client = setup_database_with_base_schema(
+        &test_env,
+        &db_name,
+        "typedb:manage_databases typedb:manage_schema typedb:write_data typedb:read_data",
+    )
+    .await?;
 
-    let insert_query = r#"insert $p isa person, has name "Bob", has age 40;"#;
-    let _ = client.call_tool("insert_data", Some(json!({"database_name": db_name, "query": insert_query}))).await;
+    let insert_queries = [
+        r#"insert $p isa person, has name "Bob", has age 40;"#,
+        r#"insert $p isa person, has name "Charlie", has age 35;"#,
+    ];
+    for query in insert_queries {
+        client.call_tool("insert_data", Some(json!({ "database_name": db_name, "query": query }))).await?;
+    }
 
     let agg_query = "match $p isa person; count;";
-    let result = client.call_tool("query_read", Some(json!({"database_name": db_name, "query": agg_query}))).await;
-    assert!(result.is_ok(), "Falha ao consultar agregação: {:?}", result.err());
+    info!("Teste: Consultando agregação (count) com query: {}", agg_query);
+    let agg_result = client
+        .call_tool("query_read", Some(json!({ "database_name": db_name, "query": agg_query })))
+        .await
+        .context("Falha na ferramenta query_read (aggregate)")?;
+    
+    let text_content = get_text_from_call_result(agg_result);
+    let count_value: i64 = serde_json::from_str(&text_content)
+        .context("Falha ao parsear resultado de count como i64")?;
+    
+    assert_eq!(count_value, 2, "Contagem de pessoas incorreta.");
 
-    let text_content = get_text_from_call_result(result.unwrap());
-    let json_value: serde_json::Value = serde_json::from_str(&text_content).expect("Falha ao parsear JSON da resposta de query_read (aggregate)");
-    
-    assert_eq!(json_value, json!(1), "Resultado de agregação não é 1"); // Corrigido para comparar com json!(1)
-    
     delete_test_db(&mut client, &db_name).await;
-    docker_env.down(true).expect("Falha ao derrubar ambiente docker-compose");
+    Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_update_attribute_value() {
-    let docker_env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name("update_attr");
-    let mut client = mcp_client_with_scope(&docker_env, "typedb:manage_databases typedb:manage_schema typedb:write_data typedb:read_data").await;
-    create_test_db(&mut client, &db_name).await;
-    define_base_schema(&mut client, &db_name).await;
+#[serial]
+async fn test_update_attribute_value() -> Result<()> {
+    let test_env = TestEnvironment::setup("update_attr_val", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
+    let db_name = unique_db_name("upd_attr");
+    let mut client = setup_database_with_base_schema(
+        &test_env,
+        &db_name,
+        "typedb:manage_databases typedb:manage_schema typedb:write_data typedb:read_data",
+    )
+    .await?;
 
     let insert_query = r#"insert $p isa person, has name "Carol", has age 25;"#;
-    let _ = client.call_tool("insert_data", Some(json!({"database_name": db_name, "query": insert_query}))).await;
+    client.call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query }))).await?;
 
-    let update_query = r#"match $p isa person, has name "Carol", has age $a; delete $p has $a; insert $p has age 26;"#;
-    let result = client.call_tool("update_data", Some(json!({"database_name": db_name, "query": update_query}))).await;
-    assert!(result.is_ok(), "Falha ao atualizar atributo: {:?}", result.err());
+    let update_query = r#"match $p isa person, has name "Carol", has age $a; delete $p has age $a; insert $p has age 26;"#;
+    info!("Teste: Atualizando atributo com query: {}", update_query);
+    let update_result = client
+        .call_tool(
+            "update_data",
+            Some(json!({ "database_name": db_name, "query": update_query })),
+        )
+        .await
+        .context("Falha na ferramenta update_data")?;
+    assert_eq!(update_result.is_error.unwrap_or(false), false, "update_data retornou is_error=true");
 
     let read_query = r#"match $p isa person, has name "Carol", has age $a; get $a;"#;
-    let result = client.call_tool("query_read", Some(json!({"database_name": db_name, "query": read_query}))).await;
-    assert!(result.is_ok(), "Falha ao consultar atributo atualizado: {:?}", result.err());
+    let read_result = client
+        .call_tool("query_read", Some(json!({ "database_name": db_name, "query": read_query })))
+        .await?;
     
-    let text_content = get_text_from_call_result(result.unwrap());
-    let json_value: serde_json::Value = serde_json::from_str(&text_content).expect("Falha ao parsear JSON da resposta de query_read (update)");
+    let text_content = get_text_from_call_result(read_result);
+    let json_value: JsonValue = serde_json::from_str(&text_content)?; // Usar JsonValue
+    info!("Resultado após update: {}", json_value);
 
-    assert!(json_value.is_array() && !json_value.as_array().unwrap().is_empty(), "Resultado da consulta de atualização não deveria ser vazio");
-    // A estrutura exata da resposta para `get $a;` pode variar.
-    // Se for [{"a": {"integer": 26}}], então:
-    assert!(json_value.to_string().contains("26"), "Valor atualizado (26) não encontrado na resposta: {}", json_value);
-    
+    let expected_json = json!([{"a": { "value": {"integer": 26}, "typeLabel": "age", "valueType": "integer" }}]);
+    assert_eq!(json_value, expected_json, "Valor do atributo 'age' não foi atualizado corretamente.");
+
     delete_test_db(&mut client, &db_name).await;
-    docker_env.down(true).expect("Falha ao derrubar ambiente docker-compose");
+    Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_delete_entity_and_verify_deletion() {
-    let docker_env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name("delete_entity");
-    let mut client = mcp_client_with_scope(&docker_env, "typedb:manage_databases typedb:manage_schema typedb:write_data typedb:read_data").await;
-    create_test_db(&mut client, &db_name).await;
-    define_base_schema(&mut client, &db_name).await;
+#[serial]
+async fn test_delete_entity_and_verify() -> Result<()> {
+    let test_env = TestEnvironment::setup("delete_entity_verify", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
+    let db_name = unique_db_name("del_ent");
+    let mut client = setup_database_with_base_schema(
+        &test_env,
+        &db_name,
+        "typedb:manage_databases typedb:manage_schema typedb:write_data typedb:read_data",
+    )
+    .await?;
 
     let insert_query = r#"insert $p isa person, has name "Dave", has age 50;"#;
-    let _ = client.call_tool("insert_data", Some(json!({"database_name": db_name, "query": insert_query}))).await;
+    client.call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query }))).await?;
 
     let delete_query = r#"match $p isa person, has name "Dave"; delete $p;"#;
-    let result = client.call_tool("delete_data", Some(json!({"database_name": db_name, "query": delete_query}))).await;
-    assert!(result.is_ok(), "Falha ao deletar entidade: {:?}", result.err());
+    info!("Teste: Deletando entidade com query: {}", delete_query);
+    let delete_result = client
+        .call_tool(
+            "delete_data",
+            Some(json!({ "database_name": db_name, "query": delete_query })),
+        )
+        .await
+        .context("Falha na ferramenta delete_data")?;
+    let delete_text = get_text_from_call_result(delete_result);
+    assert_eq!(delete_text, "OK", "Resposta incorreta ao deletar entidade.");
 
     let read_query = r#"match $p isa person, has name "Dave"; get $p;"#;
-    let result = client.call_tool("query_read", Some(json!({"database_name": db_name, "query": read_query}))).await;
-    assert!(result.is_ok(), "Falha ao consultar entidade após deleção: {:?}", result.err());
+    info!("Teste: Verificando se entidade foi deletada com query: {}", read_query);
+    let read_result_after_delete = client
+        .call_tool("query_read", Some(json!({ "database_name": db_name, "query": read_query })))
+        .await?;
     
-    let text_content = get_text_from_call_result(result.unwrap());
-    let json_value: serde_json::Value = serde_json::from_str(&text_content).expect("Falha ao parsear JSON da resposta de query_read (delete)");
+    let text_content_after_delete = get_text_from_call_result(read_result_after_delete);
+    let json_value_after_delete: Vec<JsonValue> = serde_json::from_str(&text_content_after_delete)?; // Usar JsonValue
     
-    assert!(json_value.as_array().map_or(true, |arr| arr.is_empty()), "Entidade não foi removida, resultado: {}", json_value);
-    
+    assert!(json_value_after_delete.is_empty(), "Entidade 'Dave' não foi removida, resultado: {:?}", json_value_after_delete);
+
     delete_test_db(&mut client, &db_name).await;
-    docker_env.down(true).expect("Falha ao derrubar ambiente docker-compose");
+    Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_validate_syntactically_correct_query_returns_valid() {
-    let docker_env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name("validate_ok");
-    let mut client = mcp_client_with_scope(&docker_env, "typedb:manage_databases typedb:manage_schema typedb:read_data typedb:validate_queries").await;
-    create_test_db(&mut client, &db_name).await;
-    define_base_schema(&mut client, &db_name).await;
-    
+#[serial]
+async fn test_validate_query_syntax_ok_and_fail() -> Result<()> {
+    let test_env = TestEnvironment::setup("validate_query", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
+    let db_name = unique_db_name("val_q");
+    let mut client = setup_database_with_base_schema(
+        &test_env,
+        &db_name,
+        "typedb:manage_databases typedb:manage_schema typedb:validate_queries",
+    )
+    .await?;
+
     let valid_query = "match $p isa person; get $p;";
-    let result = client.call_tool("validate_query", Some(json!({"database_name": db_name, "query": valid_query, "intended_transaction_type": "read"}))).await;
-    assert!(result.is_ok(), "Falha ao validar query válida: {:?}", result.err());
-    
-    let text_value = get_text_from_call_result(result.unwrap());
-    assert_eq!(text_value.trim().to_lowercase(), "valid"); // Comparar com "valid" em minúsculas e trim
-    
+    info!("Teste: Validando query sintaticamente correta: {}", valid_query);
+    let validate_ok_result = client
+        .call_tool(
+            "validate_query",
+            Some(json!({ "database_name": db_name, "query": valid_query, "intended_transaction_type": "read" })),
+        )
+        .await?;
+    let text_ok = get_text_from_call_result(validate_ok_result);
+    assert_eq!(text_ok.trim().to_lowercase(), "valid", "Query válida retornou: {}", text_ok);
+
+    let invalid_query_syntax = "match $p isa person get $p;";
+    info!("Teste: Validando query com erro de sintaxe: {}", invalid_query_syntax);
+    let validate_err_result = client
+        .call_tool(
+            "validate_query",
+            Some(json!({ "database_name": db_name, "query": invalid_query_syntax, "intended_transaction_type": "read" })),
+        )
+        .await?;
+    let text_err = get_text_from_call_result(validate_err_result);
+    assert!(
+        text_err.to_lowercase().contains("error") || text_err.to_lowercase().contains("fail"),
+        "Mensagem para query inválida não indicou erro: '{}'", text_err
+    );
+
     delete_test_db(&mut client, &db_name).await;
-    docker_env.down(true).expect("Falha ao derrubar ambiente docker-compose");
+    Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_validate_query_with_syntax_error_returns_error_message() {
-    let docker_env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name("validate_syntax_err");
-    let mut client = mcp_client_with_scope(&docker_env, "typedb:manage_databases typedb:manage_schema typedb:read_data typedb:validate_queries").await;
-    create_test_db(&mut client, &db_name).await;
-    define_base_schema(&mut client, &db_name).await;
-    
-    let invalid_query = "match $p isa person get $p;"; // falta o ponto e vírgula
-    let result = client.call_tool("validate_query", Some(json!({"database_name": db_name, "query": invalid_query, "intended_transaction_type": "read"}))).await;
-    assert!(result.is_ok(), "Validação de query inválida deveria retornar OK (com mensagem de erro no conteúdo): {:?}", result.err()); // A ferramenta em si não falha, o conteúdo indica o erro.
-    
-    let text_value = get_text_from_call_result(result.unwrap());
-    assert!(text_value.to_lowercase().contains("error") || text_value.to_lowercase().contains("fail"), "Mensagem de erro de sintaxe não encontrada ou não indicativa de erro: '{}'", text_value); // Checagem mais genérica
-    
-    delete_test_db(&mut client, &db_name).await;
-    docker_env.down(true).expect("Falha ao derrubar ambiente docker-compose");
-}
+#[serial]
+async fn test_query_data_operations_require_correct_scopes_oauth() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "query_scopes_oauth",
+        constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    let db_name = unique_db_name("q_scopes");
 
-#[tokio::test]
-#[serial_test::serial]
-async fn test_data_operations_require_correct_scopes() {
-    let docker_env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name("authz_scope_query");
-    let mut client_admin_only = mcp_client_with_scope(&docker_env, "typedb:manage_databases typedb:manage_schema").await;
-    create_test_db(&mut client_admin_only, &db_name).await;
-    define_base_schema(&mut client_admin_only, &db_name).await;
+    // Usar o cliente retornado pelo setup_database_with_base_schema, que já tem os escopos de setup
+    let _setup_client = setup_database_with_base_schema(
+        &test_env,
+        &db_name,
+        "typedb:manage_databases typedb:manage_schema", // Escopos apenas para setup
+    )
+    .await?;
+    // setup_client agora é mutável e pode ser usado para deleção, mas os escopos dele são limitados.
 
+    let mut client_readonly = test_env.mcp_client_with_auth(Some("typedb:read_data")).await?;
     let insert_query = r#"insert $p isa person, has name "Eve", has age 22;"#;
-    let result_insert = client_admin_only.call_tool("insert_data", Some(json!({"database_name": db_name, "query": insert_query}))).await;
-    assert!(result_insert.is_err(), "Esperado erro de permissão para insert_data sem escopo 'typedb:write_data'");
+    info!("Teste: Tentando insert_data sem escopo 'typedb:write_data'");
+    let result_insert_no_scope = client_readonly
+        .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query })))
+        .await;
+    assert!(result_insert_no_scope.is_err());
+    if let McpClientError::McpErrorResponse { code, .. } = result_insert_no_scope.unwrap_err() {
+        assert_eq!(code.0, McpErrorCode(-32001).0);
+    } else { panic!("Esperado McpErrorResponse de autorização para insert_data"); }
 
+    let mut client_write_perms = test_env.mcp_client_with_auth(Some("typedb:write_data")).await?;
+    info!("Teste: Tentando insert_data COM escopo 'typedb:write_data'");
+    let insert_ok_result = client_write_perms
+        .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query })))
+        .await;
+    assert!(insert_ok_result.is_ok(), "insert_data com escopo correto falhou: {:?}", insert_ok_result.err());
+
+    let mut client_no_relevant_scopes = test_env.mcp_client_with_auth(Some("other:unrelated")).await?;
     let read_query = "match $p isa person; get $p;";
-    let result_read = client_admin_only.call_tool("query_read", Some(json!({"database_name": db_name, "query": read_query}))).await;
-    assert!(result_read.is_err(), "Esperado erro de permissão para query_read sem escopo 'typedb:read_data'");
+    info!("Teste: Tentando query_read sem escopo 'typedb:read_data'");
+    let result_read_no_scope = client_no_relevant_scopes
+        .call_tool("query_read", Some(json!({ "database_name": db_name, "query": read_query })))
+        .await;
+    assert!(result_read_no_scope.is_err());
+     if let McpClientError::McpErrorResponse { code, .. } = result_read_no_scope.unwrap_err() {
+        assert_eq!(code.0, McpErrorCode(-32001).0);
+    } else { panic!("Esperado McpErrorResponse de autorização para query_read"); }
 
-    // ... (testes para delete_data, update_data, validate_query com escopos insuficientes) ...
-
-    // Limpeza com um cliente que TEM permissão para deletar
-    let mut client_full_perms = mcp_client_with_scope(&docker_env, "typedb:admin_databases").await;
-    delete_test_db(&mut client_full_perms, &db_name).await;
-    docker_env.down(true).expect("Falha ao derrubar ambiente docker-compose");
+    // Usar o cliente com permissões de admin para deletar
+    let mut final_cleanup_client = test_env
+        .mcp_client_with_auth(Some("typedb:admin_databases"))
+        .await?;
+    delete_test_db(&mut final_cleanup_client, &db_name).await;
+    Ok(())
 }

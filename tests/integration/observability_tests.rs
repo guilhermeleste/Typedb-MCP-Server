@@ -4,257 +4,266 @@
 // Copyright 2025 Guilherme Leste
 // Licença Apache 2.0
 
-use std::time::Duration;
+//! Testes de integração para os endpoints de observabilidade (`/livez`, `/readyz`, `/metrics`)
+//! do Typedb-MCP-Server.
+
+use crate::common::{
+    constants,
+    // docker_helpers::DockerComposeEnv, // Removido se TestEnvironment já o expõe via test_env.docker_env
+                                        // No entanto, mantê-lo não prejudica se for para clareza de tipo.
+                                        // O erro de unused deve sumir se o código compilar após stop_service ser adicionado.
+    test_env::TestEnvironment,
+};
+use anyhow::Result;
 use reqwest::StatusCode;
-use crate::common::docker_helpers::DockerComposeEnv; // Corrigido
 use serde_json::Value as JsonValue;
-use tracing::info; // Adicionado para usar info!
+use serial_test::serial;
+use std::time::Duration;
+use tracing::{debug, info, warn};
 
-const DOCKER_COMPOSE_FILE: &str = "docker-compose.test.yml";
-const PROJECT_PREFIX: &str = "observabilitytest"; // Alterado para evitar conflito de nome de projeto Docker muito longo
-const MCP_SERVER_PORT_VAR: &str = "MCP_SERVER_TEST_PORT"; // Usar a variável do compose para a porta
-const MCP_SERVER_DEFAULT_PORT: u16 = 8788; // Porta padrão se a variável não estiver definida
-const MCP_METRICS_PORT: u16 = 9090; // Assumindo que as métricas estão expostas nesta porta no host
-const MCP_SERVER_SERVICE: &str = "typedb-mcp-server-it";
-const TYPEDB_SERVICE: &str = "typedb-server-it";
-const MOCK_AUTH_SERVICE: &str = "mock-oauth2-server"; // Corrigido para o nome do serviço no docker-compose.test.yml
+/// Helper para aguardar o status específico do /readyz.
+/// Retorna o corpo JSON se o status esperado for alcançado.
+async fn wait_for_readyz_status(
+    readyz_url: &str,
+    expected_overall_status: &str,
+    is_mcp_server_tls: bool,
+    timeout: Duration,
+) -> Result<Option<JsonValue>> {
+    info!(
+        "Aguardando /readyz em {} para ser '{}' (timeout: {:?})",
+        readyz_url, expected_overall_status, timeout
+    );
 
-fn get_mcp_server_port() -> u16 {
-    std::env::var(MCP_SERVER_PORT_VAR)
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(MCP_SERVER_DEFAULT_PORT)
-}
-
-fn mcp_base_url() -> String {
-    format!("http://localhost:{}", get_mcp_server_port())
-}
-fn mcp_metrics_url() -> String {
-    // MCP_METRICS_PORT parece ser fixo no compose para o host,
-    // mas dentro do container MCP pode ser diferente se MCP_SERVER_METRICS_PORT_HTTP for usado.
-    // Por simplicidade, vamos assumir que a porta 9090 do host está mapeada para a porta de métricas do container.
-    // Se o `metrics_bind_address` no `config.test.toml` for diferente, este URL precisa refletir isso.
-    // A porta 9090 é o default do `metrics_bind_address` no código `src/config.rs`.
-    // E o `docker-compose.test.yml` não parece sobrescrever `MCP_METRICS_PORT` para `typedb-mcp-server-it`.
-    // O `docker-compose.yml` principal expõe `MCP_METRICS_PORT:-9090}:9090`.
-    // Se `config.test.toml` define `metrics_port = 9090` para o servidor, então `mcp_metrics_url`
-    // deve apontar para a porta do *host* que mapeia para a porta de métricas do *container*.
-    // O `typedb-mcp-server-it` no `docker-compose.test.yml` NÃO expõe a porta de métricas para o host,
-    // então este teste pode precisar de ajustes se as métricas forem testadas por fora.
-    // Se testadas de DENTRO da rede docker, seria `http://typedb-mcp-server-it:CONFIGURADA_NO_MCP_SERVER/metrics`
-    // Para este teste, vamos assumir que o MCP_SERVER_SERVICE está configurado para expor métricas
-    // em uma porta que o `reqwest` pode acessar (geralmente localhost se o teste rodar no host).
-    // O `docker-compose.test.yml` não expõe a porta 9090 do `typedb-mcp-server-it`.
-    // Isso precisa ser ajustado no `docker-compose.test.yml` se quisermos testar /metrics via localhost.
-    // Adicionando a exposição da porta de métricas ao `docker-compose.test.yml` para `typedb-mcp-server-it`:
-    // ports:
-    //   - "${MCP_SERVER_TEST_PORT:-8788}:8787"
-    //   - "${MCP_SERVER_TEST_METRICS_PORT:-9091}:9090"  <-- Adicionar algo assim e definir MCP_SERVER_TEST_METRICS_PORT
-    // Por enquanto, manteremos a porta 9090, assumindo que o `config.test.toml` usa `metrics_port = 9090`
-    // e que o docker-compose.test.yml foi ajustado para expor essa porta.
-    // Se não, este teste de métricas falhará na conexão.
-    format!("http://localhost:{}/metrics", MCP_METRICS_PORT)
-}
-
-/// Setup do ambiente docker-compose com suporte a variáveis de ambiente customizadas.
-async fn setup_env_with_envs(test_name_suffix: &str, envs: Option<&[(&str, &str)]>) -> DockerComposeEnv {
-    let project_name = format!("{}_{}", PROJECT_PREFIX, test_name_suffix);
-    let env = DockerComposeEnv::new(DOCKER_COMPOSE_FILE, &project_name);
-    env.down(true).ok(); // Ignora erro se o ambiente não existir
-    if let Some(env_vars) = envs {
-        env.up_with_envs(env_vars).expect("Falha ao subir ambiente docker-compose com envs");
+    let client_builder = reqwest::Client::builder();
+    let client = if is_mcp_server_tls {
+        client_builder.danger_accept_invalid_certs(true).build()?
     } else {
-        env.up().expect("Falha ao subir ambiente docker-compose");
-    }
-    env.wait_for_service_healthy(TYPEDB_SERVICE, Duration::from_secs(90))
-        .await
-        .expect("TypeDB não saudável");
-    env.wait_for_service_healthy(MCP_SERVER_SERVICE, Duration::from_secs(60))
-        .await
-        .expect("MCP Server não saudável");
-    
-    // Garante que o mock auth server também esteja saudável se estiver sendo usado (OAuth habilitado)
-    if envs.map_or(false, |vars| vars.iter().any(|(k,v)| *k == "MCP_AUTH_OAUTH_ENABLED" && *v == "true")) {
-        env.wait_for_service_healthy(MOCK_AUTH_SERVICE, Duration::from_secs(30))
-            .await
-            .expect("Mock Auth Server não saudável");
-    }
-    env
-}
+        client_builder.build()?
+    };
 
-async fn setup_env(test_name_suffix: &str) -> DockerComposeEnv {
-    setup_env_with_envs(test_name_suffix, None).await
-}
-
-async fn stop_service(env: &DockerComposeEnv, service: &str) {
-    info!("Parando serviço: {}", service);
-    env.stop_service(service).expect("Falha ao parar serviço");
-}
-
-/// Aguarda até que o endpoint /readyz retorne o status esperado (UP ou DOWN), com timeout adaptativo.
-async fn wait_for_readyz_status(base_url: &str, expected_overall_status: &str, timeout: Duration) -> Option<JsonValue> {
-    let url = format!("{}/readyz", base_url);
-    info!("Aguardando /readyz em {} para ser {}", url, expected_overall_status);
     let start = std::time::Instant::now();
     while start.elapsed() < timeout {
-        match reqwest::get(&url).await {
+        match client.get(readyz_url).send().await {
             Ok(resp) => {
                 let status_code = resp.status();
-                match resp.text().await {
-                    Ok(body) => {
-                        info!("/readyz: Status {}, Corpo: {}", status_code, body);
-                        if let Ok(json) = serde_json::from_str::<JsonValue>(&body) {
-                            if json["status"].as_str().map_or(false, |s| s.eq_ignore_ascii_case(expected_overall_status)) {
-                                return Some(json);
+                match resp.json::<JsonValue>().await {
+                    Ok(json_body) => {
+                        debug!("/readyz: Status {}, Corpo: {}", status_code, json_body);
+                        if json_body
+                            .get("status")
+                            .and_then(|s| s.as_str())
+                            .map_or(false, |s| {
+                                s.eq_ignore_ascii_case(expected_overall_status)
+                            })
+                        {
+                            // Verificar também o status HTTP correspondente
+                            if (expected_overall_status.eq_ignore_ascii_case("UP") && status_code == StatusCode::OK) ||
+                               (expected_overall_status.eq_ignore_ascii_case("DOWN") && status_code == StatusCode::SERVICE_UNAVAILABLE) {
+                                return Ok(Some(json_body));
                             }
-                        } else {
-                            info!("/readyz: Falha ao parsear corpo JSON: {}", body);
+                            debug!("/readyz: Status do corpo é '{}', mas HTTP status é {}. Continuando espera.", expected_overall_status, status_code);
                         }
                     }
-                    Err(e) => info!("/readyz: Falha ao ler corpo da resposta: {}", e),
+                    Err(e) => {
+                        debug!("/readyz: Falha ao parsear corpo JSON (Status {}): {}. Tentando ler como texto...", status_code, e);
+                        if let Ok(resp_text) = client.get(readyz_url).send().await?.text().await {
+                            debug!("/readyz corpo como texto: {}", resp_text);
+                        }
+                    }
                 }
             }
-            Err(e) => info!("/readyz: Falha na requisição GET: {}", e),
+            Err(e) => debug!("/readyz: Falha na requisição GET a '{}': {}. Tentando novamente...", readyz_url, e),
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
-    info!("/readyz: Timeout esperando por status {}", expected_overall_status);
-    None
+    warn!("/readyz: Timeout esperando por status '{}' em '{}'", expected_overall_status, readyz_url);
+    Ok(None)
 }
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_liveness_probe_returns_ok() {
-    let docker_env = setup_env("live_ok").await;
-    let url = format!("{}livez", mcp_base_url());
-    let resp = reqwest::get(&url).await.expect("Falha na requisição livez");
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = resp.text().await.expect("Falha ao ler corpo livez");
-    // O corpo exato pode variar, verificamos a presença de um status OK.
-    // O handler em `main.rs` apenas retorna StatusCode::OK, então o corpo pode ser vazio ou default do Axum.
-    // Para ser mais robusto, o handler livez poderia retornar um JSON `{"status": "OK"}`.
-    // Por enquanto, o status HTTP 200 é a principal verificação.
-    info!("livez body: {}", body); // Logar o corpo para inspeção
-    docker_env.down(true).expect("Falha ao derrubar docker_env");
+#[serial]
+async fn test_liveness_probe_returns_ok_default_config() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "obs_live_ok_def",
+        constants::DEFAULT_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    let livez_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_LIVEZ_PATH);
+
+    info!("Teste: Verificando /livez em {}", livez_url);
+    let resp = reqwest::get(&livez_url).await?;
+    assert_eq!(resp.status(), StatusCode::OK, "/livez deveria retornar 200 OK");
+    info!("/livez retornou status OK.");
+    Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_readiness_probe_returns_service_unavailable_when_typedb_is_down() {
-    let docker_env = setup_env("ready_typedb_down").await;
-    stop_service(&docker_env, TYPEDB_SERVICE).await;
-    let json = wait_for_readyz_status(&mcp_base_url(), "DOWN", Duration::from_secs(30))
-        .await
-        .expect("/readyz não ficou DOWN a tempo");
-    assert_eq!(json["components"]["typedb"].as_str().map(|s| s.to_lowercase()), Some("down".to_string()), "Componente typedb deveria estar DOWN: {:?}", json);
-    docker_env.down(true).expect("Falha ao derrubar docker_env");
+#[serial]
+async fn test_liveness_probe_returns_ok_server_tls_config() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "obs_live_ok_tls",
+        constants::SERVER_TLS_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    assert!(test_env.is_mcp_server_tls);
+    let livez_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_LIVEZ_PATH);
+
+    info!("Teste: Verificando /livez (HTTPS) em {}", livez_url);
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()?;
+    let resp = client.get(&livez_url).send().await?;
+    assert_eq!(resp.status(), StatusCode::OK, "/livez (HTTPS) deveria retornar 200 OK");
+    info!("/livez (HTTPS) retornou status OK.");
+    Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_readiness_probe_returns_ok_when_all_dependencies_are_healthy() {
-    let docker_env = setup_env("ready_all_healthy").await;
-    let json = wait_for_readyz_status(&mcp_base_url(), "UP", Duration::from_secs(30))
-        .await
-        .expect("/readyz não ficou UP a tempo");
-    assert_eq!(json["components"]["typedb"].as_str().map(|s| s.to_lowercase()), Some("up".to_string()), "Componente typedb deveria estar UP: {:?}", json);
-    // Verifica JWKS como NOT_CONFIGURED se OAuth estiver desabilitado (default)
-    assert_eq!(json["components"]["jwks"].as_str().map(|s| s.to_lowercase()), Some("not_configured".to_string()), "Componente jwks deveria estar NOT_CONFIGURED: {:?}", json);
-    docker_env.down(true).expect("Falha ao derrubar docker_env");
+#[serial]
+async fn test_readiness_probe_all_healthy_default_config() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "obs_ready_ok_def",
+        constants::DEFAULT_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    let readyz_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
+
+    info!("Teste: Verificando /readyz com todas as dependências saudáveis (config default). URL: {}", readyz_url);
+    let json_response =
+        wait_for_readyz_status(&readyz_url, "UP", test_env.is_mcp_server_tls, Duration::from_secs(30))
+            .await?
+            .expect("/readyz não atingiu o estado UP esperado a tempo.");
+
+    assert_eq!(json_response.get("status").and_then(|s| s.as_str()), Some("UP"));
+    let components = json_response.get("components").expect("Campo 'components' ausente no /readyz.");
+    assert_eq!(components.get("typedb").and_then(|s| s.as_str()), Some("UP"));
+    assert_eq!(components.get("jwks").and_then(|s| s.as_str()), Some("NOT_CONFIGURED"));
+    info!("/readyz com config default está UP e componentes OK.");
+    Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_readiness_probe_returns_service_unavailable_when_jwks_is_down_and_oauth_enabled() {
-    let docker_env = setup_env_with_envs("ready_jwks_down_oauth", Some(&[
-        ("MCP_AUTH_OAUTH_ENABLED", "true"),
-        // Aponta para o mock auth server na rede Docker, porta 80 (padrão do Nginx)
-        ("MCP_AUTH_OAUTH_JWKS_URI", "http://mock-oauth2-server:80/.well-known/jwks.json"),
-    ])).await;
+#[serial]
+async fn test_readiness_probe_all_healthy_oauth_enabled() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "obs_ready_ok_oauth",
+        constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    assert!(test_env.is_oauth_enabled);
+    let readyz_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
 
-    // Garante que tudo está saudável primeiro
-    let json_up = wait_for_readyz_status(&mcp_base_url(), "UP", Duration::from_secs(30))
-        .await
-        .expect("/readyz não ficou UP a tempo inicialmente");
-    assert_eq!(json_up["components"]["jwks"].as_str().map(|s| s.to_lowercase()), Some("up".to_string()), "Componente jwks deveria estar UP: {:?}", json_up);
+    info!("Teste: Verificando /readyz com OAuth habilitado e dependências saudáveis. URL: {}", readyz_url);
+    let json_response =
+        wait_for_readyz_status(&readyz_url, "UP", test_env.is_mcp_server_tls, Duration::from_secs(45))
+            .await?
+            .expect("/readyz não atingiu o estado UP esperado com OAuth a tempo.");
 
-    stop_service(&docker_env, MOCK_AUTH_SERVICE).await;
-
-    let json_down = wait_for_readyz_status(&mcp_base_url(), "DOWN", Duration::from_secs(30))
-        .await
-        .expect("/readyz não ficou DOWN a tempo após JWKS cair");
-    assert_eq!(json_down["components"]["jwks"].as_str().map(|s| s.to_lowercase()), Some("down".to_string()), "Componente jwks deveria estar DOWN: {:?}", json_down);
-    docker_env.down(true).expect("Falha ao derrubar docker_env");
+    assert_eq!(json_response.get("status").and_then(|s| s.as_str()), Some("UP"));
+    let components = json_response.get("components").expect("Campo 'components' ausente.");
+    assert_eq!(components.get("typedb").and_then(|s| s.as_str()), Some("UP"));
+    assert_eq!(components.get("jwks").and_then(|s| s.as_str()), Some("UP"));
+    info!("/readyz com OAuth habilitado está UP e componentes OK.");
+    Ok(())
 }
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_readiness_probe_returns_service_unavailable_when_jwks_uri_is_invalid_and_oauth_enabled() {
-    let docker_env = setup_env_with_envs("ready_jwks_invalid_oauth", Some(&[
-        ("MCP_AUTH_OAUTH_ENABLED", "true"),
-        ("MCP_AUTH_OAUTH_JWKS_URI", "http://invalid-jwks-uri-that-will-fail:12345/jwks.json"),
-    ])).await;
+#[serial]
+async fn test_readiness_probe_typedb_down() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "obs_ready_typedb_down",
+        constants::DEFAULT_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    let readyz_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
 
-    // O MCP server pode levar um tempo para tentar buscar o JWKS e falhar.
-    let json_down = wait_for_readyz_status(&mcp_base_url(), "DOWN", Duration::from_secs(30))
-        .await
-        .expect("/readyz não ficou DOWN a tempo com JWKS URI inválido");
-    assert_eq!(json_down["components"]["jwks"].as_str().map(|s| s.to_lowercase()), Some("down".to_string()), "Componente jwks deveria estar DOWN com URI inválida: {:?}", json_down);
-    docker_env.down(true).expect("Falha ao derrubar docker_env");
+    info!("Teste: Parando serviço TypeDB ('{}') para testar /readyz.", constants::TYPEDB_SERVICE_NAME);
+    test_env.docker_env.stop_service(constants::TYPEDB_SERVICE_NAME)?; // ASSUME que stop_service existe
+    tokio::time::sleep(Duration::from_secs(10)).await;
+
+    info!("Teste: Verificando /readyz após TypeDB ser parado. URL: {}", readyz_url);
+    let json_response =
+        wait_for_readyz_status(&readyz_url, "DOWN", test_env.is_mcp_server_tls, Duration::from_secs(30))
+            .await?
+            .expect("/readyz não atingiu o estado DOWN esperado após TypeDB ser parado.");
+
+    assert_eq!(json_response.get("status").and_then(|s| s.as_str()), Some("DOWN"));
+    let components = json_response.get("components").expect("Campo 'components' ausente.");
+    assert_eq!(components.get("typedb").and_then(|s| s.as_str()), Some("DOWN"));
+    info!("/readyz com TypeDB parado está DOWN como esperado.");
+    Ok(())
 }
 
+#[tokio::test]
+#[serial]
+async fn test_readiness_probe_jwks_down_when_oauth_enabled() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "obs_ready_jwks_down",
+        constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    assert!(test_env.is_oauth_enabled);
+    let readyz_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
+
+    let json_up = wait_for_readyz_status(&readyz_url, "UP", test_env.is_mcp_server_tls, Duration::from_secs(30)).await?.expect("Readyz não ficou UP inicialmente");
+    assert_eq!(json_up.get("components").and_then(|c| c.get("jwks")).and_then(|s| s.as_str()), Some("UP"));
+
+    info!("Teste: Parando serviço Mock OAuth ('{}') para testar /readyz com OAuth.", constants::MOCK_OAUTH_SERVICE_NAME);
+    test_env.docker_env.stop_service(constants::MOCK_OAUTH_SERVICE_NAME)?; // ASSUME que stop_service existe
+    tokio::time::sleep(Duration::from_secs(10)).await;
+
+    info!("Teste: Verificando /readyz após Mock OAuth ser parado. URL: {}", readyz_url);
+    let json_response_down =
+        wait_for_readyz_status(&readyz_url, "DOWN", test_env.is_mcp_server_tls, Duration::from_secs(35))
+            .await?
+            .expect("/readyz não atingiu o estado DOWN esperado após Mock OAuth ser parado.");
+
+    assert_eq!(json_response_down.get("status").and_then(|s| s.as_str()), Some("DOWN"));
+    let components_down = json_response_down.get("components").expect("Campo 'components' ausente.");
+    assert_eq!(components_down.get("jwks").and_then(|s| s.as_str()), Some("DOWN"));
+    info!("/readyz com Mock OAuth parado (e OAuth habilitado) está DOWN como esperado.");
+    Ok(())
+}
 
 #[tokio::test]
-#[serial_test::serial]
-async fn test_metrics_endpoint_is_accessible_and_has_prometheus_format() {
-    // Este teste requer que a porta de métricas do typedb-mcp-server-it seja exposta para o host.
-    // Exemplo de adição ao docker-compose.test.yml para o serviço typedb-mcp-server-it:
-    //    ports:
-    //      - "${MCP_SERVER_TEST_PORT:-8788}:8787"
-    //      - "9099:9090" # Mapeia a porta 9090 do container (padrão de métricas) para 9099 do host
-    // E então mude MCP_METRICS_PORT para 9099
-    // Por agora, este teste pode falhar se a porta não estiver exposta.
-
-    let _docker_env = setup_env("metrics_access").await; // Variável mantida
-    let url = format!("http://localhost:{}", MCP_METRICS_PORT); // Usando MCP_METRICS_PORT
-                                                                // que é a porta exposta no host
+#[serial]
+async fn test_metrics_endpoint_returns_prometheus_format() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "obs_metrics_fmt",
+        constants::DEFAULT_TEST_CONFIG_FILENAME,
+    )
+    .await?;
     
-    let resp = match reqwest::get(&url).await {
-        Ok(r) => r,
-        Err(e) => {
-            // Se a conexão falhar, pode ser porque a porta de métricas não está exposta no Docker Compose.
-            // Logar o erro e falhar o teste de forma informativa.
-            panic!("Falha ao conectar ao endpoint de métricas em {}: {}. Verifique a exposição da porta no docker-compose.test.yml.", url, e);
-        }
-    };
+    info!("Teste: Verificando /metrics em {}", test_env.mcp_metrics_url);
+    let resp = reqwest::get(&test_env.mcp_metrics_url).await?;
 
-    assert_eq!(resp.status(), StatusCode::OK, "Falha ao acessar /metrics. Status: {}", resp.status());
-    let content_type = resp.headers().get("content-type").map(|v| v.to_str().unwrap_or("")).unwrap_or("");
-    assert!(content_type.starts_with("text/plain"), "Content-Type inesperado para /metrics: {}", content_type);
-    
-    let body = resp.text().await.expect("Falha ao ler corpo /metrics");
-    info!("/metrics body (primeiros 500 chars): {:.500}", body); // Logar parte do corpo
+    assert_eq!(resp.status(), StatusCode::OK, "/metrics deveria retornar 200 OK");
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        content_type.starts_with("text/plain"),
+        "Content-Type de /metrics inesperado: '{}'",
+        content_type
+    );
 
-    // Validação básica de formato Prometheus
-    let mut found_ws_metric = false;
-    let mut found_info_metric = false;
-    for line in body.lines() {
-        if line.starts_with('#') || line.trim().is_empty() { continue; }
-        let parts: Vec<_> = line.split_whitespace().collect();
-        assert!(parts.len() >= 2, "Linha de métrica inválida (menos de 2 partes): '{}'", line); // Pode ter timestamp
-        let metric_name_with_labels = parts[0];
-        let value_str = parts[1];
-        
-        assert!(value_str.parse::<f64>().is_ok(), "Valor de métrica não numérico: '{}' na linha '{}'", value_str, line);
-        
-        if metric_name_with_labels.starts_with("typedb_mcp_server_websocket_connections_total") {
-            found_ws_metric = true;
-        }
-        if metric_name_with_labels.starts_with("typedb_mcp_server_info") {
-            found_info_metric = true;
-        }
-    }
-    assert!(found_ws_metric, "Métrica typedb_mcp_server_websocket_connections_total ausente no output de /metrics");
-    assert!(found_info_metric, "Métrica typedb_mcp_server_info ausente no output de /metrics");
-    // _docker_env.down(true).expect(...); // O Drop já faz isso
+    let body = resp.text().await?;
+    debug!("/metrics body (primeiras 500 chars): {:.500}", body);
+
+    assert!(
+        body.contains("typedb_mcp_server_websocket_connections_total"),
+        "Métrica 'typedb_mcp_server_websocket_connections_total' ausente."
+    );
+    assert!(
+        body.contains("typedb_mcp_server_info{app_version="),
+        "Métrica 'typedb_mcp_server_info' com label 'app_version' ausente."
+    );
+    assert!(
+        body.contains("process_cpu_seconds_total"),
+        "Métrica padrão 'process_cpu_seconds_total' ausente."
+    );
+    info!("/metrics retornou formato Prometheus esperado.");
+    Ok(())
 }

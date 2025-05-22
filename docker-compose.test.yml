@@ -1,68 +1,137 @@
+# docker-compose.test.yml
+#
+# Arquivo Docker Compose para o ambiente de teste de integração do Typedb-MCP-Server.
+# Define os serviços necessários (Servidor MCP, TypeDBs, Mock OAuth2) e suas configurações.
+#
+# Princípios:
+# - Isolamento: Cada execução de teste (via DockerComposeEnv) usa um nome de projeto único,
+#   isolando contêineres, redes e volumes.
+# - Portas de Host Fixas: Para previsibilidade, as portas expostas no HOST são fixas.
+#   Os testes devem ser executados serialmente (ex: com #[serial_test::serial]) para evitar conflitos.
+# - Configuração Dinâmica do MCP Server: O arquivo de configuração TOML específico para o
+#   Typedb-MCP-Server é passado via variável de ambiente MCP_CONFIG_PATH, controlada
+#   pelos helpers de teste (DockerComposeEnv).
+# - Healthchecks: Definidos para garantir que os serviços estejam prontos antes dos testes.
+#
 version: '3.8'
 
 services:
+  # Serviço principal Typedb-MCP-Server para testes
   typedb-mcp-server-it:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: . # Raiz do projeto Typedb-MCP-Server
+      dockerfile: Dockerfile # Usa o Dockerfile principal do projeto
+    container_name: ${COMPOSE_PROJECT_NAME}-mcp-server # Nome do contêiner usa o nome do projeto Compose
     ports:
-      - "8787:8787" # Porta HTTP/WebSocket padrão do MCP Server
-      - "8443:8443" # Porta HTTPS/WSS opcional (caso TLS seja ativado nos testes)
+      # Mapeamentos Host:Container para os endpoints do MCP Server
+      - "8788:8787"   # HTTP/WS MCP (Padrão para a maioria dos testes)
+      - "8444:8443"   # HTTPS/WSS MCP (Para testes com TLS do servidor habilitado)
+      - "9091:9090"   # Métricas Prometheus
+    volumes:
+      # Monta os arquivos de configuração TOML específicos para os testes.
+      # MCP_CONFIG_PATH será definido pelo helper de teste para apontar para o arquivo correto aqui.
+      - ../tests/test_configs:/app/test_configs:ro
+      # Monta os certificados de teste para cenários TLS.
+      - ../tests/test_certs:/app/test_certs:ro
+    environment:
+      # MCP_CONFIG_PATH: Definido dinamicamente pelos helpers de teste em Rust (DockerComposeEnv).
+      # RUST_LOG: Permite log verboso para depuração, com override possível.
+      - RUST_LOG=${RUST_LOG_MCP:-info,typedb_mcp_server_lib=trace,typedb_mcp_server=trace,typedb_driver=info,hyper=warn,h2=warn,tower=warn}
+      # TYPEDB_PASSWORD: Senha para conectar aos serviços TypeDB. Usa um default se não definida.
+      - TYPEDB_PASSWORD=${TYPEDB_PASSWORD_TEST:-password}
+      # MCP_TYPEDB__ADDRESS: Define o endereço do TypeDB. Pode ser sobrescrito pelo arquivo TOML carregado.
+      # Default para conectar ao serviço TypeDB sem TLS.
+      # Esta variável será usada se o TOML carregado não especificar typedb.address.
+      - MCP_TYPEDB__ADDRESS=typedb-server-it:1729
     depends_on:
-      - typedb-server-it
-      - mock-oauth2-server # Adicionada dependência
+      # Garante que as dependências estejam saudáveis antes de iniciar o MCP Server.
+      typedb-server-it:
+        condition: service_healthy
+      typedb-server-tls-it:
+        condition: service_healthy
+      mock-oauth2-server:
+        condition: service_healthy
     networks:
       - typedb_mcp_test_network
-    environment: # Adicionado para garantir a conexão correta com o TypeDB
-      - MCP_CONFIG_PATH=/app/config.test.toml # Adicionado para garantir o uso do config de teste
-      - MCP_TYPEDB__ADDRESS=typedb-server-it:1729
-      - RUST_LOG=info,typedb_mcp_server_lib=trace,typedb_driver=trace,hyper=trace # Adicionado hyper=trace
-    restart: "no"
-    healthcheck: # Ajustado para maior robustez em ambientes de CI/CD
-      test: ["CMD-SHELL", "curl -f -v http://localhost:8787/livez 2>&1 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 60s
+    # O Healthcheck está definido no Dockerfile principal.
 
+  # Instância do TypeDB Server para testes (sem TLS)
   typedb-server-it:
     image: typedb/typedb:3.2.0
+    container_name: ${COMPOSE_PROJECT_NAME}-typedb
+    ports:
+      - "1729:1729"
     environment:
-      - TYPEDB_SERVER_OPTS=--server.authentication.enable=false
-    healthcheck: # Corrigido para não depender de nc (netcat)
+      - TYPEDB_SERVER_OPTS=--server.address=0.0.0.0:1729 --server.authentication.enable=true --server.credential.default.password=${TYPEDB_PASSWORD_TEST:-password}
+    healthcheck:
       test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/1729' || exit 1"]
       interval: 15s
       timeout: 10s
-      retries: 10 # Mais retries para TypeDB
-      start_period: 45s # Período de inicialização maior para TypeDB
+      retries: 10
+      start_period: 45s
+    networks:
+      - typedb_mcp_test_network
+    volumes:
+      # O Docker Compose irá prefixar 'typedb_data_it' com o nome do projeto.
+      # Ex: se COMPOSE_PROJECT_NAME for 'mytest', o volume real será 'mytest_typedb_data_it'.
+      - typedb_data_it:/opt/typedb/server/data
+
+  # Instância do TypeDB Server para testes (COM TLS)
+  typedb-server-tls-it:
+    image: typedb/typedb:3.2.0
+    container_name: ${COMPOSE_PROJECT_NAME}-typedb-tls
+    ports:
+      - "11730:1729"
+    volumes:
+      - ../tests/test_certs/typedb-server.crt:/opt/typedb/server/conf/typedb-server.crt:ro
+      - ../tests/test_certs/typedb-server.key:/opt/typedb/server/conf/typedb-server.key:ro
+      - ../tests/test_certs/rootCA.pem:/opt/typedb/server/conf/rootCA.pem:ro
+      # O Docker Compose irá prefixar 'typedb_tls_data_it' com o nome do projeto.
+      - typedb_tls_data_it:/opt/typedb/server/data
+    environment:
+      - TYPEDB_SERVER_OPTS=--server.address=0.0.0.0:1729 --server.authentication.enable=true --server.credential.default.password=${TYPEDB_PASSWORD_TEST:-password} --server.encryption.enable=all --server.encryption.certificate.path=/opt/typedb/server/conf/typedb-server.crt --server.encryption.private_key.path=/opt/typedb/server/conf/typedb-server.key --server.encryption.ca.path=/opt/typedb/server/conf/rootCA.pem
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/1729' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 50s
     networks:
       - typedb_mcp_test_network
 
+  # Mock OAuth2/JWKS Server usando Nginx
   mock-oauth2-server:
-    image: nginx:1.25-alpine
+    image: nginx:1.25.5-alpine
+    container_name: ${COMPOSE_PROJECT_NAME}-mock-oauth
     ports:
-      - "8088" # Porta dinâmica será atribuída pelo Docker
+      - "8089:80"
     volumes:
-      - ./mock_jwks.json:/usr/share/nginx/html/.well-known/jwks.json:ro
+      - ../tests/resources/mock_jwks.json:/usr/share/nginx/html/.well-known/jwks.json:ro
       - ./scripts/nginx-mock-oauth2.conf:/etc/nginx/conf.d/default.conf:ro
-    networks:
-      - typedb_mcp_test_network
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost/livez || exit 1"]
+      test: ["CMD-SHELL", "curl -f -s http://localhost/livez > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - typedb_mcp_test_network
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
 
+# Rede customizada para isolar os serviços de teste.
+# O Docker Compose irá prefixar 'typedb_mcp_test_network' com o nome do projeto.
 networks:
   typedb_mcp_test_network:
     driver: bridge
+    # name: ${COMPOSE_PROJECT_NAME}_test_net # Nome explícito para a rede, opcional. Se omitido, o Compose gera um.
 
+# Volumes nomeados para persistência de dados do TypeDB.
+# O Docker Compose irá prefixar estes nomes com o nome do projeto.
+# Ex: se COMPOSE_PROJECT_NAME for 'mytest', os volumes reais serão 'mytest_typedb_data_it' e 'mytest_typedb_tls_data_it'.
 volumes:
-  typedb_data_it:
-  typedb_logs_it:
+  typedb_data_it: {} # Define um volume chamado 'typedb_data_it' (será prefixado)
+  typedb_tls_data_it: {} # Define um volume chamado 'typedb_tls_data_it' (será prefixado)

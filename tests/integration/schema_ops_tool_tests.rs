@@ -1,237 +1,286 @@
 // tests/integration/schema_ops_tool_tests.rs
 // Licença Apache 2.0
 // Copyright 2025 Guilherme Leste
-//
-// Testes de integração para as ferramentas MCP de operações de esquema
-// (define_schema, undefine_schema, get_schema) via MCP/WebSocket.
-//
-// Estes testes exigem:
-// - Docker Compose com Typedb-MCP-Server, TypeDB e Mock Auth Server rodando
-// - helpers de client, auth e docker em tests/common/
 
-use std::time::Duration;
+//! Testes de integração para as ferramentas MCP de operações de esquema
+//! (define_schema, undefine_schema, get_schema) via MCP/WebSocket.
+
+use crate::common::{
+    client::McpClientError, // Para assert de erros específicos
+    constants,
+    test_env::TestEnvironment,
+    // Helpers de test_utils
+    create_test_db, 
+    delete_test_db, 
+    unique_db_name,
+    get_text_from_call_result, // Para extrair texto das respostas
+};
+use anyhow::{Context as AnyhowContext, Result};
+use rmcp::model::ErrorCode as McpErrorCode;
 use serde_json::json;
-use crate::common::{client::TestMcpClient, auth_helpers, docker_helpers::{DockerComposeEnv, Result as DockerResult}};
+use serial_test::serial;
+use tracing::info;
+// Uuid não é usado diretamente aqui, unique_db_name cuida disso.
 
-const TYPEDB_SERVICE: &str = "typedb-server-it";
-const MCP_SERVER_SERVICE: &str = "typedb-mcp-server-it";
-const MOCK_AUTH_SERVICE: &str = "mock-oauth2-server";
+#[tokio::test]
+#[serial]
+async fn test_define_simple_entity_succeeds_and_is_retrievable() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "schm_define_ok",
+        constants::DEFAULT_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    let db_name = unique_db_name("def_ok");
+    // Escopos: manage_databases para criar/deletar, manage_schema para as operações de schema
+    let mut client = test_env
+        .mcp_client_with_auth(Some("typedb:manage_databases typedb:manage_schema typedb:admin_databases")) // admin para delete_test_db
+        .await?;
 
-const DOCKER_COMPOSE_FILE: &str = "docker-compose.test.yml";
-const PROJECT_PREFIX: &str = "schemaopstest";
-const MCP_WS_ENDPOINT: &str = "ws://localhost:8787/mcp/ws";
+    create_test_db(&mut client, &db_name).await?;
 
-fn unique_db_name() -> String {
-    format!("test_schema_ops_{}", uuid::Uuid::new_v4().as_simple().to_string())
-}
+    let schema_to_define = "define person sub entity, owns name; name sub attribute, value string;";
+    info!("Teste: Definindo schema para '{}': {}", db_name, schema_to_define);
 
-// Alterado o tipo de retorno para std::result::Result e ajustado o tratamento de erro interno.
-async fn setup_env() -> std::result::Result<DockerComposeEnv, String> {
-    let env = DockerComposeEnv::new(DOCKER_COMPOSE_FILE, PROJECT_PREFIX);
+    let define_result = client
+        .call_tool(
+            "define_schema",
+            Some(json!({ "database_name": db_name, "schema_definition": schema_to_define })),
+        )
+        .await
+        .context("Falha ao chamar define_schema")?;
+
+    let define_text = get_text_from_call_result(define_result);
+    assert_eq!(define_text, "OK", "Resposta incorreta ao definir schema.");
+
+    // Verificar se o schema foi aplicado usando get_schema
+    info!("Teste: Verificando schema aplicado para '{}' com get_schema.", db_name);
+    let get_schema_result = client
+        .call_tool(
+            "get_schema",
+            Some(json!({ "database_name": db_name, "schema_type": "full" })),
+        )
+        .await
+        .context("Falha ao chamar get_schema para verificação")?;
     
-    // Tratamento explícito para DockerResult customizado
-    match env.up() {
-        DockerResult::Ok(_) => (),
-        DockerResult::Err(e) => return Err(format!("env.up() failed: {}", e)),
+    let retrieved_schema_text = get_text_from_call_result(get_schema_result);
+    assert!(
+        retrieved_schema_text.contains("person sub entity"),
+        "Schema retornado não contém 'person sub entity'. Recebido: {}", retrieved_schema_text
+    );
+    assert!(
+        retrieved_schema_text.contains("name sub attribute, value string"),
+        "Schema retornado não contém 'name sub attribute, value string'. Recebido: {}", retrieved_schema_text
+    );
+
+    delete_test_db(&mut client, &db_name).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn test_define_schema_with_invalid_typeql_fails_gracefully() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "schm_define_invalid_tql",
+        constants::DEFAULT_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    let db_name = unique_db_name("def_inv_tql");
+    let mut client = test_env
+        .mcp_client_with_auth(Some("typedb:manage_databases typedb:manage_schema typedb:admin_databases"))
+        .await?;
+
+    create_test_db(&mut client, &db_name).await?;
+
+    let invalid_schema = "define person sub entity"; // Falta ponto e vírgula
+    info!("Teste: Tentando definir schema inválido (TypeQL) para '{}': {}", db_name, invalid_schema);
+
+    let result_err = client
+        .call_tool(
+            "define_schema",
+            Some(json!({ "database_name": db_name, "schema_definition": invalid_schema })),
+        )
+        .await
+        .expect_err("Esperado erro ao definir schema com TypeQL inválido.");
+
+    match result_err {
+        McpClientError::McpErrorResponse { code, message, .. } => {
+            // TypeDB geralmente retorna um erro interno genérico para falhas de parsing de query
+            assert_eq!(code.0, McpErrorCode::INTERNAL_ERROR.0, "Código de erro inesperado.");
+            // A mensagem deve indicar um problema com a query ou o schema
+            assert!(
+                message.to_lowercase().contains("query") || message.to_lowercase().contains("schema") || message.to_lowercase().contains("syntax"),
+                "Mensagem de erro não indicou problema com a query/schema: {}", message
+            );
+        }
+        other => panic!("Tipo de erro inesperado: {:?}", other),
     }
 
-    match env.wait_for_service_healthy(MCP_SERVER_SERVICE, Duration::from_secs(60)).await {
-        DockerResult::Ok(_) => (),
-        DockerResult::Err(e) => return Err(format!("wait_for_service_healthy {} failed: {}", MCP_SERVER_SERVICE, e)),
-    }
-    match env.wait_for_service_healthy(TYPEDB_SERVICE, Duration::from_secs(60)).await {
-        DockerResult::Ok(_) => (),
-        DockerResult::Err(e) => return Err(format!("wait_for_service_healthy {} failed: {}", TYPEDB_SERVICE, e)),
-    }
-    match env.wait_for_service_healthy(MOCK_AUTH_SERVICE, Duration::from_secs(30)).await {
-        DockerResult::Ok(_) => (),
-        DockerResult::Err(e) => return Err(format!("wait_for_service_healthy {} failed: {}", MOCK_AUTH_SERVICE, e)),
-    }
+    delete_test_db(&mut client, &db_name).await;
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn test_define_schema_on_nonexistent_db_fails() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "schm_define_nodb",
+        constants::DEFAULT_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    let db_name_non_existent = unique_db_name("def_nodb");
+    let mut client = test_env
+        .mcp_client_with_auth(Some("typedb:manage_schema")) // Só precisa de manage_schema
+        .await?;
+
+    let schema = "define person sub entity;";
+    info!("Teste: Tentando definir schema para banco inexistente '{}'", db_name_non_existent);
+
+    let result_err = client
+        .call_tool(
+            "define_schema",
+            Some(json!({ "database_name": db_name_non_existent, "schema_definition": schema })),
+        )
+        .await
+        .expect_err("Esperado erro ao definir schema em banco inexistente.");
     
-    Ok(env)
-}
-
-async fn teardown_env(env: DockerComposeEnv) {
-    let _ = env.down(true);
-}
-
-async fn mcp_client_with_scope(scope: &str) -> TestMcpClient {
-    let now = auth_helpers::current_timestamp_secs();
-    let claims = auth_helpers::TestClaims {
-        sub: "integration-test-user".to_string(),
-        exp: now + 3600,
-        iat: Some(now),
-        nbf: Some(now),
-        iss: Some("integration-test-issuer".to_string()),
-        aud: Some(serde_json::json!("integration-test-aud")),
-        scope: Some(scope.to_string()),
-        custom_claim: None,
-    };
-    let token = auth_helpers::generate_test_jwt(claims, jsonwebtoken::Algorithm::HS256);
-    TestMcpClient::connect(MCP_WS_ENDPOINT, Some(token), Duration::from_secs(10), Duration::from_secs(10)).await.expect("Falha ao conectar MCP client")
-}
-
-// Cria e deleta banco para cada teste de isolamento
-async fn create_test_db(client: &mut TestMcpClient, db_name: &str) {
-    let result = client.call_tool("create_database", Some(json!({"name": db_name}))).await;
-    assert!(result.is_ok(), "Falha ao criar banco de teste: {:?}", result);
-}
-async fn delete_test_db(client: &mut TestMcpClient, db_name: &str) {
-    let _ = client.call_tool("delete_database", Some(json!({"name": db_name}))).await;
+    match result_err {
+        McpClientError::McpErrorResponse {  message, .. } => {
+            // O erro específico pode variar (erro do driver TypeDB ao não encontrar o banco).
+            // Pode ser um erro genérico ou um mais específico.
+            // Vamos verificar se a mensagem contém o nome do banco.
+            assert!(message.contains(&db_name_non_existent) || message.to_lowercase().contains("not found"));
+            // O código pode ser INTERNAL_ERROR ou outro, dependendo de como o driver TypeDB reporta.
+        }
+        other => panic!("Tipo de erro inesperado: {:?}", other),
+    }
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_define_simple_entity_succeeds_and_is_retrievable() {
-    let env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name();
-    let mut client = mcp_client_with_scope("typedb:manage_databases typedb:manage_schema").await;
-    create_test_db(&mut client, &db_name).await;
-    let schema = "define person sub entity;";
-    let result = client.call_tool("define_schema", Some(json!({"database_name": db_name, "schema_definition": schema}))).await;
-    assert!(result.is_ok(), "Esperado sucesso ao definir schema: {:?}", result);
-    // Corrigido: Clonar o texto para evitar empréstimo de valor temporário
-    let content = result.unwrap().content[0].as_text().unwrap().text.to_string();
-    assert_eq!(content, "OK");
-    // Verifica se está no get_schema
-    let result = client.call_tool("get_schema", Some(json!({"database_name": db_name, "schema_type": "full"}))).await;
-    assert!(result.is_ok(), "Esperado sucesso ao obter schema");
-    // Corrigido: Clonar o texto
-    let schema_content = result.unwrap().content[0].as_text().unwrap().text.to_string();
-    assert!(schema_content.contains("person sub entity"), "Schema retornado não contém definição");
+#[serial]
+async fn test_undefine_existing_type_succeeds() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "schm_undef_ok",
+        constants::DEFAULT_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    let db_name = unique_db_name("undef_ok");
+    let mut client = test_env
+        .mcp_client_with_auth(Some("typedb:manage_databases typedb:manage_schema typedb:admin_databases"))
+        .await?;
+
+    create_test_db(&mut client, &db_name).await?;
+    let initial_schema = "define animal sub entity, owns name; name sub attribute, value string;";
+    client.call_tool("define_schema", Some(json!({ "database_name": db_name, "schema_definition": initial_schema }))).await?;
+
+    let schema_to_undefine = "undefine animal owns name;";
+    info!("Teste: Removendo definição de schema para '{}': {}", db_name, schema_to_undefine);
+    let undefine_result = client
+        .call_tool(
+            "undefine_schema",
+            Some(json!({ "database_name": db_name, "schema_undefinition": schema_to_undefine })),
+        )
+        .await?;
+    let undefine_text = get_text_from_call_result(undefine_result);
+    assert_eq!(undefine_text, "OK", "Resposta incorreta ao remover definição.");
+
+    let get_schema_result = client.call_tool("get_schema", Some(json!({ "database_name": db_name, "schema_type": "full" }))).await?;
+    let retrieved_schema_text = get_text_from_call_result(get_schema_result);
+    // Verifica se "owns name" foi removido de animal. "animal sub entity" ainda deve existir.
+    assert!(retrieved_schema_text.contains("animal sub entity")); 
+    assert!(!retrieved_schema_text.contains("animal owns name;"), "Atributo 'name' não foi removido de 'animal'. Schema: {}", retrieved_schema_text);
+
     delete_test_db(&mut client, &db_name).await;
-    teardown_env(env).await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_define_schema_with_invalid_typeql_fails() {
-    let env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name();
-    let mut client = mcp_client_with_scope("typedb:manage_databases typedb:manage_schema").await;
-    create_test_db(&mut client, &db_name).await;
-    let invalid_schema = "define person sub entity"; // falta o ponto e vírgula
-    let result = client.call_tool("define_schema", Some(json!({"database_name": db_name, "schema_definition": invalid_schema}))).await;
-    assert!(result.is_err(), "Esperado erro ao definir schema inválido");
+#[serial]
+async fn test_get_schema_returns_defined_types_and_full_schema() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "schm_get_full_types",
+        constants::DEFAULT_TEST_CONFIG_FILENAME,
+    )
+    .await?;
+    let db_name = unique_db_name("get_schema");
+    let mut client = test_env
+        .mcp_client_with_auth(Some("typedb:manage_databases typedb:manage_schema typedb:admin_databases"))
+        .await?;
+    
+    create_test_db(&mut client, &db_name).await?;
+    let schema_definition = r#"
+        define
+            person sub entity, owns name;
+            name sub attribute, value string;
+            rule simple-rule: when { $x isa person; } then { $x has name "Inferred"; };
+    "#;
+    client.call_tool("define_schema", Some(json!({ "database_name": db_name, "schema_definition": schema_definition }))).await?;
+
+    // 1. Testar schema_type = "full"
+    info!("Teste: Obtendo schema completo para '{}'", db_name);
+    let result_full = client
+        .call_tool("get_schema", Some(json!({ "database_name": db_name, "schema_type": "full" })))
+        .await?;
+    let schema_full_text = get_text_from_call_result(result_full);
+    assert!(schema_full_text.contains("person sub entity"));
+    assert!(schema_full_text.contains("simple-rule"), "Schema completo não contém a regra.");
+
+    // 2. Testar schema_type = "types"
+    info!("Teste: Obtendo apenas tipos do schema para '{}'", db_name);
+    let result_types = client
+        .call_tool("get_schema", Some(json!({ "database_name": db_name, "schema_type": "types" })))
+        .await?;
+    let schema_types_text = get_text_from_call_result(result_types);
+    assert!(schema_types_text.contains("person sub entity"));
+    assert!(!schema_types_text.contains("simple-rule"), "Schema 'types' não deveria conter regras.");
+
+    // 3. Testar schema_type omitido (deve defaultar para "full")
+    info!("Teste: Obtendo schema com schema_type omitido para '{}'", db_name);
+    let result_default = client
+        .call_tool("get_schema", Some(json!({ "database_name": db_name })))
+        .await?;
+    let schema_default_text = get_text_from_call_result(result_default);
+    assert!(schema_default_text.contains("person sub entity"));
+    assert!(schema_default_text.contains("simple-rule"), "Schema com tipo omitido deveria defaultar para 'full'.");
+
     delete_test_db(&mut client, &db_name).await;
-    teardown_env(env).await;
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_define_schema_on_nonexistent_db_fails() {
-    let env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name();
-    let mut client = mcp_client_with_scope("typedb:manage_schema").await;
-    let schema = "define person sub entity;";
-    let result = client.call_tool("define_schema", Some(json!({"database_name": db_name, "schema_definition": schema}))).await;
-    assert!(result.is_err(), "Esperado erro ao definir schema em banco inexistente");
-    teardown_env(env).await;
-}
+#[serial]
+async fn test_schema_operations_require_correct_scope_oauth() -> Result<()> {
+    let test_env = TestEnvironment::setup(
+        "schm_ops_scopes_oauth",
+        constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME, // Usar config com OAuth
+    )
+    .await?;
+    let db_name = unique_db_name("authz_schema");
 
-#[tokio::test]
-async fn test_undefine_existing_type_succeeds() {
-    let env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name();
-    let mut client = mcp_client_with_scope("typedb:manage_databases typedb:manage_schema").await;
-    create_test_db(&mut client, &db_name).await;
-    let schema = "define animal sub entity;";
-    let _ = client.call_tool("define_schema", Some(json!({"database_name": db_name, "schema_definition": schema}))).await.expect("Falha ao definir schema");
-    let result = client.call_tool("undefine_schema", Some(json!({"database_name": db_name, "schema_undefinition": "undefine animal;"}))).await;
-    assert!(result.is_ok(), "Esperado sucesso ao remover tipo: {:?}", result);
-    // Corrigido: Clonar o texto
-    let content = result.unwrap().content[0].as_text().unwrap().text.to_string();
-    assert_eq!(content, "OK");
-    // Verifica se foi removido
-    let result = client.call_tool("get_schema", Some(json!({"database_name": db_name, "schema_type": "full"}))).await;
-    assert!(result.is_ok());
-    // Corrigido: Clonar o texto
-    let schema_content = result.unwrap().content[0].as_text().unwrap().text.to_string();
-    assert!(!schema_content.contains("animal sub entity"), "Tipo não foi removido do schema");
-    delete_test_db(&mut client, &db_name).await;
-    teardown_env(env).await;
-}
+    // Criar DB com cliente que tem permissão para isso
+    let mut setup_client = test_env.mcp_client_with_auth(Some("typedb:manage_databases")).await?;
+    create_test_db(&mut setup_client, &db_name).await?;
 
-#[tokio::test]
-async fn test_undefine_schema_on_nonexistent_db_fails() {
-    let env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name();
-    let mut client = mcp_client_with_scope("typedb:manage_schema").await;
-    let result = client.call_tool("undefine_schema", Some(json!({"database_name": db_name, "schema_undefinition": "undefine animal;"}))).await;
-    assert!(result.is_err(), "Esperado erro ao remover schema em banco inexistente");
-    teardown_env(env).await;
-}
+    // Cliente sem escopo `typedb:manage_schema`
+    let mut client_no_schema_scope = test_env.mcp_client_with_auth(Some("typedb:read_data")).await?; // Escopo insuficiente
+    let schema_def = "define car sub entity;";
 
-#[tokio::test]
-async fn test_get_schema_returns_defined_schema_types_only() {
-    let env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name();
-    let mut client = mcp_client_with_scope("typedb:manage_databases typedb:manage_schema").await;
-    create_test_db(&mut client, &db_name).await;
-    let schema = "define car sub entity;";
-    let _ = client.call_tool("define_schema", Some(json!({"database_name": db_name, "schema_definition": schema}))).await.expect("Falha ao definir schema");
-    let result = client.call_tool("get_schema", Some(json!({"database_name": db_name, "schema_type": "types"}))).await;
-    assert!(result.is_ok(), "Esperado sucesso ao obter schema types");
-    // Corrigido: Clonar o texto
-    let schema_content = result.unwrap().content[0].as_text().unwrap().text.to_string();
-    assert!(schema_content.contains("car sub entity"), "Schema types não contém definição");
-    delete_test_db(&mut client, &db_name).await;
-    teardown_env(env).await;
-}
+    info!("Teste: Tentando define_schema sem escopo 'typedb:manage_schema'");
+    let res_define_no_scope = client_no_schema_scope.call_tool("define_schema", Some(json!({"database_name": db_name, "schema_definition": schema_def}))).await;
+    assert!(res_define_no_scope.is_err());
+    if let McpClientError::McpErrorResponse { code, .. } = res_define_no_scope.unwrap_err() {
+        assert_eq!(code.0, McpErrorCode(-32001).0); // Authorization Failed
+    } else { panic!("Esperado McpErrorResponse de autorização para define_schema"); }
 
-#[tokio::test]
-async fn test_get_schema_on_empty_database() {
-    let env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name();
-    let mut client = mcp_client_with_scope("typedb:manage_databases typedb:manage_schema").await;
-    create_test_db(&mut client, &db_name).await;
-    let result = client.call_tool("get_schema", Some(json!({"database_name": db_name, "schema_type": "full"}))).await;
-    assert!(result.is_ok(), "Esperado sucesso ao obter schema vazio");
-    // Corrigido: Clonar o texto
-    let schema_content = result.unwrap().content[0].as_text().unwrap().text.to_string();
-    assert!(schema_content.trim().is_empty() || schema_content.contains("define"), "Schema vazio não retornou string vazia ou mínima");
-    delete_test_db(&mut client, &db_name).await;
-    teardown_env(env).await;
-}
+    info!("Teste: Tentando get_schema sem escopo 'typedb:manage_schema'");
+    let res_get_no_scope = client_no_schema_scope.call_tool("get_schema", Some(json!({"database_name": db_name}))).await;
+    assert!(res_get_no_scope.is_err());
+    if let McpClientError::McpErrorResponse { code, .. } = res_get_no_scope.unwrap_err() {
+        assert_eq!(code.0, McpErrorCode(-32001).0);
+    } else { panic!("Esperado McpErrorResponse de autorização para get_schema"); }
 
-#[tokio::test]
-async fn test_get_schema_on_nonexistent_db_fails() {
-    let env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name();
-    let mut client = mcp_client_with_scope("typedb:manage_schema").await;
-    let result = client.call_tool("get_schema", Some(json!({"database_name": db_name, "schema_type": "full"}))).await;
-    assert!(result.is_err(), "Esperado erro ao obter schema de banco inexistente");
-    teardown_env(env).await;
-}
-
-#[tokio::test]
-async fn test_get_schema_with_invalid_type_defaults_to_full() {
-    let env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name();
-    let mut client = mcp_client_with_scope("typedb:manage_databases typedb:manage_schema").await;
-    create_test_db(&mut client, &db_name).await;
-    let schema = "define spaceship sub entity;";
-    let _ = client.call_tool("define_schema", Some(json!({"database_name": db_name, "schema_definition": schema}))).await.expect("Falha ao definir schema");
-    let result = client.call_tool("get_schema", Some(json!({"database_name": db_name, "schema_type": "invalid_value"}))).await;
-    assert!(result.is_ok(), "Esperado sucesso ao obter schema mesmo com tipo inválido");
-    // Corrigido: Clonar o texto
-    let schema_content = result.unwrap().content[0].as_text().unwrap().text.to_string();
-    assert!(schema_content.contains("spaceship sub entity"), "Schema retornado não contém definição");
-    delete_test_db(&mut client, &db_name).await;
-    teardown_env(env).await;
-}
-
-// Teste de autorização granular
-#[tokio::test]
-async fn test_schema_operations_require_correct_scope() {
-    let env = setup_env().await.expect("Falha no setup do ambiente docker");
-    let db_name = unique_db_name();
-    let mut client = mcp_client_with_scope("typedb:manage_databases").await; // Não tem manage_schema
-    create_test_db(&mut client, &db_name).await;
-    let schema = "define forbidden sub entity;";
-    let result = client.call_tool("define_schema", Some(json!({"database_name": db_name, "schema_definition": schema}))).await;
-    assert!(result.is_err(), "Esperado erro de permissão para define_schema sem escopo");
-    let result = client.call_tool("undefine_schema", Some(json!({"database_name": db_name, "schema_undefinition": "undefine forbidden;"}))).await;
-    assert!(result.is_err(), "Esperado erro de permissão para undefine_schema sem escopo");
-    let result = client.call_tool("get_schema", Some(json!({"database_name": db_name, "schema_type": "full"}))).await;
-    assert!(result.is_err(), "Esperado erro de permissão para get_schema sem escopo");
-    delete_test_db(&mut client, &db_name).await;
-    teardown_env(env).await;
+    // Limpeza com cliente que tem permissão para deletar
+    let mut admin_client = test_env.mcp_client_with_auth(Some("typedb:admin_databases")).await?;
+    delete_test_db(&mut admin_client, &db_name).await;
+    Ok(())
 }

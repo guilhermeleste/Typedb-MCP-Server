@@ -1,7 +1,6 @@
-
 # Guia do Desenvolvedor: Configuração do Ambiente de Desenvolvimento
 
-Para contribuir com o desenvolvimento do Typedb-MCP-Server ou simplesmente para compilar e executar o projeto localmente a partir do código-fonte, você precisará configurar seu ambiente de desenvolvimento. Siga os passos abaixo.
+Para contribuir com o desenvolvimento do Typedb-MCP-Server ou simplesmente para compilar e executar o projeto localmente a partir do código-fonte, incluindo a execução de sua suíte de testes completa, você precisará configurar seu ambiente de desenvolvimento. Siga os passos abaixo.
 
 ## 1. Instalar o Rust
 
@@ -10,40 +9,15 @@ O Typedb-MCP-Server é escrito em Rust. A maneira recomendada de instalar e gere
 * **Instale o `rustup`:** Se você ainda não tem o `rustup` instalado, siga as instruções em [rustup.rs](https://rustup.rs/).
 * **Versão do Rust:** O projeto especifica a versão exata da toolchain Rust a ser usada no arquivo [`rust-toolchain.toml`](../../rust-toolchain.toml) na raiz do repositório. Ao entrar no diretório do projeto, o `rustup` geralmente detectará este arquivo e oferecerá para instalar ou usar a toolchain especificada.
   * Você pode verificar sua toolchain ativa com `rustup show`.
-  * Se necessário, você pode instalar manualmente a toolchain listada no arquivo:
-
-        # Exemplo, verifique o rust-toolchain.toml para a versão exata
-        rustup toolchain install $(grep "channel" rust-toolchain.toml | cut -d '"' -f 2)
-        rustup component add rustfmt clippy --toolchain $(grep "channel" rust-toolchain.toml | cut -d '"' -f 2)
-
-        O `rust-toolchain.toml` também especifica os componentes `rustfmt` e `clippy` que são essenciais para formatação e linting.
+  * O arquivo `rust-toolchain.toml` também especifica os componentes `rustfmt` (para formatação) e `clippy` (para linting), que são essenciais. O `rustup` deve instalá-los automaticamente com a toolchain.
 
 ## 2. Clonar o Repositório
 
 Obtenha o código-fonte clonando o repositório oficial:
 
-Obtenha o código-fonte clonando o repositório oficial:
-
-    git clone https://github.com/guilhermeleste/Typedb-MCP-Server.git
-    cd Typedb-MCP-Server
-    
-    ## 3. Ferramentas de Build e Dependências do Sistema
-    
-        git clone https://github.com/guilhermeleste/Typedb-MCP-Server.git
-        cd Typedb-MCP-Server
-    
-    ## 3. Ferramentas de Build e Dependências do Sistema
-    
-        git clone <https://github.com/guilhermeleste/Typedb-MCP-Server.git>
-        cd Typedb-MCP-Server
-    
-    ## 3. Ferramentas de Build e Dependências do Sistema
-
-## 3. Ferramentas de Build e Dependências do Sistema
-
-git clone <https://github.com/guilhermeleste/Typedb-MCP-Server.git>
+```bash
+git clone https://github.com/guilhermeleste/Typedb-MCP-Server.git
 cd Typedb-MCP-Server
-
 ```
 
 ## 3. Ferramentas de Build e Dependências do Sistema
@@ -55,34 +29,59 @@ cd Typedb-MCP-Server
   * **macOS:** As Ferramentas de Linha de Comando do Xcode geralmente fornecem o necessário (`xcode-select --install`).
   * **Windows:** É recomendado usar o toolchain MSVC do Rust, que requer o "Build Tools for Visual Studio". Consulte a [documentação do Rust para Windows](https://forge.rust-lang.org/infra/other-installation-methods.html#windows).
 
-## 4. Docker e Docker Compose (Recomendado para Testes de Integração)
+## 4. Docker e Docker Compose (Essencial para Testes de Integração)
 
-Muitos dos testes de integração dependem do Docker e Docker Compose para orquestrar o Typedb-MCP-Server, uma instância do TypeDB para testes e, opcionalmente, um mock de servidor OAuth2.
+A suíte de testes de integração do Typedb-MCP-Server depende **criticamente** do Docker e Docker Compose para orquestrar os serviços necessários (o próprio servidor MCP, instâncias do TypeDB para teste e um mock de servidor OAuth2).
 
-* **Instale o Docker:** Siga as instruções em [docker.com/get-started](https://www.docker.com/get-started).
-* **Instale o Docker Compose:** Siga as instruções em [docs.docker.com/compose/install/](https://docs.docker.com/compose/install/).
-    (Nota: Docker Desktop para Windows e macOS geralmente já inclui Docker Compose).
+* **Instale o Docker:** Siga as instruções em [docker.com/get-started](https://www.docker.com/get-started). Certifique-se de que o daemon Docker esteja em execução.
+* **Instale o Docker Compose:**
+  * **Docker Desktop:** Se você instalou o Docker Desktop (Windows, macOS, Linux), ele geralmente já inclui o Docker Compose (CLI V2, acessível via `docker compose`).
+  * **Linux (Standalone):** Se você instalou o Docker Engine separadamente no Linux, siga as instruções em [docs.docker.com/compose/install/](https://docs.docker.com/compose/install/) para instalar o plugin do Compose.
+  * Verifique sua instalação com `docker compose version`.
 
-## 5. `mkcert` (Para Desenvolvimento com TLS)
+## 5. `mkcert` (Para Geração de Certificados TLS de Teste)
 
-* **Gere Certificados de Desenvolvimento:** O projeto inclui um script para facilitar isso:
+Para testar cenários que envolvem TLS, como HTTPS para o servidor MCP ou conexões TLS com o TypeDB, usamos certificados autoassinados gerados com `mkcert`. Esta ferramenta cria uma autoridade de certificação (CA) local que é confiável pelo seu sistema e navegadores.
 
-        ./scripts/generate-dev-certs.sh
+* **Instale `mkcert`:**
+  * Siga as instruções de instalação para o seu sistema operacional em [mkcert.dev/#installation](https://mkcert.dev/#installation) ou no [README do mkcert no GitHub](https://github.com/FiloSottile/mkcert).
+  * **Importante:** Após instalar o `mkcert`, execute o seguinte comando **uma vez** para instalar a CA local do `mkcert` nos seus repositórios de confiança do sistema (pode exigir privilégios de administrador/sudo):
 
-    Este script criará os certificados necessários na pasta `certs/generated-dev/`. Consulte o script para mais opções, como especificar hosts customizados.
+    ```bash
+    mkcert -install
     ```
 
-    Este script criará os certificados necessários na pasta `certs/generated-dev/`. Consulte o script para mais opções, como especificar hosts customizados.
-  * Após a primeira execução, o `mkcert` pode pedir sua senha para instalar a CA local no seu trust store do sistema.
+* **Gere os Certificados de Teste:** O projeto inclui um script para automatizar a geração dos certificados necessários para os testes:
 
-## 6. Comandos Úteis de Desenvolvimento
+    ```bash
+    ./scripts/generate-test-certs.sh --force
+    ```
+
+    Este script usará `mkcert` para criar os certificados no diretório `tests/test_certs/`. A flag `--force` garante que os certificados sejam recriados se já existirem.
+
+## 6. Configuração de Variáveis de Ambiente para Testes
+
+* **`TYPEDB_PASSWORD_TEST`**: Os testes de integração que interagem com o TypeDB esperam que as instâncias de teste do TypeDB (controladas pelo `docker-compose.test.yml`) usem uma senha.
+  * O `docker-compose.test.yml` usa a variável de ambiente `TYPEDB_PASSWORD_TEST` para configurar a senha do TypeDB e para passar essa senha para o `typedb-mcp-server-it`.
+  * Por padrão, se `TYPEDB_PASSWORD_TEST` não estiver definida, o valor `"password"` será usado.
+  * Você pode definir esta variável no seu ambiente se desejar usar uma senha diferente para os testes:
+
+    ```bash
+        export TYPEDB_PASSWORD_TEST="sua_senha_de_teste_para_typedb"
+        ```
+
+        Consulte o arquivo [`.env.example`](../../.env.example) para mais detalhes sobre esta e outras variáveis.
+
+## 7. Comandos Úteis de Desenvolvimento
 
 Uma vez que seu ambiente esteja configurado, aqui estão alguns comandos `cargo` que você usará frequentemente:
+
 * **Verificar o Código (sem compilar binários):**
 
-        cargo check
+    ```bash
+    cargo check --all-targets --all-features
+    ```
 
-* **Compilar para Desenvolvimento (debug build):**
 * **Compilar para Desenvolvimento (debug build):**
 
     ```bash
@@ -92,70 +91,81 @@ Uma vez que seu ambiente esteja configurado, aqui estão alguns comandos `cargo`
     O binário estará em `target/debug/typedb_mcp_server`.
 
 * **Compilar para Release (otimizado):**
-* **Compilar para Release (otimizado):**
 
-        cargo build --release
+    ```bash
+    cargo build --release
+    ```
 
     O binário estará em `target/release/typedb_mcp_server`.
-* **Executar o Servidor (debug build):**
+
+* **Executar o Servidor (debug build, para desenvolvimento interativo):**
 
     ```bash
-* **Executar o Servidor (debug build):**
-
-        # Não esqueça de exportar TYPEDB_PASSWORD se necessário
-        cargo run
-
-* **Executar o Servidor (release build):**
-    cargo run --release
+    # Certifique-se de que TYPEDB_PASSWORD esteja definida se seu TypeDB de dev a requer.
+    # Este comando usa a configuração de config.dev.toml e docker-compose.yml.
+    cargo run
     ```
 
-* **Executar todos os Testes:**
+* **Executar todos os Testes (Unitários e de Integração):**
+  * **Pré-requisitos:** Docker e Docker Compose devem estar em execução. O script `scripts/generate-test-certs.sh` deve ter sido executado.
+  * Comando:
 
     ```bash
-    cargo test --all-features
-    ```
-* **Executar todos os Testes:**
+        cargo test --all-features --all-targets
+        ```
 
-        cargo test --all-features
+  * Para ver a saída dos testes (útil para depuração):
 
-  * Alguns testes de integração podem exigir que o Docker esteja em execução para iniciar serviços dependentes (como TypeDB).
-    cargo fmt --all
-    ```
+    ```bash
+        cargo test --all-features --all-targets -- --nocapture
+        ```
+
+  * **Nota:** Os testes de integração são marcados com `#[serial_test::serial]` e iniciarão seus próprios ambientes Docker Compose. Consulte a [Estratégia de Testes](./08_testing_strategy.md) para mais detalhes.
 
 * **Formatar o Código:**
     O projeto usa `rustfmt` com configurações definidas em [`rustfmt.toml`](../../rustfmt.toml).
 
-        cargo fmt --all
+    ```bash
+    cargo fmt --all
+    ```
 
     Para verificar se o código está formatado (útil em CI):
 
     ```bash
-    cargo clippy --tests -- -D warnings
+    cargo fmt --all -- --check
     ```
 
-    Para uma análise mais rigorosa, similar à usada em CI:
-
-    ```bash
+* **Linting com Clippy:**
     O projeto usa `clippy` com configurações definidas em [`clippy.toml`](../../clippy.toml) e no [`Cargo.toml`](../../Cargo.toml).
 
-        cargo clippy --tests -- -D warnings
-
-    Para uma análise mais rigorosa, similar à usada em CI:
+    ```bash
+    cargo clippy --all-targets --all-features -- -D warnings
     ```
+
+    Isto tratará todos os avisos do Clippy como erros.
 
 * **Limpar Artefatos de Build:**
 
     ```bash
     cargo clean
     ```
+
 * **Gerar Documentação Localmente:**
 
-        cargo doc --open --no-deps
+    ```bash
+    cargo doc --open --no-deps
+    ```
 
-* **Limpar Artefatos de Build:**
+## Editor e IDE
 
-Certifique-se de que seu editor esteja configurado para usar `rustfmt` para formatação (idealmente ao salvar) e para exibir diagnósticos do `clippy`. O arquivo [`.editorconfig`](../../.editorconfig) incluído no projeto ajuda a manter a consistência de formatação básica entre diferentes editores.
+* **Rust Analyzer:** Recomenda-se o uso do [rust-analyzer](https://rust-analyzer.github.io/) para a maioria dos editores (VS Code, Neovim, etc.) para autocompletar, análise de código em tempo real e outras funcionalidades.
+* **Formatação ao Salvar:** Configure seu editor para usar `rustfmt` para formatação automática ao salvar.
+* **`.editorconfig`**: O arquivo [`.editorconfig`](../../.editorconfig) incluído no projeto ajuda a manter a consistência de formatação básica entre diferentes editores.
 
 ## Próximos Passos
 
-Com seu ambiente de desenvolvimento configurado, você está pronto para explorar a [Arquitetura Detalhada](./03_architecture_deep_dive.md) e a [Estrutura do Código](./04_code_structure.md).
+Com seu ambiente de desenvolvimento configurado, você está pronto para:
+
+* Explorar a [Arquitetura Detalhada](./03_architecture_deep_dive.md).
+* Entender a [Estrutura do Código](./04_code_structure.md).
+* Aprender sobre a [Estratégia de Testes](./08_testing_strategy.md) em mais detalhes.
