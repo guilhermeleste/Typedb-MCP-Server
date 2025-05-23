@@ -17,35 +17,57 @@ use std::time::{Duration, Instant};
 use tracing::{debug, error, info, trace, warn};
 
 // Importa constantes do mesmo crate `common`
-use super::constants;
+// use super::constants; // Já importado implicitamente por ser do mesmo módulo pai `common`
 
-// Contador global para garantir sufixos de nome de projeto únicos
+/// Contador global para garantir sufixos de nome de projeto únicos para Docker Compose.
+/// Isso ajuda a isolar ambientes de teste se executados (incorretamente) em paralelo
+/// ou se limpezas anteriores falharem.
 static PROJECT_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-/// Gerencia um ambiente Docker Compose isolado para testes de integração.
+/// Representa e gerencia um ambiente Docker Compose isolado, específico para uma execução de teste.
+///
+/// Esta struct é responsável por:
+/// - Gerar um nome de projeto Docker Compose único.
+/// - Iniciar (`up`) os serviços definidos no arquivo compose, passando configurações dinâmicas
+///   como o caminho do arquivo de configuração do MCP Server e perfis ativos.
+/// - Derrubar (`down`) os serviços e limpar recursos (volumes, redes) ao final do teste (via `Drop`).
+/// - Fornecer utilitários para interagir com os serviços (ex: obter portas, parar/iniciar serviços,
+///   verificar saúde).
 #[derive(Debug)]
 pub struct DockerComposeEnv {
+    /// Caminho para o arquivo `docker-compose.yml` a ser usado.
     compose_file_path: String,
+    /// Nome único do projeto Docker Compose para esta instância do ambiente.
     project_name: String,
 }
 
 impl DockerComposeEnv {
-    /// Cria uma nova instância de `DockerComposeEnv`.
+    /// Cria uma nova instância de `DockerComposeEnv` com um nome de projeto único.
+    ///
+    /// # Arguments
+    /// * `compose_file_path`: Caminho para o arquivo `docker-compose.yml`.
+    /// * `project_name_prefix`: Um prefixo para o nome do projeto Docker Compose. Um sufixo
+    ///   único será adicionado para garantir isolamento.
     pub fn new(compose_file_path: &str, project_name_prefix: &str) -> Self {
-        let unique_id = PROJECT_COUNTER.fetch_add(1, AtomicOrdering::SeqCst);
-        let unique_suffix = format!("{}_{:03}", uuid::Uuid::new_v4().as_simple(), unique_id);
+        let unique_id_num = PROJECT_COUNTER.fetch_add(1, AtomicOrdering::SeqCst);
+        // Usar um UUID curto para maior singularidade e evitar colisões se os testes reiniciarem rapidamente.
+        let unique_id_uuid_short = uuid::Uuid::new_v4().as_simple().to_string()[..8].to_string();
 
+        // Sanitizar o prefixo para ser um nome de projeto Docker Compose válido
         let sanitized_prefix = project_name_prefix
             .chars()
             .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
             .collect::<String>();
 
-        let mut project_name = format!("{}_{}", sanitized_prefix, unique_suffix);
+        // Construir o nome do projeto, garantindo que não seja excessivamente longo.
+        // Formato: <prefixo_sanitizado>_<uuid_curto>_<contador>
+        let mut project_name = format!("{}_{}_{:03}", sanitized_prefix, unique_id_uuid_short, unique_id_num);
 
-        const MAX_PROJECT_NAME_LEN: usize = 40;
+        const MAX_PROJECT_NAME_LEN: usize = 60; // Limite razoável para nomes de projeto
         if project_name.len() > MAX_PROJECT_NAME_LEN {
             project_name.truncate(MAX_PROJECT_NAME_LEN);
         }
+        // Remover hífens ou underscores no final, se houver, após o truncamento.
         project_name = project_name.trim_end_matches(|c| c == '-' || c == '_').to_string();
 
         info!(
@@ -61,20 +83,41 @@ impl DockerComposeEnv {
     }
 
     /// Executa um comando `docker compose` com os argumentos fornecidos.
+    ///
+    /// Esta função configura o comando `docker compose` com o arquivo compose específico
+    /// e o nome do projeto desta instância, além de quaisquer variáveis de ambiente
+    /// que precisem ser definidas para a execução do próprio comando `docker compose`
+    /// (usadas para substituição no arquivo YAML).
+    ///
+    /// # Arguments
+    /// * `global_args`: Slice de strings representando argumentos globais do Docker Compose que devem 
+    ///   vir antes do subcomando (ex: `["--profile", "typedb_default"]`).
+    /// * `args`: Slice de strings representando os argumentos para `docker compose` (ex: `["up", "-d"]`).
+    /// * `env_vars_for_command`: Opcional. Slice de tuplas `(&str, String)` representando variáveis de
+    ///   ambiente a serem definidas para o processo do comando `docker compose`.
+    ///   Estas são usadas pelo Docker Compose para substituição de variáveis no arquivo YAML.
     fn run_compose_command(
         &self,
+        global_args: &[&str],
         args: &[&str],
-        env_vars: Option<&[(&str, String)]>,
+        env_vars_for_command: Option<&[(&str, String)]>,
     ) -> Result<ExitStatus> {
         let mut command = Command::new("docker");
         command.arg("compose");
-        command.arg("-f").arg(&self.compose_file_path).arg("-p").arg(self.project_name());
+        command.arg("-f").arg(&self.compose_file_path);
+        command.arg("-p").arg(self.project_name()); // Isola o projeto
+        
+        // Adicionar argumentos globais antes do subcomando
+        command.args(global_args);
 
         command.args(args);
 
-        if let Some(vars) = env_vars {
+        // Define variáveis de ambiente para o processo `docker compose` em si.
+        // Crucial para a substituição de variáveis no arquivo docker-compose.yml.
+        if let Some(vars) = env_vars_for_command {
             for (key, value) in vars {
                 command.env(key, value);
+                debug!("Definindo ENV para comando docker-compose: {}={}", key, value);
             }
         }
 
@@ -83,30 +126,31 @@ impl DockerComposeEnv {
         let mut child =
             command.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().with_context(|| {
                 format!(
-                    "Falha ao iniciar docker compose com args '{:?}' para projeto '{}'",
+                    "Falha ao iniciar comando 'docker compose {:?}' para projeto '{}'",
                     args,
                     self.project_name()
                 )
             })?;
 
+        // Capturar stdout e stderr para logging (útil para depuração)
         let stdout_output_shared = Arc::new(Mutex::new(Vec::new()));
         let stderr_output_shared = Arc::new(Mutex::new(Vec::new()));
 
         if let Some(stdout) = child.stdout.take() {
             let stdout_clone = stdout_output_shared.clone();
-            let project_name_clone = self.project_name().to_string();
+            let project_name_clone = self.project_name().to_string(); // Clonar para mover para a thread
             std::thread::spawn(move || {
                 let reader = BufReader::new(stdout);
-                for line in reader.lines() {
-                    match line {
-                        Ok(l) => {
-                            trace!("[Compose STDOUT {}]: {}", project_name_clone, l);
+                for line_result in reader.lines() {
+                    match line_result {
+                        Ok(line) => {
+                            trace!("[Compose STDOUT {}]: {}", project_name_clone, line);
                             if let Ok(mut guard) = stdout_clone.lock() {
-                                guard.push(l);
+                                guard.push(line);
                             }
                         }
                         Err(e) => warn!(
-                            "[Compose STDOUT {}]: Erro lendo linha: {}",
+                            "[Compose STDOUT {}]: Erro ao ler linha: {}",
                             project_name_clone, e
                         ),
                     }
@@ -116,19 +160,20 @@ impl DockerComposeEnv {
 
         if let Some(stderr) = child.stderr.take() {
             let stderr_clone = stderr_output_shared.clone();
-            let project_name_clone = self.project_name().to_string();
+            let project_name_clone = self.project_name().to_string(); // Clonar para mover para a thread
             std::thread::spawn(move || {
                 let reader = BufReader::new(stderr);
-                for line in reader.lines() {
-                    match line {
-                        Ok(l) => {
-                            warn!("[Compose STDERR {}]: {}", project_name_clone, l);
+                for line_result in reader.lines() {
+                    match line_result {
+                        Ok(line) => {
+                            // Logar stderr do compose como WARN para destacá-lo
+                            warn!("[Compose STDERR {}]: {}", project_name_clone, line);
                             if let Ok(mut guard) = stderr_clone.lock() {
-                                guard.push(l);
+                                guard.push(line);
                             }
                         }
                         Err(e) => warn!(
-                            "[Compose STDERR {}]: Erro lendo linha: {}",
+                            "[Compose STDERR {}]: Erro ao ler linha: {}",
                             project_name_clone, e
                         ),
                     }
@@ -138,15 +183,15 @@ impl DockerComposeEnv {
 
         let status = child.wait().with_context(|| {
             format!(
-                "Falha ao esperar pelo comando docker compose '{:?}' para projeto '{}'",
+                "Falha ao esperar pelo comando 'docker compose {:?}' para projeto '{}'",
                 args,
                 self.project_name()
             )
         })?;
 
         if !status.success() {
-            let stdout_log = stdout_output_shared.lock().unwrap().join("\n");
-            let stderr_log = stderr_output_shared.lock().unwrap().join("\n");
+            let stdout_log = stdout_output_shared.lock().unwrap_or_else(|e| e.into_inner()).join("\n");
+            let stderr_log = stderr_output_shared.lock().unwrap_or_else(|e| e.into_inner()).join("\n");
             bail!(
                 "Comando docker compose '{:?}' falhou para projeto '{}' com status: {}.\nSTDOUT:\n{}\nSTDERR:\n{}",
                 args, self.project_name(), status, stdout_log, stderr_log
@@ -155,30 +200,84 @@ impl DockerComposeEnv {
         Ok(status)
     }
 
-    /// Inicia o ambiente Docker Compose.
-    pub fn up(&self, config_filename: &str) -> Result<()> {
+    /// Inicia o ambiente Docker Compose, ativando perfis especificados e passando o
+    /// nome do arquivo de configuração para o servidor MCP.
+    ///
+    /// # Arguments
+    /// * `config_filename`: Nome do arquivo de configuração TOML (ex: "default.test.toml")
+    ///   a ser usado pelo serviço MCP Server. Este arquivo deve estar em `tests/test_configs/`.
+    /// * `active_profiles`: Opcional. Uma lista de nomes de perfis do Docker Compose a serem ativados.
+    ///   Se `None` ou vazio, nenhum perfil específico é ativado (comportamento padrão do compose).
+    ///
+    /// # Returns
+    /// `Result<()>` indicando sucesso ou falha.
+    pub fn up(&self, config_filename: &str, active_profiles: Option<Vec<String>>) -> Result<()> {
         info!(
-            "Iniciando ambiente Docker Compose para projeto: '{}', config: '{}'",
+            "Iniciando ambiente Docker Compose para projeto: '{}', usando config: '{}', perfis ativos: {:?}",
             self.project_name(),
-            config_filename
+            config_filename,
+            active_profiles.as_deref().unwrap_or_default() // Loga perfis de forma segura
         );
-        let mcp_config_path_in_container = format!("/app/test_configs/{}", config_filename);
-        let envs = [("MCP_CONFIG_PATH", mcp_config_path_in_container)];
-        let env_vars_owned: Vec<(&str, String)> =
-            envs.iter().map(|(k, v)| (*k, v.to_string())).collect();
 
+        // Caminho para o arquivo de configuração DENTRO do contêiner do servidor MCP.
+        let mcp_config_path_in_container = format!("/app/test_configs/{}", config_filename);
+
+        // Variável de ambiente a ser definida para o PROCESSO `docker compose up`.
+        // O Docker Compose usará esta variável para substituir o placeholder
+        // `${MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV}` no arquivo `docker-compose.test.yml`.
+        let env_vars_for_compose_command_execution =
+            vec![("MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV", mcp_config_path_in_container)];
+        
+        // Argumentos base para o comando `docker compose up`.
+        let base_up_args: Vec<String> = 
+            vec!["up", "-d", "--remove-orphans", "--force-recreate", "--build", "--wait"]
+            .into_iter().map(String::from).collect();
+
+        // Argumentos globais do Docker Compose (profiles)
+        let mut global_args_owned: Vec<String> = Vec::new();
+        
+        // Adicionar argumentos de perfil se `active_profiles` for Some e não vazio.
+        if let Some(profiles_to_activate) = &active_profiles {
+            if !profiles_to_activate.is_empty() {
+                for profile_name in profiles_to_activate {
+                    global_args_owned.push("--profile".to_string());
+                    global_args_owned.push(profile_name.clone());
+                }
+            }
+        }
+        
+        // Converter para slice de &str para `run_compose_command`.
+        let global_args_str_refs: Vec<&str> = 
+            global_args_owned.iter().map(AsRef::as_ref).collect();
+        let up_args_str_refs: Vec<&str> = 
+            base_up_args.iter().map(AsRef::as_ref).collect();
+
+        // Executar o comando `docker compose up` com os argumentos e ENVs apropriados.
         self.run_compose_command(
-            &["up", "-d", "--remove-orphans", "--force-recreate", "--build", "--wait"],
-            Some(&env_vars_owned),
-        )?;
+            &global_args_str_refs,
+            &up_args_str_refs,
+            Some(&env_vars_for_compose_command_execution),
+        )
+        .with_context(|| {
+            format!(
+                "Falha ao executar 'docker compose up' para projeto '{}' com config '{}' e perfis {:?}",
+                self.project_name(),
+                config_filename,
+                active_profiles.as_deref().unwrap_or_default()
+            )
+        })?;
+
         info!(
-            "Ambiente Docker Compose para projeto '{}' iniciado e aguardando prontidão.",
+            "Ambiente Docker Compose para projeto '{}' iniciado. Próximo passo: aguardar prontidão dos serviços.",
             self.project_name()
         );
         Ok(())
     }
 
     /// Derruba o ambiente Docker Compose.
+    ///
+    /// # Arguments
+    /// * `remove_volumes`: Se `true`, remove os volumes nomeados associados ao projeto.
     pub fn down(&self, remove_volumes: bool) -> Result<()> {
         info!(
             "Derrubando ambiente Docker Compose para projeto: '{}' (remover volumes: {})",
@@ -187,25 +286,45 @@ impl DockerComposeEnv {
         );
         let mut args = vec!["down", "--remove-orphans"];
         if remove_volumes {
-            args.push("-v");
-            args.push("--rmi");
-            args.push("local");
+            args.push("-v"); // Remove volumes nomeados
+            // Considerar remover --rmi local para acelerar teardown,
+            // a menos que seja crucial para evitar acúmulo de imagens de teste.
+            // args.push("--rmi");
+            // args.push("local"); 
         }
         args.push("--timeout");
-        args.push("30");
+        args.push("30"); // Timeout para os contêineres pararem graciosamente
 
-        match self.run_compose_command(&args, None) {
+        // Definir variáveis de ambiente para evitar warnings do Docker Compose
+        let env_vars_for_down_command = vec![
+            ("MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV", "/app/test_configs/default.test.toml".to_string()),
+            ("MCP_TYPEDB__ADDRESS", "typedb-server-it:1729".to_string()),
+            ("TYPEDB_PASSWORD_TEST", "password".to_string()),
+        ];
+
+        match self.run_compose_command(&[], &args, Some(&env_vars_for_down_command)) {
             Ok(_) => info!(
                 "Ambiente Docker Compose para projeto '{}' derrubado com sucesso.",
                 self.project_name()
             ),
             Err(e) => {
-                error!("Erro ao derrubar ambiente Docker Compose para projeto '{}': {}. Pode ser necessário limpeza manual.", self.project_name(), e);
-                return Err(e);
+                // Logar o erro, mas não propagar como pânico no Drop, pois pode mascarar o erro original do teste.
+                error!(
+                    "Erro ao derrubar ambiente Docker Compose para projeto '{}': {}. Pode ser necessário limpeza manual.",
+                    self.project_name(),
+                    e
+                );
+                return Err(e); // Ainda retornar o erro para que o chamador saiba
             }
         }
         Ok(())
     }
+
+    // ... (outras funções como logs_all_services, get_service_host_port, stop_service, start_service, wait_for_service_healthy)
+    // A função wait_for_service_healthy já parece robusta.
+    // As funções stop_service e start_service podem precisar ser ajustadas para aceitar perfis
+    // se quisermos parar/iniciar serviços que estão sob um perfil específico, mas para o
+    // fluxo de teste principal, o `up` com perfis é o mais importante.
 
     /// Coleta e loga os logs de todos os serviços no ambiente Docker Compose.
     pub fn logs_all_services(&self) -> Result<()> {
@@ -217,8 +336,8 @@ impl DockerComposeEnv {
             .arg("-p")
             .arg(self.project_name())
             .arg("logs")
-            .arg("--no-color")
-            .arg("--tail=500")
+            .arg("--no-color") // Para logs mais limpos
+            .arg("--tail=all")  // Capturar todos os logs
             .arg("--timestamps")
             .output()
             .with_context(|| {
@@ -236,7 +355,7 @@ impl DockerComposeEnv {
             );
         }
         if !output.stderr.is_empty() {
-            warn!(
+            warn!( // stderr do logs pode conter informações úteis, não necessariamente erros
                 "[Compose Logs STDERR {}]:\n{}",
                 self.project_name(),
                 String::from_utf8_lossy(&output.stderr)
@@ -251,7 +370,7 @@ impl DockerComposeEnv {
         }
         Ok(())
     }
-
+    
     /// Obtém a porta do host mapeada para uma porta interna de um serviço Docker Compose.
     pub fn get_service_host_port(&self, service_name: &str, internal_port: u16) -> Result<u16> {
         debug!(
@@ -300,7 +419,7 @@ impl DockerComposeEnv {
                 error!("Falha ao coletar logs gerais após saída vazia do 'port': {}", log_err);
             });
             bail!(
-                "Saída do comando 'docker compose port {} {}' está vazia. O serviço pode não estar expondo a porta ou não estar rodando.",
+                "Saída do comando 'docker compose port {} {}' está vazia. O serviço pode não estar expondo a porta, não estar rodando, ou o perfil não foi ativado.",
                 service_name, internal_port
             );
         }
@@ -311,42 +430,25 @@ impl DockerComposeEnv {
     }
 
     /// Para (stops) um serviço específico no ambiente Docker Compose.
-    ///
-    /// Executa `docker compose stop <service_name>`.
     pub fn stop_service(&self, service_name: &str) -> Result<()> {
         info!("Parando serviço '{}' no projeto '{}'", service_name, self.project_name());
-        self.run_compose_command(&["stop", service_name], None)?;
-        info!(
-            "Comando para parar serviço '{}' no projeto '{}' executado com sucesso.",
-            service_name,
-            self.project_name()
-        );
-        // Aguardar um pouco para garantir que o serviço tenha tempo de parar.
-        // Este é um tempo arbitrário e pode precisar de ajuste ou de uma verificação mais robusta.
-        std::thread::sleep(Duration::from_secs(3));
+        self.run_compose_command(&[], &["stop", service_name], None)?;
+        info!("Comando para parar serviço '{}' no projeto '{}' executado.", service_name, self.project_name());
+        std::thread::sleep(Duration::from_secs(5)); // Dar tempo para o serviço parar
         Ok(())
     }
 
     /// Inicia (starts) um serviço específico previamente parado no ambiente Docker Compose.
-    ///
-    /// Executa `docker compose start <service_name>`.
-    /// Nota: Isto não reconstrói o contêiner, apenas inicia um existente.
-    /// Se o serviço não existir (ex: após um `down -v`), este comando falhará.
-    /// O método `up()` é mais adequado para garantir que o serviço esteja criado e rodando.
     pub fn start_service(&self, service_name: &str) -> Result<()> {
         info!("Iniciando serviço parado '{}' no projeto '{}'", service_name, self.project_name());
-        self.run_compose_command(&["start", service_name], None)?;
-        info!(
-            "Comando para iniciar serviço parado '{}' no projeto '{}' executado com sucesso.",
-            service_name,
-            self.project_name()
-        );
-        // Aguardar um pouco para o serviço iniciar. Healthchecks devem ser usados para confirmar prontidão.
-        std::thread::sleep(Duration::from_secs(3));
+        self.run_compose_command(&[], &["start", service_name], None)?;
+        info!("Comando para iniciar serviço parado '{}' no projeto '{}' executado.", service_name, self.project_name());
+        std::thread::sleep(Duration::from_secs(5)); // Dar tempo para o serviço iniciar
         Ok(())
     }
-
-    /// Aguarda até que um serviço específico seja considerado saudável (via healthcheck) ou esteja no estado "running".
+    
+    /// Aguarda até que um serviço específico seja considerado saudável (via healthcheck Docker)
+    /// ou esteja no estado "running" (se não houver healthcheck).
     pub async fn wait_for_service_healthy(
         &self,
         service_name: &str,
@@ -363,7 +465,7 @@ impl DockerComposeEnv {
 
         loop {
             if start_time.elapsed() >= timeout_duration {
-                self.logs_all_services().ok();
+                self.logs_all_services().unwrap_or_else(|e| error!("Erro ao obter logs durante timeout de wait_for_service_healthy: {}", e));
                 bail!(
                     "Timeout esperando serviço '{}' (projeto '{}') ficar saudável/rodando.",
                     service_name,
@@ -371,96 +473,79 @@ impl DockerComposeEnv {
                 );
             }
 
-            let container_name_for_inspect = format!("{}-{}-1", self.project_name(), service_name);
-
-            let output_result = Command::new("docker")
-                .arg("inspect")
+            // O nome do contêiner é geralmente <project_name>-<service_name>-<index>
+            let _container_name_pattern_for_ps = format!("{}-{}-", self.project_name(), service_name);
+            
+            // Usar `docker compose ps --format json` para obter o status de forma estruturada
+            let ps_output = Command::new("docker")
+                .arg("compose")
+                .arg("-f")
+                .arg(&self.compose_file_path)
+                .arg("-p")
+                .arg(self.project_name())
+                .arg("ps")
                 .arg("--format")
-                .arg("{{json .State}}")
-                .arg(&container_name_for_inspect)
+                .arg("json")
+                .arg(service_name) // Filtra pelo nome do serviço
                 .output();
 
-            let output = match output_result {
-                Ok(out) => out,
+            let output_str = match &ps_output {
+                Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
+                Ok(out) => { // Comando executou, mas falhou (ex: serviço não existe se perfil não ativo)
+                    debug!("'docker compose ps' para serviço '{}' falhou (status {}). Stderr: {}. Tentando novamente...", service_name, out.status, String::from_utf8_lossy(&out.stderr));
+                    tokio::time::sleep(check_interval).await;
+                    continue;
+                }
                 Err(e) => {
-                    warn!("'docker inspect' para serviço '{}' (contêiner: {}) falhou ao executar: {}. Tentando novamente...", service_name, container_name_for_inspect, e);
+                    warn!("'docker compose ps' para serviço '{}' falhou ao executar: {}. Tentando novamente...", service_name, e);
                     tokio::time::sleep(check_interval).await;
                     continue;
                 }
             };
-
-            if !output.status.success() {
-                // Este caso é comum se o contêiner ainda não foi criado pelo `docker compose up`.
-                // Continuar tentando até o timeout.
-                debug!("'docker inspect' para serviço '{}' (contêiner: {}) falhou (status não sucesso). Stderr: {}. Tentando novamente...", service_name, container_name_for_inspect, String::from_utf8_lossy(&output.stderr));
+            
+            // `docker compose ps --format json` retorna um JSON por linha para cada contêiner do serviço
+            // Para serviços com scale=1, haverá apenas uma linha.
+            if output_str.trim().is_empty() {
+                debug!("'docker compose ps' para serviço '{}' não retornou contêineres. O perfil pode não estar ativo ou o serviço ainda não foi criado. Tentando novamente...", service_name);
                 tokio::time::sleep(check_interval).await;
                 continue;
             }
 
-            let state_json_str = String::from_utf8_lossy(&output.stdout);
-            if state_json_str.trim().is_empty() || state_json_str.trim() == "null" {
-                debug!("'docker inspect' para serviço '{}' (contêiner: {}) retornou JSON vazio ou nulo. Tentando novamente...", service_name, container_name_for_inspect);
-                tokio::time::sleep(check_interval).await;
-                continue;
-            }
-            trace!(
-                "Estado JSON para serviço '{}' (contêiner {}): {}",
-                service_name,
-                container_name_for_inspect,
-                state_json_str
-            );
+            // Parsear o primeiro JSON (ou o único)
+            if let Some(first_line) = output_str.lines().next() {
+                 match serde_json::from_str::<serde_json::Value>(first_line) {
+                    Ok(service_info) => {
+                        let container_state = service_info.get("State").and_then(|s| s.as_str()).unwrap_or("").to_lowercase();
+                        let container_status = service_info.get("Status").and_then(|s| s.as_str()).unwrap_or("").to_lowercase(); // "Status" inclui health
+                        
+                        debug!("Serviço '{}' (projeto '{}') status do contêiner: '{}', Status field: '{}'", service_name, self.project_name(), container_state, container_status);
 
-            match serde_json::from_str::<serde_json::Value>(&state_json_str) {
-                Ok(state_value) => {
-                    let container_status = state_value
-                        .get("Status")
-                        .and_then(|s| s.as_str())
-                        .unwrap_or("")
-                        .to_lowercase();
-
-                    if container_status != "running" {
-                        debug!("Serviço '{}' (projeto '{}', contêiner '{}') não está 'running'. Status: '{}'. Aguardando...", service_name, self.project_name(), container_name_for_inspect, container_status);
-                        tokio::time::sleep(check_interval).await;
-                        continue;
+                        if container_state == "running" {
+                            if container_status.contains("healthy") {
+                                info!("Serviço '{}' (projeto '{}') está saudável (Status: {}).", service_name, self.project_name(), container_status);
+                                return Ok(());
+                            } else if !container_status.contains("starting") && !container_status.contains("unhealthy") {
+                                // Se não tem healthcheck ou o healthcheck passou (e não é "starting")
+                                info!("Serviço '{}' (projeto '{}') está rodando (Status: {}). Considerando pronto.", service_name, self.project_name(), container_status);
+                                return Ok(());
+                            } else if container_status.contains("unhealthy") {
+                                 self.logs_all_services().unwrap_or_else(|e| error!("Erro ao obter logs durante unhealthy de wait_for_service_healthy: {}", e));
+                                bail!("Serviço '{}' (projeto '{}') está unhealthy. Status: {}", service_name, self.project_name(), container_status);
+                            }
+                            // Se "starting" ou ainda não "healthy", continua no loop
+                        } else if container_state == "exited" || container_state == "created" {
+                             debug!("Serviço '{}' (projeto '{}') não está 'running'. State: '{}'. Aguardando...", service_name, self.project_name(), container_state);
+                        }
                     }
-
-                    if let Some(health_info) = state_value.get("Health") {
-                        // Se Health for null, significa que não há healthcheck configurado.
-                        if health_info.is_null() {
-                            info!("Serviço '{}' (projeto '{}', contêiner '{}') está rodando e não possui healthcheck definido via Dockerfile/Compose. Considerando pronto.", service_name, self.project_name(), container_name_for_inspect);
-                            return Ok(());
-                        }
-                        let health_status = health_info
-                            .get("Status")
-                            .and_then(|s| s.as_str())
-                            .unwrap_or("")
-                            .to_lowercase();
-                        debug!("Serviço '{}' (projeto '{}', contêiner '{}') status do contêiner: '{}', health_status: '{}'", service_name, self.project_name(), container_name_for_inspect, container_status, health_status);
-
-                        if health_status == "healthy" {
-                            info!("Serviço '{}' (projeto '{}', contêiner '{}') está saudável (health_status: healthy).", service_name, self.project_name(), container_name_for_inspect);
-                            return Ok(());
-                        }
-                        if health_status == "unhealthy" {
-                            self.logs_all_services().ok();
-                            bail!(
-                                "Serviço '{}' (projeto '{}', contêiner '{}') está unhealthy. Health Log: {:?}",
-                                service_name, self.project_name(), container_name_for_inspect, health_info.get("Log")
-                            );
-                        }
-                        // Se "starting", continua no loop
-                    } else {
-                        // Sem campo "Health", se está "running", consideramos pronto.
-                        info!("Serviço '{}' (projeto '{}', contêiner '{}') está rodando e não possui campo 'Health' no inspect. Considerando pronto.", service_name, self.project_name(), container_name_for_inspect);
-                        return Ok(());
+                    Err(e) => {
+                        warn!(
+                            "Falha ao parsear JSON do 'docker compose ps' para serviço '{}' (projeto '{}'): {}. Output: {}",
+                            service_name, self.project_name(), e, first_line
+                        );
                     }
                 }
-                Err(e) => {
-                    warn!(
-                        "Falha ao parsear JSON do estado do serviço '{}' (projeto '{}', contêiner '{}'): {}. Output: {}",
-                        service_name, self.project_name(), container_name_for_inspect, e, state_json_str
-                    );
-                }
+            } else {
+                debug!("'docker compose ps --format json' para o serviço '{}' não retornou nenhuma linha JSON parseável. O serviço pode não estar ativo. Tentando novamente...", service_name);
             }
             tokio::time::sleep(check_interval).await;
         }
@@ -473,7 +558,7 @@ impl Drop for DockerComposeEnv {
             "Limpando ambiente Docker Compose para projeto: '{}' (via Drop)",
             self.project_name()
         );
-        if let Err(e) = self.down(true) {
+        if let Err(e) = self.down(true) { // Sempre remove volumes no Drop para testes limpos
             error!(
                 "Falha ao derrubar o ambiente Docker Compose no drop para projeto '{}': {}. \
                 Pode ser necessário limpar manualmente.",
@@ -492,20 +577,23 @@ impl Drop for DockerComposeEnv {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reqwest::StatusCode;
-    use serial_test::serial;
+    use crate::common::constants; // Para usar constantes como DEFAULT_TEST_CONFIG_FILENAME
+    use serial_test::serial; // Para garantir execução serial dos testes que manipulam Docker
 
-    fn create_dummy_compose_file_for_helper_tests() -> std::io::Result<tempfile::NamedTempFile> {
+    // Função helper para criar um docker-compose.test.yml mínimo para os testes deste módulo.
+    // Nota: Para testes reais do Typedb-MCP-Server, usaremos o docker-compose.test.yml principal.
+    fn create_minimal_compose_file_for_helper_tests() -> std::io::Result<tempfile::NamedTempFile> {
         use std::io::Write;
         let mut file = tempfile::NamedTempFile::new()?;
         writeln!(file, "version: '3.8'")?;
         writeln!(file, "services:")?;
         writeln!(file, "  alpine-dummy-service:")?;
         writeln!(file, "    image: alpine:latest")?;
-        writeln!(file, "    command: [\"sh\", \"-c\", \"echo 'Dummy service for helper tests started' && sleep 5 && echo 'Dummy service for helper tests stopping' && exit 0\"]")?;
+        writeln!(file, "    container_name: ${{COMPOSE_PROJECT_NAME}}-alpine-dummy")?; // Usar nome do projeto
+        writeln!(file, "    command: [\"sh\", \"-c\", \"echo 'Dummy service for helper tests started. MCP_CONFIG_PATH_ENV_VAR=${{MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV}}' && sleep 30 && echo 'Dummy service for helper tests stopping'\"]")?;
         writeln!(file, "    ports:")?;
-        writeln!(file, "      - \"12345:80\"")?;
-        writeln!(file, "    healthcheck:")?;
+        writeln!(file, "      - \"12345:80\"")?; // Porta interna 80, para get_service_host_port
+        writeln!(file, "    healthcheck:")?; // Healthcheck simples
         writeln!(file, "      test: [\"CMD-SHELL\", \"echo 'healthcheck for dummy' && exit 0\"]")?;
         writeln!(file, "      interval: 2s")?;
         writeln!(file, "      timeout: 1s")?;
@@ -516,101 +604,86 @@ mod tests {
     }
 
     #[tokio::test]
-    #[serial]
-    async fn test_docker_compose_env_new_and_drop_cycle() -> Result<()> {
+    #[serial] // Garante que os testes Docker não rodem em paralelo e causem conflitos de nome/porta.
+    async fn test_docker_compose_env_new_generates_unique_project_name() {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-        let dummy_compose_file = create_dummy_compose_file_for_helper_tests()?;
+        let dummy_compose_file = create_minimal_compose_file_for_helper_tests().expect("Falha ao criar dummy compose file");
         let compose_path_str = dummy_compose_file.path().to_str().unwrap().to_string();
 
-        info!("Iniciando teste test_docker_compose_env_new_and_drop_cycle");
-        {
-            let env = DockerComposeEnv::new(&compose_path_str, "hlp_drop_test");
-            env.up(constants::DEFAULT_TEST_CONFIG_FILENAME)
-                .context("Falha no env.up() no teste de ciclo de vida")?;
-            info!(
-                "DockerComposeEnv para '{}' criado e 'up', será derrubado pelo Drop.",
-                env.project_name()
-            );
-            tokio::time::sleep(Duration::from_secs(2)).await;
-        }
-        info!("Teste test_docker_compose_env_new_and_drop_cycle concluído.");
+        let env1 = DockerComposeEnv::new(&compose_path_str, "test_prefix");
+        let env2 = DockerComposeEnv::new(&compose_path_str, "test_prefix");
+        assert_ne!(env1.project_name(), env2.project_name(), "Nomes de projeto deveriam ser únicos.");
+        info!("Nome projeto 1: {}, Nome projeto 2: {}", env1.project_name(), env2.project_name());
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_docker_compose_env_up_down_cycle_with_minimal_service() -> Result<()> {
+        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+        let dummy_compose_file = create_minimal_compose_file_for_helper_tests()?;
+        let compose_path_str = dummy_compose_file.path().to_str().unwrap().to_string();
+
+        info!("Iniciando teste test_docker_compose_env_up_down_cycle_with_minimal_service");
+        let env = DockerComposeEnv::new(&compose_path_str, "hlp_cycle_min");
+        
+        // Testa `up`
+        // Passando um nome de config fictício, e sem perfis ativos para este teste simples.
+        env.up("dummy_config.toml", None) 
+            .context("Falha no env.up() no teste de ciclo de vida com serviço mínimo")?;
+        
+        // Testa `wait_for_service_healthy`
+        env.wait_for_service_healthy("alpine-dummy-service", Duration::from_secs(20))
+            .await
+            .context("Serviço alpine-dummy-service não ficou saudável")?;
+        info!("Serviço alpine-dummy-service está saudável.");
+
+        // Testa `get_service_host_port`
+        let host_port = env.get_service_host_port("alpine-dummy-service", 80)
+            .context("Falha ao obter porta mapeada para alpine-dummy-service")?;
+        assert_eq!(host_port, 12345, "Porta mapeada para alpine-dummy-service incorreta.");
+        info!("Porta do host para alpine-dummy-service:80 é {}", host_port);
+        
+        // `down` é chamado automaticamente pelo `Drop` trait.
+        // Para testar explicitamente:
+        // env.down(true).context("Falha no env.down() explícito")?;
+        // info!("Ambiente Docker Compose derrubado explicitamente.");
+
         Ok(())
     }
 
+    // Este teste depende do docker-compose.test.yml real e dos serviços definidos nele.
+    // Pode ser mais lento.
     #[tokio::test]
     #[serial]
-    #[ignore]
-    async fn test_docker_compose_up_down_port_and_healthy_and_start_stop() -> Result<()> {
+    #[ignore] // Ignorar por padrão, pois pode ser mais pesado e depende do setup completo.
+    async fn test_real_services_up_down_and_port_retrieval() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+        
+        // Usa o arquivo docker-compose.test.yml real do projeto
+        let compose_path_str = constants::DEFAULT_DOCKER_COMPOSE_TEST_FILE; 
+        let env = DockerComposeEnv::new(compose_path_str, "hlp_real_svc");
 
-        let compose_path_str = constants::DEFAULT_DOCKER_COMPOSE_TEST_FILE;
-        let env = DockerComposeEnv::new(compose_path_str, "hlp_full_ops_test");
+        // Inicia com config default e perfil default para TypeDB
+        env.up(constants::DEFAULT_TEST_CONFIG_FILENAME, Some(vec!["typedb_default".to_string(), "oauth_mock".to_string()]))
+            .context("Falha ao executar 'up' com config default e perfil typedb_default")?;
 
-        env.up(constants::DEFAULT_TEST_CONFIG_FILENAME)
-            .context("Falha ao executar 'up' no teste completo do helper")?;
-
-        env.wait_for_service_healthy(constants::MOCK_OAUTH_SERVICE_NAME, Duration::from_secs(45))
+        // Espera pelo TypeDB padrão
+        env.wait_for_service_healthy(constants::TYPEDB_SERVICE_NAME, constants::DEFAULT_TYPEDB_READY_TIMEOUT)
             .await
-            .with_context(|| {
-                format!(
-                    "Serviço '{}' não ficou saudável após up",
-                    constants::MOCK_OAUTH_SERVICE_NAME
-                )
-            })?;
-
-        let host_port = env
-            .get_service_host_port(
-                constants::MOCK_OAUTH_SERVICE_NAME,
-                constants::MOCK_OAUTH_INTERNAL_PORT,
-            )
-            .with_context(|| {
-                format!(
-                    "Falha ao obter porta mapeada para '{}'",
-                    constants::MOCK_OAUTH_SERVICE_NAME
-                )
-            })?;
-
-        assert_eq!(
-            host_port,
-            constants::MOCK_OAUTH_HOST_PORT,
-            "Porta mapeada para mock-oauth-server não corresponde à esperada."
-        );
-
-        // Testar stop_service
-        env.stop_service(constants::MOCK_OAUTH_SERVICE_NAME)
-            .context("Falha ao parar o serviço mock-oauth2-server")?;
-        info!("Serviço {} parado. Aguardando para confirmar.", constants::MOCK_OAUTH_SERVICE_NAME);
-        // Verificar se o healthcheck falha ou o status é 'exited' (mais complexo de verificar robustamente sem `docker ps` parseado)
-        // Uma forma simples é tentar acessar a porta (deve falhar) ou verificar se /livez falha.
-        let livez_url = format!("http://localhost:{}/livez", constants::MOCK_OAUTH_HOST_PORT);
-        let client = reqwest::Client::new();
-        let resp_after_stop = client.get(&livez_url).send().await;
-        assert!(
-            resp_after_stop.is_err() || resp_after_stop.unwrap().status() != StatusCode::OK,
-            "Serviço {} ainda está respondendo após stop.",
-            constants::MOCK_OAUTH_SERVICE_NAME
-        );
-        info!(
-            "Serviço {} não está respondendo após stop, como esperado.",
-            constants::MOCK_OAUTH_SERVICE_NAME
-        );
-
-        // Testar start_service
-        env.start_service(constants::MOCK_OAUTH_SERVICE_NAME)
-            .context("Falha ao iniciar o serviço mock-oauth2-server")?;
-        info!("Serviço {} iniciado. Aguardando healthcheck.", constants::MOCK_OAUTH_SERVICE_NAME);
-
-        env.wait_for_service_healthy(constants::MOCK_OAUTH_SERVICE_NAME, Duration::from_secs(30))
+            .with_context(|| format!("Serviço '{}' não ficou saudável", constants::TYPEDB_SERVICE_NAME))?;
+        
+        // Espera pelo Mock OAuth
+        env.wait_for_service_healthy(constants::MOCK_OAUTH_SERVICE_NAME, constants::DEFAULT_MOCK_AUTH_READY_TIMEOUT)
             .await
-            .with_context(|| {
-                format!(
-                    "Serviço '{}' não ficou saudável após start",
-                    constants::MOCK_OAUTH_SERVICE_NAME
-                )
-            })?;
-        info!("Serviço {} saudável após start.", constants::MOCK_OAUTH_SERVICE_NAME);
+            .with_context(|| format!("Serviço '{}' não ficou saudável", constants::MOCK_OAUTH_SERVICE_NAME))?;
 
-        env.down(true).context("Falha ao executar 'down' no teste completo do helper")?;
+        // Tenta obter a porta do TypeDB
+        let typedb_host_port = env.get_service_host_port(constants::TYPEDB_SERVICE_NAME, constants::TYPEDB_INTERNAL_PORT)
+            .with_context(|| format!("Falha ao obter porta para {}", constants::TYPEDB_SERVICE_NAME))?;
+        assert_eq!(typedb_host_port, constants::TYPEDB_HOST_PORT);
+        info!("Porta do TypeDB ({}) no host: {}", constants::TYPEDB_SERVICE_NAME, typedb_host_port);
+
+        // `down` será chamado pelo Drop.
         Ok(())
     }
 }

@@ -1,14 +1,193 @@
+# Arquivo de Configuração de Teste: config.test.toml
+# Localização: Raiz do projeto Typedb-MCP-Server.
+#
+# Propósito:
+#   Este arquivo fornece um conjunto de configurações que podem ser usadas para
+#   testes locais ou cenários específicos onde os arquivos de configuração
+#   dedicados em `tests/test_configs/` não são o alvo principal (por exemplo,
+#   testes unitários que podem precisar carregar uma configuração mockada, ou
+#   execuções manuais do servidor em um "modo de teste").
+#
+#   As configurações aqui são geralmente mais permissivas (ex: CORS) e podem
+#   apontar para serviços mockados ou locais.
+#
+# Convenções:
+#   - Todas as chaves de configuração estão em `camelCase` para alinhar com
+#     `#[serde(rename_all = "camelCase")]` nas structs de `src/config.rs`.
+#   - Para dados sensíveis como TYPEDB_PASSWORD, SEMPRE use variáveis de ambiente.
+#
+# Precedência:
+#   Lembre-se que as variáveis de ambiente (prefixo MCP_) sempre sobrescreverão
+#   os valores definidos neste arquivo, devido à lógica em `src/config.rs`.
+
+# =============================================================================
+# Configurações do Servidor MCP (`[server]`)
+# Define como o próprio Typedb-MCP-Server opera.
+# =============================================================================
 [server]
-bindAddress = "0.0.0.0:8787"
-tlsEnabled = false
-tlsCertPath = "/app/certs/mcp-server.crt" # Corrigido de cert_path para tlsCertPath
-tlsKeyPath = "/app/certs/mcp-server.key"  # Corrigido de key_path para tlsKeyPath
+# Endereço de bind (IP:PORTA) para o servidor MCP escutar.
+# Para testes, `0.0.0.0` permite acesso de outros contêineres ou do host.
+# Uma porta diferente do padrão da aplicação (8787) pode ser usada para evitar conflitos.
+bindAddress = "0.0.0.0:8789" # Exemplo de porta de teste
 
+# Habilita TLS (HTTPS/WSS) para o servidor MCP.
+# Para testes que não focam em TLS do servidor, manter `false`.
+tlsEnabled = false
+
+# Caminho para o arquivo PEM do certificado do servidor MCP (fullchain).
+# Obrigatório e deve ser um caminho válido se `server.tlsEnabled = true`.
+# Para testes, pode apontar para certificados gerados em `tests/test_certs/`
+# (considerando que o servidor de teste tenha acesso a eles, ex: via montagem de volume).
+# tlsCertPath = "/app/test_certs/mcp-server.crt" # Exemplo se rodando em Docker com volume montado
+
+# Caminho para o arquivo PEM da chave privada do servidor MCP.
+# Obrigatório e deve ser um caminho válido se `server.tlsEnabled = true`.
+# tlsKeyPath = "/app/test_certs/mcp-server.key"  # Exemplo
+
+# Número de threads worker para o runtime Tokio.
+# Se `null` ou omitido, o servidor usará o número de CPUs lógicas.
+# workerThreads = 2 # Exemplo: Limitar para testes
+
+# Endereço (IP:PORTA) para o endpoint de métricas Prometheus.
+# Se `null` ou omitido, o servidor usará o default codificado (geralmente "0.0.0.0:9090").
+metricsBindAddress = "0.0.0.0:9099" # Exemplo de porta de métricas de teste
+
+# Path do endpoint WebSocket MCP.
+# Se `null` ou omitido, o servidor usará o default codificado (geralmente "/mcp/ws").
+mcpWebsocketPath = "/mcp/ws"
+
+# Path do endpoint de métricas Prometheus.
+# Se `null` ou omitido, o servidor usará o default codificado (geralmente "/metrics").
+metricsPath = "/metrics"
+
+
+# =============================================================================
+# Configurações da Conexão com TypeDB (`[typedb]`)
+# Define como o Typedb-MCP-Server se conecta à instância TypeDB.
+# =============================================================================
 [typedb]
-address = "typedb-server-it:1729"
+# Endereço (host:porta) do servidor TypeDB.
+# Para testes de integração com Docker, este seria o nome do serviço TypeDB
+# (ex: "typedb-server-it:1729").
+# Para testes unitários ou locais, pode ser "localhost:1729" se houver uma instância rodando.
+address = "localhost:1729" # Ajustar conforme o ambiente de teste
+
+# Nome de usuário para autenticação com TypeDB.
 username = "admin"
+# A SENHA DO TYPEDB (`TYPEDB_PASSWORD`) DEVE ser fornecida via variável de ambiente.
+
+# Habilita (true) ou desabilita (false) TLS para a conexão com o servidor TypeDB.
 tlsEnabled = false
 
-[auth]
-enabled = false # Corrigido de oauth_enabled para enabled
-jwksUri = ""    # Corrigido de oauth_jwks_uri para jwksUri
+# Caminho para o arquivo PEM do certificado da Autoridade Certificadora (CA) raiz.
+# Obrigatório se `typedb.tlsEnabled = true` e o servidor TypeDB usar uma CA
+# customizada ou autoassinada.
+# tlsCaPath = "/path/to/your/typedb_ca.pem" # Exemplo
+
+
+# =============================================================================
+# Configurações de Autenticação OAuth 2.0 (`[oauth]`)
+# Define como os clientes MCP são autenticados.
+# =============================================================================
+[oauth]
+# Habilita (true) ou desabilita (false) a autenticação OAuth2 para os clientes MCP.
+# Para a maioria dos testes (exceto os focados em OAuth), é mais simples manter `false`.
+enabled = false
+
+# URI do endpoint JWKS (JSON Web Key Set) do seu Authorization Server.
+# Obrigatório se `oauth.enabled = true`.
+# Para testes OAuth, apontaria para o `mock-oauth2-server` na rede Docker.
+# jwksUri = "http://mock-oauth2-server/.well-known/jwks.json"
+
+# Issuer(s) esperado(s) no JWT (claim "iss").
+# Se definido, o token será validado contra estes.
+# Para testes OAuth, deve corresponder ao issuer dos tokens de teste.
+# issuer = ["test-issuer"]
+
+# Audience(s) esperado(s) no JWT (claim "aud").
+# Se definido, o token será validado contra estes.
+# Para testes OAuth, deve corresponder ao audience dos tokens de teste.
+# audience = ["test-audience"]
+
+# Intervalo para recarregar o JWKS do Authorization Server.
+# Formato: string legível por humanos (ex: "1h", "30m", "3600s").
+# Default programático é "1h". Pode ser menor para testes de refresh de JWKS.
+jwksRefreshInterval = "5m" # Exemplo: refresh a cada 5 minutos
+
+# Timeout em segundos para a requisição HTTP ao buscar o JWKS.
+# Default programático é 30 segundos.
+jwksRequestTimeoutSeconds = 10 # Exemplo: timeout de 10 segundos
+
+# Lista de escopos OAuth2 que um token DEVE conter para acesso geral ao servidor.
+# Se não definido ou vazio, nenhum escopo específico é exigido para funcionalidades básicas.
+# requiredScopes = ["mcp:access"] # Exemplo
+
+
+# =============================================================================
+# Configurações de Logging (`[logging]`)
+# Controla o nível de detalhe dos logs da aplicação.
+# =============================================================================
+[logging]
+# String de configuração para o `EnvFilter` do `tracing_subscriber`.
+# Formato: "[level],[target=level],[target2=level]".
+# Níveis comuns: error, warn, info, debug, trace.
+# Para testes, `debug` ou `trace` para os módulos do servidor pode ser útil.
+rustLog = "info,typedb_mcp_server_lib=debug,typedb_mcp_server=debug,typedb_mcp_server_lib::config=trace"
+
+
+# =============================================================================
+# Configurações de CORS (Cross-Origin Resource Sharing) (`[cors]`)
+# Define quais origens externas podem fazer requisições ao servidor.
+# =============================================================================
+[cors]
+# Lista de origens permitidas para acessar o servidor MCP.
+# Necessário se clientes MCP forem baseados em navegador e hospedados em domínios diferentes.
+# Usar `["*"]` permite todas as origens, o que é geralmente aceitável para testes,
+# mas NÃO RECOMENDADO para produção sem uma análise de segurança cuidadosa.
+allowedOrigins = ["*"]
+
+
+# =============================================================================
+# Configurações de Limitação de Taxa (`[rateLimit]`)
+# Ajuda a proteger o servidor contra abuso ou sobrecarga.
+# =============================================================================
+[rateLimit]
+# Habilita (true) ou desabilita (false) o rate limiting para conexões/requisições.
+enabled = true # Geralmente habilitado, mas pode ser desabilitado para testes de carga específicos.
+
+# Número de requisições (ou novas conexões) permitidas por segundo, por IP.
+# Para testes, um valor alto pode ser usado para evitar interferência,
+# a menos que o próprio rate limiting esteja sendo testado.
+requestsPerSecond = 1000
+
+# Número de requisições permitidas em um burst (rajada), por IP.
+burstSize = 2000
+
+
+# =============================================================================
+# Configurações de Tracing Distribuído (OpenTelemetry) (`[tracing]`)
+# Permite rastrear requisições através de múltiplos serviços.
+# =============================================================================
+[tracing]
+# Habilita (true) ou desabilita (false) o tracing OpenTelemetry.
+# Para a maioria dos testes, pode ser mantido `false` a menos que o tracing seja o foco.
+enabled = false
+
+# Endpoint do coletor OTLP (geralmente gRPC).
+# Obrigatório se `tracing.enabled = true`.
+# Exemplo: "http://localhost:4317" (para um coletor OTLP/gRPC local).
+# exporterOtlpEndpoint = "http://otel-collector-test:4317"
+
+# Nome do serviço que aparecerá no sistema de tracing.
+serviceName = "typedb-mcp-server-test-mode"
+
+# Estratégia de amostragem para traces.
+# Valores: "always_on", "always_off", "traceidratio", "parentbased_always_on", etc.
+# Default programático é "always_on".
+sampler = "always_on"
+
+# Argumento para o sampler.
+# Para "traceidratio", é a taxa (ex: "0.1" para 10%).
+# Para "always_on" ou "always_off", geralmente "1.0" ou não é usado.
+# Default programático é "1.0".
+samplerArg = "1.0"

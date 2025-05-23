@@ -1,67 +1,125 @@
 # Arquivo: tests/test_configs/default.test.toml
-# Propósito: Configuração base para testes de integração.
-# - OAuth2 desabilitado.
-# - TLS para o servidor MCP desabilitado.
-# - TLS para conexão com TypeDB desabilitado.
-# - Aponta para o serviço TypeDB padrão ('typedb-server-it').
+# Propósito: Configuração base para testes de integração do Typedb-MCP-Server.
+# Esta versão utiliza chaves em `camelCase` para alinhar com as diretivas
+# `#[serde(rename_all = "camelCase")]` nas structs de configuração em `src/config.rs`.
+#
+# Cenário de Teste:
+# - OAuth2: Desabilitado.
+# - TLS para o servidor MCP: Desabilitado (escuta em HTTP/WS).
+# - Conexão com TypeDB: Sem TLS, apontando para o serviço 'typedb-server-it'.
 
 [server]
 # Endereço de bind INTERNO ao contêiner para o servidor MCP (HTTP/WS).
-bind_address = "0.0.0.0:8787"
+# O servidor escutará em todas as interfaces neste IP e porta.
+bindAddress = "0.0.0.0:8787"
+
 # Endereço de bind INTERNO ao contêiner para o endpoint de métricas Prometheus.
-metrics_bind_address = "0.0.0.0:9090"
+metricsBindAddress = "0.0.0.0:9090"
+
 # Caminho do endpoint WebSocket MCP.
-mcp_websocket_path = "/mcp/ws"
+mcpWebsocketPath = "/mcp/ws"
+
 # Caminho do endpoint de métricas Prometheus.
-metrics_path = "/metrics"
-# TLS (HTTPS/WSS) para o servidor MCP.
-tls_enabled = false
-# tls_cert_path = "/app/test_certs/mcp-server.crt" # Necessário se tls_enabled = true
-# tls_key_path = "/app/test_certs/mcp-server.key"   # Necessário se tls_enabled = true
-# Número de threads worker para o runtime Tokio (None usa o default da lib num_cpus).
-# worker_threads = 4
+metricsPath = "/metrics"
+
+# Habilita TLS (HTTPS/WSS) para o servidor MCP.
+tlsEnabled = false
+# Caminho DENTRO do contêiner para o certificado do servidor MCP (fullchain).
+# Necessário apenas se server.tlsEnabled = true.
+# tlsCertPath = "/app/test_certs/mcp-server.crt"
+# Caminho DENTRO do contêiner para a chave privada do servidor MCP.
+# Necessário apenas se server.tlsEnabled = true.
+# tlsKeyPath = "/app/test_certs/mcp-server.key"
+
+# Número de threads worker para o runtime Tokio.
+# Se omitido ou None, o servidor usará o número de CPUs lógicas.
+# workerThreads = 4
 
 [typedb]
 # Endereço do servidor TypeDB (nome do serviço na rede Docker).
+# Este é o endereço que o servidor MCP usará para se conectar ao TypeDB.
 address = "typedb-server-it:1729"
+
 # Nome de usuário para autenticação com TypeDB.
 username = "admin"
-# A SENHA (TYPEDB_PASSWORD) é injetada via variável de ambiente no docker-compose.test.yml.
-# Habilita TLS para a conexão com o TypeDB.
-tls_enabled = false
-# tls_ca_path = "/app/test_certs/rootCA.pem" # Necessário se tls_enabled = true e CA customizada
+# A SENHA (TYPEDB_PASSWORD) é injetada como uma variável de ambiente
+# no contêiner typedb-mcp-server-it através do docker-compose.test.yml.
+
+# Habilita TLS para a conexão do servidor MCP com o TypeDB.
+tlsEnabled = false
+# Caminho DENTRO do contêiner para o certificado da CA raiz.
+# Necessário apenas se typedb.tlsEnabled = true e o TypeDB Server usar uma CA customizada/autoassinada.
+# tlsCaPath = "/app/test_certs/rootCA.pem"
 
 [oauth]
 # Habilita a autenticação OAuth 2.0 para clientes MCP.
 enabled = false
-# jwks_uri = "http://mock-oauth2-server/.well-known/jwks.json" # Necessário se enabled = true
-# issuer = ["test-issuer"] # Necessário se enabled = true e validação de issuer ativa
-# audience = ["test-audience"] # Necessário se enabled = true e validação de audience ativa
-# required_scopes = [] # Opcional: escopos globais
-# jwks_refresh_interval = "5m" # Opcional: default é 1h
-# jwks_request_timeout_seconds = 10 # Opcional: default é 30s
+
+# URI do endpoint JWKS (JSON Web Key Set) do Authorization Server.
+# Necessário apenas se oauth.enabled = true.
+# No ambiente de teste, aponta para o mock-oauth2-server.
+# jwksUri = "http://mock-oauth2-server/.well-known/jwks.json"
+
+# Issuer(s) esperado(s) no token JWT.
+# Necessário se oauth.enabled = true e a validação de issuer estiver ativa.
+# Deve corresponder ao que auth_helpers.rs gera para tokens de teste.
+# issuer = ["test-issuer"]
+
+# Audience(s) esperado(s) no token JWT.
+# Necessário se oauth.enabled = true e a validação de audience estiver ativa.
+# Deve corresponder ao que auth_helpers.rs gera para tokens de teste.
+# audience = ["test-audience"]
+
+# Lista de escopos OAuth2 que um token DEVE conter para acesso geral ao servidor.
+# Opcional, se não definido, nenhum escopo global específico é exigido.
+# requiredScopes = []
+
+# Intervalo para recarregar o JWKS do Authorization Server. Formato legível.
+# Opcional, default é "1h" (definido em src/config.rs).
+# jwksRefreshInterval = "5m"
+
+# Timeout em segundos para a requisição HTTP ao buscar o JWKS.
+# Opcional, default é 30s (definido em src/config.rs).
+# jwksRequestTimeoutSeconds = 10
 
 [logging]
-# Nível de log. Formato: "geral,crate1=nivel,crate2=nivel".
-# Para testes, é útil ter logs mais verbosos do servidor e driver.
-rust_log = "info,typedb_mcp_server_lib=debug,typedb_mcp_server=debug,typedb_driver=info,hyper=warn,h2=warn,tower=warn"
+# String de configuração para o filtro de log do `tracing_subscriber`.
+# Formato: "[level],[target=level],[target2=level]".
+# Para testes, logs mais verbosos do servidor e driver são úteis.
+rustLog = "info,typedb_mcp_server_lib=debug,typedb_mcp_server=debug,typedb_mcp_server_lib::config=trace,typedb_driver=info,hyper=warn,h2=warn,tower=warn"
 
-[rate_limit]
-# Habilita limitação de taxa.
+[rateLimit]
+# Habilita a limitação de taxa (Rate Limiting) por IP.
 enabled = true
-# Requisições por segundo por IP. Elevado para não impactar testes normais.
-requests_per_second = 1000
-# Rajada permitida por IP. Elevado para não impactar testes normais.
-burst_size = 2000
+
+# Número de requisições permitidas por segundo, por IP.
+# Elevado para não impactar testes normais, a menos que o teste seja especificamente para rate limiting.
+requestsPerSecond = 1000
+
+# Número de requisições permitidas em um burst (rajada), por IP.
+burstSize = 2000
 
 [cors]
-# Origens permitidas. "*" é permissivo para testes.
-allowed_origins = ["*"]
+# Lista de origens permitidas para acessar o servidor MCP.
+# "*" é permissivo e geralmente adequado para ambientes de teste.
+allowedOrigins = ["*"]
 
 [tracing]
-# Habilita tracing OpenTelemetry. Desabilitado por padrão para testes.
+# Habilita o tracing OpenTelemetry. Desabilitado por padrão para testes.
 enabled = false
-# exporter_otlp_endpoint = "http://jaeger-collector:4317" # Exemplo
-service_name = "typedb-mcp-server-test-default"
-# sampler = "always_on" # Default
-# sampler_arg = "1.0" # Default
+
+# Endpoint do coletor OTLP (geralmente gRPC).
+# Obrigatório se tracing.enabled = true.
+# exporterOtlpEndpoint = "http://jaeger-collector:4317" # Exemplo, se um coletor estivesse no compose
+
+# Nome do serviço para OpenTelemetry.
+serviceName = "typedb-mcp-server-test-default"
+
+# Estratégia de amostragem para traces.
+# Valores comuns: "always_on", "always_off", "traceidratio".
+# sampler = "always_on" # Default programático
+
+# Argumento para o sampler.
+# Para "traceidratio", é a taxa (ex: "0.1" para 10%).
+# Para "always_on" ou "always_off", geralmente "1.0" ou não é usado.
+# samplerArg = "1.0" # Default programático

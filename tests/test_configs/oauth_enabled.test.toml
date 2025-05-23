@@ -1,47 +1,80 @@
 # Arquivo: tests/test_configs/oauth_enabled.test.toml
 # Propósito: Configuração para testes que exigem autenticação OAuth2 habilitada.
+# - Chaves em `camelCase`.
 # - Aponta para o 'mock-oauth2-server' para JWKS.
-# - Define issuer e audience esperados.
+# - Define issuer e audience esperados que devem corresponder aos gerados
+#   pelos helpers de autenticação em tests/common/auth_helpers.rs.
 
 [server]
-bind_address = "0.0.0.0:8787"
-metrics_bind_address = "0.0.0.0:9090"
-mcp_websocket_path = "/mcp/ws"
-metrics_path = "/metrics"
-tls_enabled = false
+# Endereço de bind INTERNO ao contêiner para o servidor MCP (HTTP/WS).
+bindAddress = "0.0.0.0:8787"
+
+# Endereço de bind INTERNO ao contêiner para o endpoint de métricas Prometheus.
+metricsBindAddress = "0.0.0.0:9090"
+
+# Caminho do endpoint WebSocket MCP.
+mcpWebsocketPath = "/mcp/ws"
+
+# Caminho do endpoint de métricas Prometheus.
+metricsPath = "/metrics"
+
+# TLS (HTTPS/WSS) para o servidor MCP (desabilitado neste cenário).
+tlsEnabled = false
 
 [typedb]
+# Endereço do servidor TypeDB (nome do serviço na rede Docker).
+# Para testes OAuth, geralmente usamos a instância TypeDB padrão sem TLS.
 address = "typedb-server-it:1729"
+
+# Nome de usuário para autenticação com TypeDB.
 username = "admin"
-tls_enabled = false
+# A SENHA (TYPEDB_PASSWORD) é injetada via variável de ambiente.
+
+# TLS para a conexão com o TypeDB (desabilitado neste cenário).
+tlsEnabled = false
 
 [oauth]
+# Habilita a autenticação OAuth 2.0 para clientes MCP.
 enabled = true
+
 # URI do endpoint JWKS do mock-oauth2-server (acessível dentro da rede Docker).
-jwks_uri = "http://mock-oauth2-server/.well-known/jwks.json"
-# Issuer esperado no token JWT (deve corresponder ao que auth_helpers.rs gera).
+# Este mock serve as chaves públicas para validar os tokens JWT de teste.
+jwksUri = "http://mock-oauth2-server/.well-known/jwks.json"
+
+# Issuer(s) esperado(s) no token JWT.
+# Deve corresponder ao valor usado em `generate_test_jwt` em `auth_helpers.rs`.
 issuer = ["test-issuer"]
-# Audience esperado no token JWT (deve corresponder ao que auth_helpers.rs gera).
+
+# Audience(s) esperado(s) no token JWT.
+# Deve corresponder ao valor usado em `generate_test_jwt` em `auth_helpers.rs`.
 audience = ["test-audience"]
-# Escopos OAuth2 que um token DEVE conter para acesso geral (opcional, default é nenhum).
-# required_scopes = ["mcp:base_access"]
-# Intervalo para recarregar o JWKS (menor para testes, se for testar o refresh).
-jwks_refresh_interval = "5m"
-# Timeout para a requisição HTTP ao buscar o JWKS.
-jwks_request_timeout_seconds = 10
+
+# Lista de escopos OAuth2 que um token DEVE conter para acesso geral (opcional).
+# Se definido, o middleware de autenticação verificará esses escopos na conexão inicial.
+# Exemplo: requiredScopes = ["mcp:base_access", "user:profile"]
+# requiredScopes = [] # Default é nenhum escopo global obrigatório
+
+# Intervalo para recarregar o JWKS.
+# Um valor menor pode ser útil se os testes precisarem validar o refresh do JWKS.
+# Default programático é "1h".
+jwksRefreshInterval = "5m"
+
+# Timeout em segundos para a requisição HTTP ao buscar o JWKS.
+# Default programático é 30s.
+jwksRequestTimeoutSeconds = 10
 
 [logging]
-# Nível de log mais verboso para módulos de autenticação.
-rust_log = "info,typedb_mcp_server_lib=trace,typedb_mcp_server=trace,typedb_driver=info,typedb_mcp_server_lib::auth=trace,hyper=warn,h2=warn,tower=warn"
+# Nível de log, com trace para módulos de autenticação para facilitar a depuração.
+rustLog = "info,typedb_mcp_server_lib=trace,typedb_mcp_server=trace,typedb_mcp_server_lib::auth=trace,typedb_driver=info,hyper=warn,h2=warn,tower=warn"
 
-[rate_limit]
+[rateLimit]
 enabled = true
-requests_per_second = 1000
-burst_size = 2000
+requestsPerSecond = 1000 # Elevado para não interferir nos testes funcionais
+burstSize = 2000
 
 [cors]
-allowed_origins = ["*"]
+allowedOrigins = ["*"] # Permissivo para testes
 
 [tracing]
 enabled = false
-service_name = "typedb-mcp-server-test-oauth"
+serviceName = "typedb-mcp-server-test-oauth"
