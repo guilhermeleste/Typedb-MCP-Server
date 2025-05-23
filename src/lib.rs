@@ -83,10 +83,10 @@ pub mod transport;
 // Por enquanto, manteremos a necessidade de importar diretamente dos submódulos
 // para maior clareza da origem de cada item.
 // Exemplo:
+pub use ::config::ConfigError;
 pub use config::Settings;
-pub use error::McpServerError;
 pub use error::AuthErrorDetail; // Adicionado para exportar AuthErrorDetail
-pub use ::config::ConfigError; // Corrigido para exportar ConfigError da crate config
+pub use error::McpServerError; // Corrigido para exportar ConfigError da crate config
 
 #[cfg(test)]
 mod tests {

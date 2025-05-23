@@ -40,7 +40,9 @@ pub struct QueryReadParams {
     pub database_name: String,
     /// A consulta `TypeQL` completa de leitura.
     /// Exemplos: `match $x isa person; get;`, `match $p isa person; fetch $p { name, age };`, `match $p isa person; aggregate count;`.
-    #[schemars(description = "A consulta TypeQL completa de leitura (ex: `match $x isa person; get;`, `match $p isa person; fetch $p { name, age };`, `match $p isa person; aggregate count;`).")]
+    #[schemars(
+        description = "A consulta TypeQL completa de leitura (ex: `match $x isa person; get;`, `match $p isa person; fetch $p { name, age };`, `match $p isa person; aggregate count;`)."
+    )]
     pub query: String,
 }
 
@@ -53,7 +55,9 @@ pub struct InsertDataParams {
     pub database_name: String,
     /// A consulta `TypeQL` de inserção completa.
     /// Exemplos: `insert $x isa person, has name 'Alice';`, `match $p isa person, has name 'Bob'; insert $p has age 30;`.
-    #[schemars(description = "A consulta TypeQL de inserção completa (ex: `insert $x isa person, has name 'Alice';` ou `match $p isa person, has name 'Bob'; insert $p has age 30;`).")]
+    #[schemars(
+        description = "A consulta TypeQL de inserção completa (ex: `insert $x isa person, has name 'Alice';` ou `match $p isa person, has name 'Bob'; insert $p has age 30;`)."
+    )]
     pub query: String,
 }
 
@@ -66,7 +70,9 @@ pub struct DeleteDataParams {
     pub database_name: String,
     /// A consulta `TypeQL` de deleção completa.
     /// Exemplo: `match $p isa person, has name 'Alice'; delete $p;`.
-    #[schemars(description = "A consulta TypeQL de deleção completa (ex: `match $p isa person, has name 'Alice'; delete $p;`).")]
+    #[schemars(
+        description = "A consulta TypeQL de deleção completa (ex: `match $p isa person, has name 'Alice'; delete $p;`)."
+    )]
     pub query: String,
 }
 
@@ -79,7 +85,9 @@ pub struct UpdateDataParams {
     pub database_name: String,
     /// A consulta `TypeQL` de atualização completa.
     /// Exemplo: `match $p isa person, has name 'Alice', has age $a; delete $p has age $a; insert $p has age 31;`.
-    #[schemars(description = "A consulta TypeQL de atualização completa (ex: `match $p isa person, has name 'Alice', has age $a; delete $p has age $a; insert $p has age 31;`).")]
+    #[schemars(
+        description = "A consulta TypeQL de atualização completa (ex: `match $p isa person, has name 'Alice', has age $a; delete $p has age $a; insert $p has age 31;`)."
+    )]
     pub query: String,
 }
 
@@ -92,7 +100,9 @@ pub struct DefineSchemaParams {
     pub database_name: String,
     /// Uma string contendo uma ou mais declarações `TypeQL` `define` válidas.
     /// Exemplo: `define person sub entity, owns name; name sub attribute, value string;`.
-    #[schemars(description = "Uma string contendo uma ou mais declarações TypeQL `define` válidas (ex: `define person sub entity, owns name; name sub attribute, value string;`).")]
+    #[schemars(
+        description = "Uma string contendo uma ou mais declarações TypeQL `define` válidas (ex: `define person sub entity, owns name; name sub attribute, value string;`)."
+    )]
     pub schema_definition: String,
 }
 
@@ -105,7 +115,9 @@ pub struct UndefineSchemaParams {
     pub database_name: String,
     /// Uma string contendo uma ou mais declarações `TypeQL` `undefine` válidas.
     /// Exemplo: `undefine person plays employment;`.
-    #[schemars(description = "Uma string contendo uma ou mais declarações TypeQL `undefine` válidas (ex: `undefine person plays employment;`).")]
+    #[schemars(
+        description = "Uma string contendo uma ou mais declarações TypeQL `undefine` válidas (ex: `undefine person plays employment;`)."
+    )]
     pub schema_undefinition: String,
 }
 
@@ -119,7 +131,9 @@ pub struct GetSchemaParams {
     /// Especifica o tipo de esquema a ser retornado: "full" para o esquema completo
     /// (incluindo regras) ou "types" para apenas as definições de tipo (entidades,
     /// relações, atributos). Se omitido, o padrão é "full".
-    #[schemars(description = "Especifica o tipo de esquema a ser retornado: 'full' para o esquema completo (incluindo regras) ou 'types' para apenas as definições de tipo. Default: 'full'. Valores permitidos: \"full\", \"types\".")]
+    #[schemars(
+        description = "Especifica o tipo de esquema a ser retornado: 'full' para o esquema completo (incluindo regras) ou 'types' para apenas as definições de tipo. Default: 'full'. Valores permitidos: \"full\", \"types\"."
+    )]
     pub schema_type: Option<String>,
 }
 
@@ -158,7 +172,9 @@ pub struct DeleteDatabaseParams {
 pub struct ValidateQueryParams {
     /// O nome de um banco de dados `TypeDB` existente.
     /// O esquema deste banco será usado como contexto para a validação.
-    #[schemars(description = "O nome de um banco de dados TypeDB existente. O esquema deste banco será usado como contexto para a validação.")]
+    #[schemars(
+        description = "O nome de um banco de dados TypeDB existente. O esquema deste banco será usado como contexto para a validação."
+    )]
     pub database_name: String,
     /// A consulta `TypeQL` a ser validada.
     #[schemars(description = "A consulta TypeQL a ser validada.")]
@@ -166,7 +182,9 @@ pub struct ValidateQueryParams {
     /// O tipo de transação para o qual esta consulta se destina.
     /// Embora a validação use uma transação de leitura, esta informação pode ajudar
     /// a identificar erros contextuais. Se omitido, o padrão é "read".
-    #[schemars(description = "O tipo de transação para o qual esta consulta se destina. Default: 'read'. Valores permitidos: \"read\", \"write\", \"schema\".")]
+    #[schemars(
+        description = "O tipo de transação para o qual esta consulta se destina. Default: 'read'. Valores permitidos: \"read\", \"write\", \"schema\"."
+    )]
     pub intended_transaction_type: Option<String>,
 }
 
@@ -265,29 +283,132 @@ mod tests {
             ($struct_type:ty, $json_field_name:expr, $rust_field_name:ident, $sample_value_json:expr, $sample_value_rust:expr) => {
                 let json_data = format!(r#"{{ "{}": {} }}"#, $json_field_name, $sample_value_json);
                 let params: $struct_type = serde_json::from_str(&json_data)?;
-                assert_eq!(params.$rust_field_name, $sample_value_rust, "Campo {} não correspondeu para {}", stringify!($rust_field_name), stringify!($struct_type));
+                assert_eq!(
+                    params.$rust_field_name,
+                    $sample_value_rust,
+                    "Campo {} não correspondeu para {}",
+                    stringify!($rust_field_name),
+                    stringify!($struct_type)
+                );
             };
             // Variante para quando todos os campos são obrigatórios e precisam ser fornecidos
             ($struct_type:ty, $json_field_name1:expr, $rust_field_name1:ident, $sample_value_json1:expr, $sample_value_rust1:expr,
                                 $json_field_name2:expr, $rust_field_name2:ident, $sample_value_json2:expr, $sample_value_rust2:expr) => {
-                let json_data = format!(r#"{{ "{}": {}, "{}": {} }}"#, $json_field_name1, $sample_value_json1, $json_field_name2, $sample_value_json2);
+                let json_data = format!(
+                    r#"{{ "{}": {}, "{}": {} }}"#,
+                    $json_field_name1, $sample_value_json1, $json_field_name2, $sample_value_json2
+                );
                 let params: $struct_type = serde_json::from_str(&json_data)?;
-                assert_eq!(params.$rust_field_name1, $sample_value_rust1, "Campo {} não correspondeu para {}", stringify!($rust_field_name1), stringify!($struct_type));
-                assert_eq!(params.$rust_field_name2, $sample_value_rust2, "Campo {} não correspondeu para {}", stringify!($rust_field_name2), stringify!($struct_type));
+                assert_eq!(
+                    params.$rust_field_name1,
+                    $sample_value_rust1,
+                    "Campo {} não correspondeu para {}",
+                    stringify!($rust_field_name1),
+                    stringify!($struct_type)
+                );
+                assert_eq!(
+                    params.$rust_field_name2,
+                    $sample_value_rust2,
+                    "Campo {} não correspondeu para {}",
+                    stringify!($rust_field_name2),
+                    stringify!($struct_type)
+                );
             };
         }
 
-        test_camel_case!(QueryReadParams, "databaseName", database_name, r#""test_db""#, "test_db".to_string(), "query", query, r#""match;""#, "match;".to_string());
-        test_camel_case!(InsertDataParams, "databaseName", database_name, r#""test_db""#, "test_db".to_string(), "query", query, r#""insert;""#, "insert;".to_string());
-        test_camel_case!(DeleteDataParams, "databaseName", database_name, r#""test_db""#, "test_db".to_string(), "query", query, r#""delete;""#, "delete;".to_string());
-        test_camel_case!(UpdateDataParams, "databaseName", database_name, r#""test_db""#, "test_db".to_string(), "query", query, r#""update;""#, "update;".to_string());
-        test_camel_case!(DefineSchemaParams, "databaseName", database_name, r#""test_db""#, "test_db".to_string(), "schemaDefinition", schema_definition, r#""define;""#, "define;".to_string());
-        test_camel_case!(UndefineSchemaParams, "databaseName", database_name, r#""test_db""#, "test_db".to_string(), "schemaUndefinition", schema_undefinition, r#""undefine;""#, "undefine;".to_string());
-        test_camel_case!(GetSchemaParams, "databaseName", database_name, r#""test_db""#, "test_db".to_string()); // schema_type é opcional
+        test_camel_case!(
+            QueryReadParams,
+            "databaseName",
+            database_name,
+            r#""test_db""#,
+            "test_db".to_string(),
+            "query",
+            query,
+            r#""match;""#,
+            "match;".to_string()
+        );
+        test_camel_case!(
+            InsertDataParams,
+            "databaseName",
+            database_name,
+            r#""test_db""#,
+            "test_db".to_string(),
+            "query",
+            query,
+            r#""insert;""#,
+            "insert;".to_string()
+        );
+        test_camel_case!(
+            DeleteDataParams,
+            "databaseName",
+            database_name,
+            r#""test_db""#,
+            "test_db".to_string(),
+            "query",
+            query,
+            r#""delete;""#,
+            "delete;".to_string()
+        );
+        test_camel_case!(
+            UpdateDataParams,
+            "databaseName",
+            database_name,
+            r#""test_db""#,
+            "test_db".to_string(),
+            "query",
+            query,
+            r#""update;""#,
+            "update;".to_string()
+        );
+        test_camel_case!(
+            DefineSchemaParams,
+            "databaseName",
+            database_name,
+            r#""test_db""#,
+            "test_db".to_string(),
+            "schemaDefinition",
+            schema_definition,
+            r#""define;""#,
+            "define;".to_string()
+        );
+        test_camel_case!(
+            UndefineSchemaParams,
+            "databaseName",
+            database_name,
+            r#""test_db""#,
+            "test_db".to_string(),
+            "schemaUndefinition",
+            schema_undefinition,
+            r#""undefine;""#,
+            "undefine;".to_string()
+        );
+        test_camel_case!(
+            GetSchemaParams,
+            "databaseName",
+            database_name,
+            r#""test_db""#,
+            "test_db".to_string()
+        ); // schema_type é opcional
         test_camel_case!(CreateDatabaseParams, "name", name, r#""new_db""#, "new_db".to_string());
-        test_camel_case!(DatabaseExistsParams, "name", name, r#""check_db""#, "check_db".to_string());
+        test_camel_case!(
+            DatabaseExistsParams,
+            "name",
+            name,
+            r#""check_db""#,
+            "check_db".to_string()
+        );
         test_camel_case!(DeleteDatabaseParams, "name", name, r#""del_db""#, "del_db".to_string());
-        test_camel_case!(ValidateQueryParams, "databaseName", database_name, r#""valid_db""#, "valid_db".to_string(), "query", query, r#""validate;""#, "validate;".to_string()); // intended_transaction_type é opcional
+        test_camel_case!(
+            ValidateQueryParams,
+            "databaseName",
+            database_name,
+            r#""valid_db""#,
+            "valid_db".to_string(),
+            "query",
+            query,
+            r#""validate;""#,
+            "validate;".to_string()
+        ); // intended_transaction_type é opcional
         Ok(())
     }
 }

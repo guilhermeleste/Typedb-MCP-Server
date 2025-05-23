@@ -29,14 +29,27 @@ use std::sync::Arc;
 use rmcp::{
     handler::server::tool::ToolBox,
     model::{
-        CallToolRequestParam, CallToolResult, ErrorCode, ErrorData,
-        GetPromptRequestParam, GetPromptResult, Implementation, ListPromptsResult,
-        ListResourceTemplatesResult, ListResourcesResult, ListToolsResult, PaginatedRequestParam, // Adicionado ListToolsResult
-        ProtocolVersion, ReadResourceRequestParam, ReadResourceResult, ResourceContents,
-        ServerCapabilities, ServerInfo,
+        CallToolRequestParam,
+        CallToolResult,
+        ErrorCode,
+        ErrorData,
+        GetPromptRequestParam,
+        GetPromptResult,
+        Implementation,
+        ListPromptsResult,
+        ListResourceTemplatesResult,
+        ListResourcesResult,
+        ListToolsResult,
+        PaginatedRequestParam, // Adicionado ListToolsResult
+        ProtocolVersion,
+        ReadResourceRequestParam,
+        ReadResourceResult,
+        ResourceContents,
+        ServerCapabilities,
+        ServerInfo,
     },
     service::{RequestContext, RoleServer},
-    tool, // Para a macro #[tool]
+    tool,     // Para a macro #[tool]
     tool_box, // Importa a macro tool_box corretamente
     ServerHandler,
 };
@@ -121,21 +134,23 @@ impl McpServiceHandler {
         tool_scopes.insert("define_schema".to_string(), vec!["typedb:manage_schema".to_string()]);
         tool_scopes.insert("undefine_schema".to_string(), vec!["typedb:manage_schema".to_string()]);
         tool_scopes.insert("get_schema".to_string(), vec!["typedb:manage_schema".to_string()]);
-        tool_scopes.insert("create_database".to_string(), vec!["typedb:manage_databases".to_string()]);
-        tool_scopes.insert("database_exists".to_string(), vec!["typedb:manage_databases".to_string()]);
-        tool_scopes.insert("list_databases".to_string(), vec!["typedb:manage_databases".to_string()]);
-        tool_scopes.insert("delete_database".to_string(), vec!["typedb:admin_databases".to_string()]);
-        tool_scopes.insert("validate_query".to_string(), vec!["typedb:validate_queries".to_string()]);
+        tool_scopes
+            .insert("create_database".to_string(), vec!["typedb:manage_databases".to_string()]);
+        tool_scopes
+            .insert("database_exists".to_string(), vec!["typedb:manage_databases".to_string()]);
+        tool_scopes
+            .insert("list_databases".to_string(), vec!["typedb:manage_databases".to_string()]);
+        tool_scopes
+            .insert("delete_database".to_string(), vec!["typedb:admin_databases".to_string()]);
+        tool_scopes
+            .insert("validate_query".to_string(), vec!["typedb:validate_queries".to_string()]);
 
-        Self {
-            driver,
-            settings,
-            tool_required_scopes: Arc::new(tool_scopes),
-        }
+        Self { driver, settings, tool_required_scopes: Arc::new(tool_scopes) }
     }
 
     /// Constrói as capacidades do servidor MCP.
-    fn build_server_capabilities() -> ServerCapabilities { // Removido &self
+    fn build_server_capabilities() -> ServerCapabilities {
+        // Removido &self
         ServerCapabilities::builder()
             .enable_tools()
             .enable_tool_list_changed()
@@ -151,7 +166,10 @@ impl McpServiceHandler {
     }
 
     // --- Definições das Ferramentas MCP ---
-    #[tool(name = "query_read", description = "Executa uma consulta TypeQL de leitura (match...get, fetch, aggregate).")]
+    #[tool(
+        name = "query_read",
+        description = "Executa uma consulta TypeQL de leitura (match...get, fetch, aggregate)."
+    )]
     async fn tool_query_read(
         &self,
         #[tool(aggr)] params: tools::params::QueryReadParams,
@@ -167,7 +185,10 @@ impl McpServiceHandler {
         query::handle_insert_data(self.driver.clone(), params).await
     }
 
-    #[tool(name = "delete_data", description = "Remove dados usando uma consulta TypeQL 'match...delete'.")]
+    #[tool(
+        name = "delete_data",
+        description = "Remove dados usando uma consulta TypeQL 'match...delete'."
+    )]
     async fn tool_delete_data(
         &self,
         #[tool(aggr)] params: tools::params::DeleteDataParams,
@@ -175,7 +196,10 @@ impl McpServiceHandler {
         query::handle_delete_data(self.driver.clone(), params).await
     }
 
-    #[tool(name = "update_data", description = "Atualiza dados atomicamente usando 'match...delete...insert'.")]
+    #[tool(
+        name = "update_data",
+        description = "Atualiza dados atomicamente usando 'match...delete...insert'."
+    )]
     async fn tool_update_data(
         &self,
         #[tool(aggr)] params: tools::params::UpdateDataParams,
@@ -183,7 +207,10 @@ impl McpServiceHandler {
         query::handle_update_data(self.driver.clone(), params).await
     }
 
-    #[tool(name = "define_schema", description = "Define ou estende o esquema usando TypeQL 'define'.")]
+    #[tool(
+        name = "define_schema",
+        description = "Define ou estende o esquema usando TypeQL 'define'."
+    )]
     async fn tool_define_schema(
         &self,
         #[tool(aggr)] params: tools::params::DefineSchemaParams,
@@ -191,7 +218,10 @@ impl McpServiceHandler {
         schema_ops::handle_define_schema(self.driver.clone(), params).await
     }
 
-    #[tool(name = "undefine_schema", description = "Remove elementos do esquema usando TypeQL 'undefine'.")]
+    #[tool(
+        name = "undefine_schema",
+        description = "Remove elementos do esquema usando TypeQL 'undefine'."
+    )]
     async fn tool_undefine_schema(
         &self,
         #[tool(aggr)] params: tools::params::UndefineSchemaParams,
@@ -199,7 +229,10 @@ impl McpServiceHandler {
         schema_ops::handle_undefine_schema(self.driver.clone(), params).await
     }
 
-    #[tool(name = "get_schema", description = "Recupera a definição do esquema TypeQL (completo ou apenas tipos).")]
+    #[tool(
+        name = "get_schema",
+        description = "Recupera a definição do esquema TypeQL (completo ou apenas tipos)."
+    )]
     async fn tool_get_schema(
         &self,
         #[tool(aggr)] params: tools::params::GetSchemaParams,
@@ -223,14 +256,18 @@ impl McpServiceHandler {
         db_admin::handle_database_exists(self.driver.clone(), params).await
     }
 
-    #[tool(name = "list_databases", description = "Lista todos os bancos de dados TypeDB existentes.")]
-    async fn tool_list_databases(
-        &self,
-    ) -> Result<CallToolResult, ErrorData> {
+    #[tool(
+        name = "list_databases",
+        description = "Lista todos os bancos de dados TypeDB existentes."
+    )]
+    async fn tool_list_databases(&self) -> Result<CallToolResult, ErrorData> {
         db_admin::handle_list_databases(self.driver.clone()).await
     }
 
-    #[tool(name = "delete_database", description = "PERMANENTEMENTE remove um banco de dados TypeDB.")]
+    #[tool(
+        name = "delete_database",
+        description = "PERMANENTEMENTE remove um banco de dados TypeDB."
+    )]
     async fn tool_delete_database(
         &self,
         #[tool(aggr)] params: tools::params::DeleteDatabaseParams,
@@ -238,7 +275,10 @@ impl McpServiceHandler {
         db_admin::handle_delete_database(self.driver.clone(), params).await
     }
 
-    #[tool(name = "validate_query", description = "Valida uma consulta TypeQL em um banco de dados existente.")]
+    #[tool(
+        name = "validate_query",
+        description = "Valida uma consulta TypeQL em um banco de dados existente."
+    )]
     async fn tool_validate_query(
         &self,
         #[tool(aggr)] params: tools::params::ValidateQueryParams,
@@ -269,7 +309,7 @@ impl ServerHandler for McpServiceHandler {
             if let Some(auth_ctx) = context.extensions.get::<Arc<ClientAuthContext>>() {
                 if let Some(required_scopes) = self.tool_required_scopes.get(tool_name_str) {
                     if required_scopes.is_empty() {
-                         tracing::debug!(tool.name = %tool_name_str, "Nenhum escopo específico requerido para esta ferramenta, acesso permitido.");
+                        tracing::debug!(tool.name = %tool_name_str, "Nenhum escopo específico requerido para esta ferramenta, acesso permitido.");
                     } else {
                         let client_has_all_required_scopes = required_scopes
                             .iter()
@@ -323,10 +363,7 @@ impl ServerHandler for McpServiceHandler {
         _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        Ok(ListToolsResult {
-            next_cursor: None,
-            tools: Self::tool_box().list(),
-        })
+        Ok(ListToolsResult { next_cursor: None, tools: Self::tool_box().list() })
     }
 
     // CORREÇÃO: Removido tool_box!(@derive ...);
@@ -337,10 +374,7 @@ impl ServerHandler for McpServiceHandler {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
         tracing::debug!("Listando recursos estáticos MCP.");
-        Ok(ListResourcesResult {
-            resources: resources::list_static_resources(),
-            next_cursor: None,
-        })
+        Ok(ListResourcesResult { resources: resources::list_static_resources(), next_cursor: None })
     }
 
     async fn list_resource_templates(
@@ -377,7 +411,7 @@ impl ServerHandler for McpServiceHandler {
                 Ok(schema_content) => {
                     tracing::info!("Recurso de schema dinâmico '{}' lido com sucesso.", uri_str);
                     Ok(ReadResourceResult {
-                        contents: vec![ResourceContents::TextResourceContents{
+                        contents: vec![ResourceContents::TextResourceContents {
                             uri: request.uri,
                             mime_type: Some("text/plain+typeql".to_string()),
                             text: schema_content,

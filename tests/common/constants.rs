@@ -119,7 +119,6 @@ pub const DEFAULT_RATE_LIMIT_REQUESTS_PER_SECOND: u64 = 1000;
 /// Valor padrão de `burst_size` usado em `default.test.toml`.
 pub const DEFAULT_RATE_LIMIT_BURST_SIZE: u32 = 2000;
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

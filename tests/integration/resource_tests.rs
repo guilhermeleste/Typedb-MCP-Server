@@ -8,11 +8,11 @@
 use crate::common::{
     client::McpClientError, // Para assert de erros específicos
     constants,
-    test_env::TestEnvironment,
     // Helpers de test_utils são agora importados diretamente via crate::common
-    create_test_db, 
+    create_test_db,
     define_test_db_schema,
     delete_test_db,
+    test_env::TestEnvironment,
     unique_db_name,
     // get_text_from_call_result não é usado aqui diretamente, mas sim ResourceContents
 };
@@ -22,27 +22,17 @@ use serde_json::json;
 use serial_test::serial;
 use tracing::info;
 
-
 #[tokio::test]
 #[serial]
 async fn test_list_static_resources_contains_expected_content() -> Result<()> {
-    let test_env = TestEnvironment::setup(
-        "res_list_static",
-        constants::DEFAULT_TEST_CONFIG_FILENAME,
-    )
-    .await?;
+    let test_env =
+        TestEnvironment::setup("res_list_static", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
     let mut client = test_env.mcp_client_with_auth(None).await?; // OAuth desabilitado por padrão
 
     info!("Teste: Listando recursos estáticos.");
-    let result = client
-        .list_resources(None)
-        .await
-        .context("Falha ao chamar list_resources")?;
+    let result = client.list_resources(None).await.context("Falha ao chamar list_resources")?;
 
-    assert!(
-        !result.resources.is_empty(),
-        "A lista de recursos não deveria estar vazia."
-    );
+    assert!(!result.resources.is_empty(), "A lista de recursos não deveria estar vazia.");
 
     // Verificar a presença e detalhes dos recursos estáticos esperados
     let query_types_res = result
@@ -58,8 +48,10 @@ async fn test_list_static_resources_contains_expected_content() -> Result<()> {
         .as_ref()
         .expect("Descrição ausente para query_types")
         .contains("Tipos de Consulta TypeQL"));
-    assert!(query_types_res.raw.size.unwrap_or(0) > 0, "Tamanho do recurso query_types deveria ser > 0");
-
+    assert!(
+        query_types_res.raw.size.unwrap_or(0) > 0,
+        "Tamanho do recurso query_types deveria ser > 0"
+    );
 
     let transactions_guide_res = result
         .resources
@@ -74,7 +66,10 @@ async fn test_list_static_resources_contains_expected_content() -> Result<()> {
         .as_ref()
         .expect("Descrição ausente para transactions_guide")
         .contains("Transações TypeDB"));
-    assert!(transactions_guide_res.raw.size.unwrap_or(0) > 0, "Tamanho do recurso transactions_guide deveria ser > 0");
+    assert!(
+        transactions_guide_res.raw.size.unwrap_or(0) > 0,
+        "Tamanho do recurso transactions_guide deveria ser > 0"
+    );
 
     info!("Recursos estáticos listados e verificados com sucesso.");
     Ok(())
@@ -83,11 +78,8 @@ async fn test_list_static_resources_contains_expected_content() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_list_resource_templates_contains_schema_template() -> Result<()> {
-    let test_env = TestEnvironment::setup(
-        "res_list_tpl",
-        constants::DEFAULT_TEST_CONFIG_FILENAME,
-    )
-    .await?;
+    let test_env =
+        TestEnvironment::setup("res_list_tpl", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
     let mut client = test_env.mcp_client_with_auth(None).await?;
 
     info!("Teste: Listando templates de recursos.");
@@ -95,7 +87,7 @@ async fn test_list_resource_templates_contains_schema_template() -> Result<()> {
         .list_resource_templates(None)
         .await
         .context("Falha ao chamar list_resource_templates")?;
-    
+
     assert!(
         !result.resource_templates.is_empty(),
         "A lista de templates de recursos não deveria estar vazia."
@@ -107,7 +99,7 @@ async fn test_list_resource_templates_contains_schema_template() -> Result<()> {
         .iter()
         .find(|rt_annotated| rt_annotated.raw.uri_template == schema_template_uri)
         .expect("Template de schema não encontrado na lista.");
-    
+
     assert_eq!(schema_template.raw.name, "Esquema Atual do Banco de Dados");
     assert_eq!(schema_template.raw.mime_type.as_deref(), Some("text/plain")); // Ajustado conforme src/resources.rs
     assert!(schema_template
@@ -116,7 +108,7 @@ async fn test_list_resource_templates_contains_schema_template() -> Result<()> {
         .as_ref()
         .expect("Descrição ausente para o template de schema")
         .contains("Retorna o esquema TypeQL"));
-    
+
     info!("Templates de recursos listados e template de schema verificado com sucesso.");
     Ok(())
 }
@@ -124,11 +116,9 @@ async fn test_list_resource_templates_contains_schema_template() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_read_static_resource_query_types() -> Result<()> {
-    let test_env = TestEnvironment::setup(
-        "res_read_static_qtypes",
-        constants::DEFAULT_TEST_CONFIG_FILENAME,
-    )
-    .await?;
+    let test_env =
+        TestEnvironment::setup("res_read_static_qtypes", constants::DEFAULT_TEST_CONFIG_FILENAME)
+            .await?;
     let mut client = test_env.mcp_client_with_auth(None).await?;
     let resource_uri = "info://typeql/query_types";
 
@@ -155,11 +145,9 @@ async fn test_read_static_resource_query_types() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_read_invalid_static_resource_uri_fails_gracefully() -> Result<()> {
-    let test_env = TestEnvironment::setup(
-        "res_read_static_invalid",
-        constants::DEFAULT_TEST_CONFIG_FILENAME,
-    )
-    .await?;
+    let test_env =
+        TestEnvironment::setup("res_read_static_invalid", constants::DEFAULT_TEST_CONFIG_FILENAME)
+            .await?;
     let mut client = test_env.mcp_client_with_auth(None).await?;
     let invalid_uri = "info://non/existent/resource";
 
@@ -183,17 +171,17 @@ async fn test_read_invalid_static_resource_uri_fails_gracefully() -> Result<()> 
 #[tokio::test]
 #[serial]
 async fn test_read_dynamic_schema_resource_full_and_types() -> Result<()> {
-    let test_env = TestEnvironment::setup(
-        "res_read_dyn_schema",
-        constants::DEFAULT_TEST_CONFIG_FILENAME,
-    )
-    .await?;
+    let test_env =
+        TestEnvironment::setup("res_read_dyn_schema", constants::DEFAULT_TEST_CONFIG_FILENAME)
+            .await?;
     let db_name = unique_db_name("schema_dyn");
-    
+
     // Cliente com permissões para criar DB e definir schema
-    let mut client = test_env.mcp_client_with_auth(Some(
-        "typedb:manage_databases typedb:manage_schema typedb:admin_databases" // admin para delete
-    )).await?;
+    let mut client = test_env
+        .mcp_client_with_auth(Some(
+            "typedb:manage_databases typedb:manage_schema typedb:admin_databases", // admin para delete
+        ))
+        .await?;
 
     create_test_db(&mut client, &db_name).await?;
     let schema_definition = r#"
@@ -209,40 +197,55 @@ async fn test_read_dynamic_schema_resource_full_and_types() -> Result<()> {
             };
     "#;
     define_test_db_schema(&mut client, &db_name).await?; // Usando o schema do helper
-    // Para este teste, vamos usar o schema_definition local que tem uma regra.
-    let _ = client.call_tool("define_schema", Some(json!({
-        "database_name": db_name.clone(), // Clonar db_name aqui
-        "schema_definition": schema_definition
-    }))).await?;
-
+                                                         // Para este teste, vamos usar o schema_definition local que tem uma regra.
+    let _ = client
+        .call_tool(
+            "define_schema",
+            Some(json!({
+                "database_name": db_name.clone(), // Clonar db_name aqui
+                "schema_definition": schema_definition
+            })),
+        )
+        .await?;
 
     // 1. Testar type=full (ou default)
     let full_schema_uri = format!("schema://current/{}?type=full", db_name);
     info!("Teste: Lendo schema dinâmico completo: {}", full_schema_uri);
     let result_full = client.read_resource(&full_schema_uri).await?;
     assert_eq!(result_full.contents.len(), 1);
-    if let ResourceContents::TextResourceContents { text, uri, mime_type } = &result_full.contents[0] {
+    if let ResourceContents::TextResourceContents { text, uri, mime_type } =
+        &result_full.contents[0]
+    {
         assert_eq!(uri, &full_schema_uri);
         assert_eq!(mime_type.as_deref(), Some("application/typeql")); // MIME type corrigido
         assert!(text.contains("person sub entity"));
         assert!(text.contains("friendship sub relation"));
         assert!(text.contains("rule friends-are-people"));
         info!("Schema completo lido com sucesso.");
-    } else { panic!("Conteúdo inesperado para schema completo."); }
+    } else {
+        panic!("Conteúdo inesperado para schema completo.");
+    }
 
     // 2. Testar type=types
     let types_schema_uri = format!("schema://current/{}?type=types", db_name);
     info!("Teste: Lendo apenas tipos do schema dinâmico: {}", types_schema_uri);
     let result_types = client.read_resource(&types_schema_uri).await?;
     assert_eq!(result_types.contents.len(), 1);
-    if let ResourceContents::TextResourceContents { text, uri, mime_type } = &result_types.contents[0] {
+    if let ResourceContents::TextResourceContents { text, uri, mime_type } =
+        &result_types.contents[0]
+    {
         assert_eq!(uri, &types_schema_uri);
         assert_eq!(mime_type.as_deref(), Some("application/typeql"));
         assert!(text.contains("person sub entity"));
         assert!(text.contains("friendship sub relation"));
-        assert!(!text.contains("rule friends-are-people"), "Schema 'types' não deveria conter regras.");
+        assert!(
+            !text.contains("rule friends-are-people"),
+            "Schema 'types' não deveria conter regras."
+        );
         info!("Schema (apenas tipos) lido com sucesso.");
-    } else { panic!("Conteúdo inesperado para schema (apenas tipos)."); }
+    } else {
+        panic!("Conteúdo inesperado para schema (apenas tipos).");
+    }
 
     // 3. Testar com parâmetro de tipo inválido (deve usar default 'full')
     let invalid_type_schema_uri = format!("schema://current/{}?type=invalid", db_name);
@@ -251,10 +254,14 @@ async fn test_read_dynamic_schema_resource_full_and_types() -> Result<()> {
     assert_eq!(result_invalid_type.contents.len(), 1);
     if let ResourceContents::TextResourceContents { text, .. } = &result_invalid_type.contents[0] {
         assert!(text.contains("person sub entity"));
-        assert!(text.contains("rule friends-are-people"), "Schema com tipo inválido deveria defaultar para 'full'.");
+        assert!(
+            text.contains("rule friends-are-people"),
+            "Schema com tipo inválido deveria defaultar para 'full'."
+        );
         info!("Schema com tipo inválido usou default 'full' como esperado.");
-    } else { panic!("Conteúdo inesperado para schema com tipo inválido."); }
-
+    } else {
+        panic!("Conteúdo inesperado para schema com tipo inválido.");
+    }
 
     delete_test_db(&mut client, &db_name).await;
     Ok(())
@@ -263,11 +270,9 @@ async fn test_read_dynamic_schema_resource_full_and_types() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_read_dynamic_schema_for_nonexistent_db_fails() -> Result<()> {
-    let test_env = TestEnvironment::setup(
-        "res_read_dyn_schema_nodb",
-        constants::DEFAULT_TEST_CONFIG_FILENAME,
-    )
-    .await?;
+    let test_env =
+        TestEnvironment::setup("res_read_dyn_schema_nodb", constants::DEFAULT_TEST_CONFIG_FILENAME)
+            .await?;
     let mut client = test_env.mcp_client_with_auth(None).await?; // Sem escopos específicos, OAuth desabilitado
     let non_existent_db_name = unique_db_name("non_existent_schema");
     let uri = format!("schema://current/{}", non_existent_db_name);
@@ -281,7 +286,10 @@ async fn test_read_dynamic_schema_for_nonexistent_db_fails() -> Result<()> {
     match result_err {
         McpClientError::McpErrorResponse { code, message, .. } => {
             assert_eq!(code.0, McpErrorCode::RESOURCE_NOT_FOUND.0); // Ou um erro específico do TypeDB de "db not found"
-            assert!(message.contains(&non_existent_db_name) || message.to_lowercase().contains("database not found"));
+            assert!(
+                message.contains(&non_existent_db_name)
+                    || message.to_lowercase().contains("database not found")
+            );
         }
         other => panic!("Tipo de erro inesperado: {:?}", other),
     }

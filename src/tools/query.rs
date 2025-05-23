@@ -15,13 +15,12 @@ use rmcp::model::{CallToolResult, Content, ErrorCode, ErrorData};
 use typedb_driver::{
     answer::{ConceptDocument, ConceptRow, QueryAnswer},
     concept::{Concept, Value as TypeDBValue},
-    QueryOptions as TypeDBQueryOptions,
-    TransactionOptions,
-    TransactionType, TypeDBDriver, Error as TypeDBDriverError,
+    Error as TypeDBDriverError, QueryOptions as TypeDBQueryOptions, TransactionOptions,
+    TransactionType, TypeDBDriver,
 };
 
-use crate::error::{typedb_error_to_mcp_error_data, typedb_error_to_user_string};
 use super::params;
+use crate::error::{typedb_error_to_mcp_error_data, typedb_error_to_user_string};
 
 // --- Funções Utilitárias Privadas para Serialização JSON ---
 
@@ -180,7 +179,7 @@ pub async fn handle_query_read(
                                 serde_json::Value::Null.to_string()
                             }
                         } else {
-                             serde_json::Value::Null.to_string()
+                            serde_json::Value::Null.to_string()
                         }
                     } else {
                         let json_rows: Vec<serde_json::Value> =
@@ -200,7 +199,7 @@ pub async fn handle_query_read(
                         tracing::error!(error.message = %e, "Erro ao coletar ConceptDocuments do stream.");
                         typedb_error_to_mcp_error_data(&e, "query_read (coletar ConceptDocument)")
                     })?;
-                     if documents.is_empty() {
+                    if documents.is_empty() {
                         "[]".to_string()
                     } else {
                         let json_docs: Result<Vec<serde_json::Value>, ErrorData> = documents.into_iter().map(|doc| {
@@ -285,7 +284,9 @@ pub async fn handle_insert_data(
                     serde_json::json!({"status": "success", "message": "Dados inseridos com sucesso. Nenhum resultado específico retornado pela query."}).to_string()
                 }
                 QueryAnswer::ConceptDocumentStream(_, _) => {
-                     tracing::warn!("insert_data recebeu ConceptDocumentStream, o que é inesperado.");
+                    tracing::warn!(
+                        "insert_data recebeu ConceptDocumentStream, o que é inesperado."
+                    );
                     serde_json::json!({"status": "success_with_unexpected_response", "message": "Dados inseridos, mas a query retornou um stream de documentos inesperado."}).to_string()
                 }
             };
@@ -302,7 +303,6 @@ pub async fn handle_insert_data(
     }
 }
 
-
 /// Handler para a ferramenta `delete_data`.
 #[tracing::instrument(skip(driver, params), name = "tool_delete_data", fields(db.name = %params.database_name, query.length = params.query.len()))]
 pub async fn handle_delete_data(
@@ -312,7 +312,11 @@ pub async fn handle_delete_data(
     tracing::info!("Executando 'delete_data'.");
     let transaction_options = TransactionOptions::default();
     let transaction = driver
-        .transaction_with_options(&params.database_name, TransactionType::Write, transaction_options)
+        .transaction_with_options(
+            &params.database_name,
+            TransactionType::Write,
+            transaction_options,
+        )
         .await
         .map_err(|e| typedb_error_to_mcp_error_data(&e, "delete_data (abrir transação)"))?;
 
@@ -320,16 +324,21 @@ pub async fn handle_delete_data(
 
     match transaction.query_with_options(&params.query, query_options).await {
         Ok(QueryAnswer::Ok(_)) => {
-            transaction.commit().await.map_err(|e| typedb_error_to_mcp_error_data(&e, "delete_data (commit)"))?;
+            transaction
+                .commit()
+                .await
+                .map_err(|e| typedb_error_to_mcp_error_data(&e, "delete_data (commit)"))?;
             Ok(CallToolResult::success(vec![Content::text("OK")]))
         }
         Ok(other_answer) => {
             let response_type_str = format!("{other_answer:?}");
             tracing::warn!(response.type = %response_type_str, "delete_data recebeu resposta inesperada. Prosseguindo com commit.");
-            transaction.commit().await.map_err(|e| typedb_error_to_mcp_error_data(&e, "delete_data (commit com resposta inesperada)"))?;
-            Ok(CallToolResult::success(vec![Content::text(
-                format!("OK (com aviso: tipo de resposta inesperado da query: {response_type_str})")
-            )]))
+            transaction.commit().await.map_err(|e| {
+                typedb_error_to_mcp_error_data(&e, "delete_data (commit com resposta inesperada)")
+            })?;
+            Ok(CallToolResult::success(vec![Content::text(format!(
+                "OK (com aviso: tipo de resposta inesperado da query: {response_type_str})"
+            ))]))
         }
         Err(e) => Err(typedb_error_to_mcp_error_data(&e, "delete_data (executar query)")),
     }
@@ -344,15 +353,19 @@ pub async fn handle_update_data(
     tracing::info!("Executando 'update_data'.");
     let transaction_options = TransactionOptions::default();
     let transaction = driver
-        .transaction_with_options(&params.database_name, TransactionType::Write, transaction_options)
+        .transaction_with_options(
+            &params.database_name,
+            TransactionType::Write,
+            transaction_options,
+        )
         .await
         .map_err(|e| typedb_error_to_mcp_error_data(&e, "update_data (abrir transação)"))?;
-    
+
     let query_options = TypeDBQueryOptions::default();
 
     match transaction.query_with_options(&params.query, query_options).await {
         Ok(query_answer) => {
-             let result_json_string = match query_answer {
+            let result_json_string = match query_answer {
                 QueryAnswer::ConceptRowStream(_header, stream) => {
                     let rows: Vec<ConceptRow> = stream.try_collect().await.map_err(|e| typedb_error_to_mcp_error_data(&e, "update_data (coletar ConceptRow)"))?;
                     let json_rows: Vec<serde_json::Value> = rows.iter().map(concept_row_to_json_value).collect();
@@ -370,13 +383,15 @@ pub async fn handle_update_data(
                     serde_json::json!({"status": "success_with_unexpected_response", "message": "Dados atualizados, mas a query retornou um stream de documentos inesperado."}).to_string()
                 }
             };
-            transaction.commit().await.map_err(|e| typedb_error_to_mcp_error_data(&e, "update_data (commit)"))?;
+            transaction
+                .commit()
+                .await
+                .map_err(|e| typedb_error_to_mcp_error_data(&e, "update_data (commit)"))?;
             Ok(CallToolResult::success(vec![Content::text(result_json_string)]))
         }
         Err(e) => Err(typedb_error_to_mcp_error_data(&e, "update_data (executar query)")),
     }
 }
-
 
 /// Handler para a ferramenta `validate_query`.
 #[tracing::instrument(skip(driver, params), name = "tool_validate_query", fields(db.name = %params.database_name, query.length = params.query.len()))]
@@ -394,11 +409,12 @@ pub async fn handle_validate_query(
             tracing::error!(error.message = %e, "Falha ao abrir transação de teste para validate_query.");
             typedb_error_to_mcp_error_data(&e, "validate_query (abrir transação de teste)")
         })?;
-    
+
     let query_options = TypeDBQueryOptions::default();
 
     let intended_type_str = params.intended_transaction_type.as_deref().unwrap_or("read");
-    let query_context_msg = format!("Validação da query (destinada a transação '{intended_type_str}')");
+    let query_context_msg =
+        format!("Validação da query (destinada a transação '{intended_type_str}')");
 
     match transaction.query_with_options(&params.query, query_options).await {
         Ok(query_answer) => {
@@ -413,9 +429,9 @@ pub async fn handle_validate_query(
                     }
                 }
                 QueryAnswer::ConceptDocumentStream(_, mut stream) => {
-                     while let Some(res) = stream.next().await {
+                    while let Some(res) = stream.next().await {
                         if let Err(e) = res {
-                           return Ok(CallToolResult::success(vec![Content::text(
+                            return Ok(CallToolResult::success(vec![Content::text(
                                 typedb_error_to_user_string(&e, &query_context_msg),
                             )]));
                         }
@@ -428,9 +444,10 @@ pub async fn handle_validate_query(
             Ok(CallToolResult::success(vec![Content::text("valid")]))
         }
         Err(e @ (TypeDBDriverError::Server(_) | TypeDBDriverError::Concept(_))) => {
-            Ok(CallToolResult::success(vec![Content::text(
-                typedb_error_to_user_string(&e, &query_context_msg),
-            )]))
+            Ok(CallToolResult::success(vec![Content::text(typedb_error_to_user_string(
+                &e,
+                &query_context_msg,
+            ))]))
         }
         Err(e) => {
             Err(typedb_error_to_mcp_error_data(&e, "validate_query (executar query de teste)"))
@@ -446,59 +463,85 @@ mod tests {
     use chrono::{FixedOffset, NaiveDate, TimeZone as ChronoTimeZone};
     use typedb_driver::concept::value::{Decimal, Duration as TypeDBDuration};
 
-
     #[test]
     fn test_typedb_value_to_json_value_primitives() {
-        assert_eq!(typedb_value_to_json_value(&TypeDBValue::Boolean(true)), serde_json::json!(true));
+        assert_eq!(
+            typedb_value_to_json_value(&TypeDBValue::Boolean(true)),
+            serde_json::json!(true)
+        );
         assert_eq!(typedb_value_to_json_value(&TypeDBValue::Integer(123)), serde_json::json!(123));
-        assert_eq!(typedb_value_to_json_value(&TypeDBValue::Double(123.456)), serde_json::json!(123.456));
-        assert_eq!(typedb_value_to_json_value(&TypeDBValue::String("hello".to_string())), serde_json::json!("hello"));
+        assert_eq!(
+            typedb_value_to_json_value(&TypeDBValue::Double(123.456)),
+            serde_json::json!(123.456)
+        );
+        assert_eq!(
+            typedb_value_to_json_value(&TypeDBValue::String("hello".to_string())),
+            serde_json::json!("hello")
+        );
     }
 
     #[test]
     fn test_typedb_value_to_json_value_decimal() {
         let dec_val = TypeDBValue::Decimal(Decimal::new(123_456, 3));
-        assert_eq!(typedb_value_to_json_value(&dec_val), serde_json::json!(Decimal::new(123_456, 3).to_string()));
+        assert_eq!(
+            typedb_value_to_json_value(&dec_val),
+            serde_json::json!(Decimal::new(123_456, 3).to_string())
+        );
     }
 
     #[test]
     fn test_typedb_value_to_json_value_datetime_types() {
         let naive_date = NaiveDate::from_ymd_opt(2023, 10, 26)
             .unwrap_or_else(|| panic!("Data inválida para NaiveDate"));
-        assert_eq!(typedb_value_to_json_value(&TypeDBValue::Date(naive_date)), serde_json::json!("2023-10-26"));
+        assert_eq!(
+            typedb_value_to_json_value(&TypeDBValue::Date(naive_date)),
+            serde_json::json!("2023-10-26")
+        );
 
         let naive_datetime = NaiveDate::from_ymd_opt(2023, 10, 26)
             .unwrap_or_else(|| panic!("Data inválida para NaiveDate"))
             .and_hms_nano_opt(14, 30, 5, 123_456_789)
             .unwrap_or_else(|| panic!("Horário inválido para NaiveDateTime"));
-        assert_eq!(typedb_value_to_json_value(&TypeDBValue::Datetime(naive_datetime)), serde_json::json!("2023-10-26T14:30:05.123456789"));
+        assert_eq!(
+            typedb_value_to_json_value(&TypeDBValue::Datetime(naive_datetime)),
+            serde_json::json!("2023-10-26T14:30:05.123456789")
+        );
 
         let fixed_offset = FixedOffset::east_opt(5 * 3600 + 30 * 60)
             .unwrap_or_else(|| panic!("Offset inválido para FixedOffset"));
         let driver_tz = TypeDBTimeZone::Fixed(fixed_offset);
         // Usar o método `from_utc_datetime` do `driver_tz` que implementa `chrono::TimeZone`.
-        let datetime_with_typedb_tz: chrono::DateTime<TypeDBTimeZone> = driver_tz.from_utc_datetime(&naive_datetime);
+        let datetime_with_typedb_tz: chrono::DateTime<TypeDBTimeZone> =
+            driver_tz.from_utc_datetime(&naive_datetime);
         let datetime_tz_value = TypeDBValue::DatetimeTZ(datetime_with_typedb_tz);
         // `to_rfc3339` é um método de `chrono::DateTime`.
-        assert_eq!(typedb_value_to_json_value(&datetime_tz_value), serde_json::json!(datetime_with_typedb_tz.to_rfc3339()));
+        assert_eq!(
+            typedb_value_to_json_value(&datetime_tz_value),
+            serde_json::json!(datetime_with_typedb_tz.to_rfc3339())
+        );
     }
-
 
     #[test]
     fn test_typedb_value_to_json_value_duration() {
         // (1 ano + 2 meses), 3 dias, (4h + 5m + 6s)
-        let duration_val = TypeDBValue::Duration(TypeDBDuration::new(12 + 2, 3, (4*3600 + 5*60 + 6) * 1_000_000_000));
+        let duration_val = TypeDBValue::Duration(TypeDBDuration::new(
+            12 + 2,
+            3,
+            (4 * 3600 + 5 * 60 + 6) * 1_000_000_000,
+        ));
         // A implementação Display de TypeDBDuration deve ser ISO 8601.
         // Ex: "P14M3DT4H5M6S"
-        assert_eq!(typedb_value_to_json_value(&duration_val), serde_json::json!(TypeDBDuration::new(14, 3, 14_706_000_000_000_u64).to_string()));
+        assert_eq!(
+            typedb_value_to_json_value(&duration_val),
+            serde_json::json!(TypeDBDuration::new(14, 3, 14_706_000_000_000_u64).to_string())
+        );
     }
-    
+
     // O teste para TypeDBValue::Struct foi removido porque não podemos construir TypeDBStruct { fields }
     // diretamente nos testes devido à visibilidade pub(crate) do campo `fields`
     // na crate `typedb-driver`. A lógica de serialização em `typedb_value_to_json_value`
     // que usa o método público `s.fields()` ainda é válida e será testada por testes de integração
     // quando o driver retornar tais structs.
-
 
     #[test]
     fn test_concept_to_json_value_for_value_concept() {

@@ -58,12 +58,12 @@ pub const TEST_RSA_PUBLIC_KEY_PEM: &str = include_str!("test_keys/public_key.pem
 
 /// Segredo para assinar tokens HS256, caso necessário em algum teste específico.
 /// **USADO APENAS PARA TESTES.**
-pub const TEST_HS256_SECRET: &str = "mcp-integration-test-hs256-super-secret-key-do-not-use-in-prod";
+pub const TEST_HS256_SECRET: &str =
+    "mcp-integration-test-hs256-super-secret-key-do-not-use-in-prod";
 
 // Reexportar Algorithm para que outros módulos de teste possam usá-lo via `auth_helpers::Algorithm`
 // Isso resolve o erro de "enum import `Algorithm` is private" em `test_env.rs`.
 pub use jsonwebtoken::Algorithm as JwtAuthAlgorithm;
-
 
 /// Gera um token JWT de teste assinado com o algoritmo especificado.
 ///
@@ -94,8 +94,7 @@ pub fn generate_test_jwt(claims: TestClaims, alg: JwtAuthAlgorithm) -> String {
         _ => panic!("Algoritmo de assinatura de teste não suportado por este helper: {:?}. Suportados: RS256, HS256.", alg),
     };
 
-    encode(&header, &claims, &encoding_key)
-        .expect("Falha ao codificar token JWT de teste.")
+    encode(&header, &claims, &encoding_key).expect("Falha ao codificar token JWT de teste.")
 }
 
 /// Retorna o timestamp atual em segundos desde a época Unix (Unix epoch).
@@ -137,7 +136,7 @@ mod tests {
         // Prepara para decodificar/validar usando a chave pública
         let decoding_key = DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY_PEM.as_bytes())
             .expect("Falha ao carregar chave RSA pública de teste de 'tests/common/test_keys/public_key.pem'.");
-        
+
         let mut validation = Validation::new(JwtAuthAlgorithm::RS256);
         validation.set_issuer(&[constants::TEST_JWT_ISSUER]);
         validation.set_audience(&[constants::TEST_JWT_AUDIENCE]);
@@ -156,7 +155,7 @@ mod tests {
         assert_eq!(decoded_token_data.claims.aud, claims_to_encode.aud);
         assert_eq!(decoded_token_data.claims.scope, claims_to_encode.scope);
         assert_eq!(decoded_token_data.claims.custom_claim, claims_to_encode.custom_claim);
-        
+
         // Verifica o header (kid)
         assert_eq!(decoded_token_data.header.kid.as_deref(), Some(constants::TEST_JWT_KID));
     }
@@ -184,7 +183,7 @@ mod tests {
         let mut validation = Validation::new(JwtAuthAlgorithm::HS256);
         validation.set_issuer(&[constants::TEST_JWT_ISSUER]);
         // Validar contra qualquer um dos audiences no token
-        validation.set_audience(&[constants::TEST_JWT_AUDIENCE, "another-aud"]); 
+        validation.set_audience(&[constants::TEST_JWT_AUDIENCE, "another-aud"]);
         validation.validate_nbf = true;
 
         let decoded_token_data = decode::<TestClaims>(&token, &decoding_key, &validation)
@@ -208,7 +207,9 @@ mod tests {
             iat: Some(now - 7200),
             iss: Some(constants::TEST_JWT_ISSUER.to_string()),
             aud: Some(serde_json::json!(constants::TEST_JWT_AUDIENCE)),
-            scope: None, custom_claim: None, nbf: None,
+            scope: None,
+            custom_claim: None,
+            nbf: None,
         };
 
         let token = generate_test_jwt(expired_claims, JwtAuthAlgorithm::RS256);
@@ -235,7 +236,8 @@ mod tests {
             nbf: Some(now + 3600), // Válido apenas daqui a 1 hora
             iss: Some(constants::TEST_JWT_ISSUER.to_string()),
             aud: Some(serde_json::json!(constants::TEST_JWT_AUDIENCE)),
-            scope: None, custom_claim: None,
+            scope: None,
+            custom_claim: None,
         };
 
         let token = generate_test_jwt(nbf_claims, JwtAuthAlgorithm::RS256);
@@ -258,7 +260,9 @@ mod tests {
             iat: Some(now),
             iss: Some("urn:wrong-issuer".to_string()), // Issuer incorreto
             aud: Some(serde_json::json!(constants::TEST_JWT_AUDIENCE)),
-            scope: None, custom_claim: None, nbf: None,
+            scope: None,
+            custom_claim: None,
+            nbf: None,
         };
 
         let token = generate_test_jwt(claims, JwtAuthAlgorithm::RS256);
@@ -281,7 +285,9 @@ mod tests {
             iat: Some(now),
             iss: Some(constants::TEST_JWT_ISSUER.to_string()),
             aud: Some(serde_json::json!("api://wrong-audience")), // Audience incorreto
-            scope: None, custom_claim: None, nbf: None,
+            scope: None,
+            custom_claim: None,
+            nbf: None,
         };
 
         let token = generate_test_jwt(claims, JwtAuthAlgorithm::RS256);
@@ -300,6 +306,9 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_secs(1));
         let ts2 = current_timestamp_secs();
         assert!(ts2 > ts1, "Timestamp deveria aumentar com o tempo.");
-        assert!(ts2.saturating_sub(ts1) >= 1, "Diferença de timestamp deveria ser de pelo menos 1 segundo.");
+        assert!(
+            ts2.saturating_sub(ts1) >= 1,
+            "Diferença de timestamp deveria ser de pelo menos 1 segundo."
+        );
     }
 }

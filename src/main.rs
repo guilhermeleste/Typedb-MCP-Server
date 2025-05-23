@@ -22,7 +22,7 @@
 //! para o `McpServiceHandler`. Também configura logging, métricas e tracing.
 
 // std imports
-use std::{net::SocketAddr, sync::Arc, time::Duration, error::Error as StdError};
+use std::{error::Error as StdError, net::SocketAddr, sync::Arc, time::Duration};
 
 // axum imports
 use axum::{
@@ -37,21 +37,21 @@ use axum_server::{tls_rustls::RustlsConfig, Handle as AxumServerHandle};
 use tokio_util::sync::CancellationToken;
 // typedb_mcp_server_lib imports
 use typedb_mcp_server_lib::{
-    auth::{ClientAuthContext, JwksCache, oauth_middleware},
-    config::{Settings, Server as AppServerConfig},
-    McpServerError, AuthErrorDetail,
-    db::{connect as connect_to_typedb},
+    auth::{oauth_middleware, ClientAuthContext, JwksCache},
+    config::{Server as AppServerConfig, Settings},
+    db::connect as connect_to_typedb,
     mcp_service_handler::McpServiceHandler,
     metrics, telemetry,
     transport::WebSocketTransport,
+    AuthErrorDetail, McpServerError,
 };
 // Crates de Observabilidade
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use reqwest::Client as ReqwestClient;
 use rmcp::service::ServiceExt as RmcpServiceExt;
 use tracing::{Dispatch, Instrument}; // Instrument importado
-// Corrigido: util::SubscriberInitExt removido se .init() não for usado. Prelude é bom.
-use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry}; 
+                                     // Corrigido: util::SubscriberInitExt removido se .init() não for usado. Prelude é bom.
+use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
 use typedb_driver::TypeDBDriver;
 
 /// Estrutura para o estado da aplicação compartilhado com os handlers Axum.
@@ -65,7 +65,9 @@ struct AppState {
 }
 
 /// Configura o logging estruturado global e o tracing OpenTelemetry.
-fn setup_global_logging_and_tracing(settings: &Settings) -> Result<(), Box<dyn StdError + Send + Sync>> {
+fn setup_global_logging_and_tracing(
+    settings: &Settings,
+) -> Result<(), Box<dyn StdError + Send + Sync>> {
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(settings.logging.rust_log.clone()));
 
@@ -77,9 +79,7 @@ fn setup_global_logging_and_tracing(settings: &Settings) -> Result<(), Box<dyn S
         .with_file(true)
         .with_line_number(true);
 
-    let subscriber_builder = Registry::default()
-        .with(env_filter)
-        .with(formatting_layer);
+    let subscriber_builder = Registry::default().with(env_filter).with(formatting_layer);
 
     if settings.tracing.enabled {
         match telemetry::init_tracing_pipeline(&settings.tracing) {
@@ -108,16 +108,13 @@ fn setup_global_logging_and_tracing(settings: &Settings) -> Result<(), Box<dyn S
     Ok(())
 }
 
-
 /// Configura e inicia o servidor de métricas Prometheus.
 fn setup_metrics_server(
     server_settings: &AppServerConfig,
 ) -> Result<PrometheusHandle, Box<dyn StdError + Send + Sync>> {
     metrics::register_metrics_descriptions();
-    let metrics_bind_addr_str = server_settings
-        .metrics_bind_address
-        .clone()
-        .unwrap_or_else(|| "0.0.0.0:9090".to_string());
+    let metrics_bind_addr_str =
+        server_settings.metrics_bind_address.clone().unwrap_or_else(|| "0.0.0.0:9090".to_string());
     let metrics_socket_addr: SocketAddr = metrics_bind_addr_str.parse().map_err(|e| {
         format!("Endereço de bind inválido para métricas '{metrics_bind_addr_str}': {e}")
     })?;
@@ -157,7 +154,8 @@ async fn initialize_core_services(
             Arc::new(driver)
         }
         Err(e) => {
-            let mcp_error = McpServerError::from(typedb_mcp_server_lib::error::TypeDBErrorWrapper::from(e));
+            let mcp_error =
+                McpServerError::from(typedb_mcp_server_lib::error::TypeDBErrorWrapper::from(e));
             tracing::error!("Falha fatal ao conectar com TypeDB: {}", mcp_error);
             return Err(Box::new(mcp_error));
         }
@@ -201,10 +199,7 @@ fn create_app_state(
     jwks_cache: Option<Arc<JwksCache>>,
     global_shutdown_token: CancellationToken,
 ) -> AppState {
-    let mcp_handler = Arc::new(McpServiceHandler::new(
-        typedb_driver.clone(),
-        settings.clone(),
-    ));
+    let mcp_handler = Arc::new(McpServiceHandler::new(typedb_driver.clone(), settings.clone()));
     AppState {
         mcp_handler,
         settings,
@@ -220,27 +215,21 @@ fn build_axum_router(
     settings: &Arc<Settings>,
     metrics_handle_opt: Option<PrometheusHandle>,
 ) -> Router {
-    let mcp_ws_path_str = settings
-        .server
-        .mcp_websocket_path
-        .clone()
-        .unwrap_or_else(|| "/mcp/ws".to_string());
-    let metrics_path_str = settings
-        .server
-        .metrics_path
-        .clone()
-        .unwrap_or_else(|| "/metrics".to_string());
+    let mcp_ws_path_str =
+        settings.server.mcp_websocket_path.clone().unwrap_or_else(|| "/mcp/ws".to_string());
+    let metrics_path_str =
+        settings.server.metrics_path.clone().unwrap_or_else(|| "/metrics".to_string());
 
     let mut base_router = Router::new()
         .route("/livez", get(livez_handler))
         .route("/readyz", get(readyz_handler).with_state(app_state.clone()));
 
     if let Some(metrics_h) = metrics_handle_opt {
-        base_router = base_router.route(&metrics_path_str, get(metrics_handler).with_state(metrics_h));
+        base_router =
+            base_router.route(&metrics_path_str, get(metrics_handler).with_state(metrics_h));
     }
 
-    let mut mcp_ws_router = Router::new()
-        .route(&mcp_ws_path_str, get(websocket_handler));
+    let mut mcp_ws_router = Router::new().route(&mcp_ws_path_str, get(websocket_handler));
 
     if settings.oauth.enabled {
         if let Some(jwks_cache_for_middleware) = app_state.jwks_cache.clone() {
@@ -267,9 +256,9 @@ async fn run_axum_server(
     global_shutdown_token: CancellationToken,
 ) -> Result<(), Box<dyn StdError + Send + Sync>> {
     let bind_address_str = settings.server.bind_address.clone();
-    let bind_addr: SocketAddr = bind_address_str.parse().map_err(|e| {
-        format!("Endereço de bind inválido '{bind_address_str}': {e}")
-    })?;
+    let bind_addr: SocketAddr = bind_address_str
+        .parse()
+        .map_err(|e| format!("Endereço de bind inválido '{bind_address_str}': {e}"))?;
 
     if settings.server.tls_enabled {
         let cert_path_str = settings.server.tls_cert_path.as_ref().ok_or_else(|| {
@@ -341,8 +330,8 @@ fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
 
     // Escopo para garantir drop do guard temporário ANTES de qualquer nova inicialização
     {
-        let temp_env_filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("info"));
+        let temp_env_filter =
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
         let temp_subscriber = fmt::Subscriber::builder()
             .with_env_filter(temp_env_filter)
             .with_writer(std::io::stderr) // Logar para stderr
@@ -372,7 +361,9 @@ fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
             eprintln!("[AVISO] Falha ao configurar o sistema de logging/tracing global completo: {}. O servidor pode ter observabilidade limitada.", e);
         }
 
-        tracing::info!("Configurações carregadas e sistema de logging/tracing global inicializado.");
+        tracing::info!(
+            "Configurações carregadas e sistema de logging/tracing global inicializado."
+        );
         tracing::debug!(config = ?settings, "Configurações da aplicação carregadas e prontas para uso.");
 
         let worker_threads = settings.server.worker_threads.unwrap_or_else(|| {
@@ -407,8 +398,10 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
 
     let metrics_handle_opt = match setup_metrics_server(&settings.server) {
         Ok(handle) => {
-            tracing::info!("Servidor de métricas Prometheus iniciado com sucesso em {}.", 
-                           settings.server.metrics_bind_address.as_deref().unwrap_or("0.0.0.0:9090"));
+            tracing::info!(
+                "Servidor de métricas Prometheus iniciado com sucesso em {}.",
+                settings.server.metrics_bind_address.as_deref().unwrap_or("0.0.0.0:9090")
+            );
             Some(handle)
         }
         Err(e) => {
@@ -474,14 +467,16 @@ async fn readyz_handler(State(app_state): State<AppState>) -> impl IntoResponse 
                 ready_components.insert("jwks".to_string(), serde_json::json!("UP"));
             }
         } else {
-            tracing::error!("/readyz: OAuth habilitado mas JwksCache ausente. Erro de configuração.");
+            tracing::error!(
+                "/readyz: OAuth habilitado mas JwksCache ausente. Erro de configuração."
+            );
             ready_components.insert("jwks".to_string(), serde_json::json!("CONFIG_ERROR"));
-            overall_ready = false; 
+            overall_ready = false;
         }
     } else {
         ready_components.insert("jwks".to_string(), serde_json::json!("NOT_CONFIGURED"));
     }
-    
+
     let response_body = serde_json::json!({
         "status": if overall_ready { "UP" } else { "DOWN" },
         "components": ready_components
@@ -512,9 +507,9 @@ async fn websocket_handler(
     let user_id_for_log = maybe_auth_context
         .as_ref()
         .map_or_else(|| "<não_autenticado>".to_string(), |Extension(ctx)| ctx.user_id.clone());
-    
+
     // Clonar para usar no span, pois o original será movido para a task
-    let user_id_for_span = user_id_for_log.clone(); 
+    let user_id_for_span = user_id_for_log.clone();
     let addr_for_span = addr; // SocketAddr é Copy
 
     tracing::Span::current().record("client.user_id", &tracing::field::display(&user_id_for_span));
@@ -523,11 +518,12 @@ async fn websocket_handler(
 
     if app_state.settings.oauth.enabled && maybe_auth_context.is_none() {
         tracing::warn!("OAuth habilitado, mas ClientAuthContext ausente. Rejeitando WebSocket.");
-        return (StatusCode::UNAUTHORIZED, "Autenticação OAuth2 falhou ou está ausente.").into_response();
+        return (StatusCode::UNAUTHORIZED, "Autenticação OAuth2 falhou ou está ausente.")
+            .into_response();
     }
 
     let conn_cancellation_token = app_state.global_shutdown_token.child_token();
-    
+
     ws.on_upgrade(move |socket| {
         // user_id_for_log (String) é movido para esta closure externa
         // addr (SocketAddr) também é movido
@@ -576,14 +572,20 @@ fn setup_signal_handler(token: CancellationToken) {
             let mut sigint = match signal(SignalKind::interrupt()) {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("[ERROR] Falha crítica ao instalar handler SIGINT: {}. Encerrando.", e);
+                    eprintln!(
+                        "[ERROR] Falha crítica ao instalar handler SIGINT: {}. Encerrando.",
+                        e
+                    );
                     std::process::exit(1);
                 }
             };
             let mut sigterm = match signal(SignalKind::terminate()) {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("[ERROR] Falha crítica ao instalar handler SIGTERM: {}. Encerrando.", e);
+                    eprintln!(
+                        "[ERROR] Falha crítica ao instalar handler SIGTERM: {}. Encerrando.",
+                        e
+                    );
                     std::process::exit(1);
                 }
             };

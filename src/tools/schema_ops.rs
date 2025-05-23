@@ -24,8 +24,8 @@ use std::sync::Arc;
 use rmcp::model::{CallToolResult, Content, ErrorCode, ErrorData};
 use typedb_driver::{answer::QueryAnswer, TransactionOptions, TransactionType, TypeDBDriver};
 
-use crate::error::typedb_error_to_mcp_error_data;
 use super::params;
+use crate::error::typedb_error_to_mcp_error_data;
 
 /// Handler para a ferramenta `define_schema`.
 ///
@@ -83,7 +83,7 @@ pub async fn handle_define_schema(
             Err(ErrorData {
                 code: ErrorCode::INTERNAL_ERROR,
                 message: Cow::Owned(
-                    "Resposta inesperada do servidor TypeDB para query define_schema.".to_string()
+                    "Resposta inesperada do servidor TypeDB para query define_schema.".to_string(),
                 ),
                 data: Some(serde_json::json!({
                     "type": "UnexpectedQueryAnswer",
@@ -203,7 +203,8 @@ pub async fn handle_get_schema(
             typedb_error_to_mcp_error_data(&e, "get_schema (obter banco)")
         })?;
 
-    let schema_content_result = match params.schema_type.as_deref() { // as_deref() para Option<String>
+    let schema_content_result = match params.schema_type.as_deref() {
+        // as_deref() para Option<String>
         Some("types") => {
             tracing::debug!(db.name = %params.database_name, "Obtendo type_schema.");
             db.type_schema().await
@@ -232,10 +233,10 @@ pub async fn handle_get_schema(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use typedb_driver::Error as TypeDBError;
-    use rmcp::model::ErrorCode; // Import direto, já que não é mais reexportado por `crate::error`
-    // `Cow` não é mais necessário nos testes após a simplificação
-    // use std::borrow::Cow;
+    use rmcp::model::ErrorCode;
+    use typedb_driver::Error as TypeDBError; // Import direto, já que não é mais reexportado por `crate::error`
+                                             // `Cow` não é mais necessário nos testes após a simplificação
+                                             // use std::borrow::Cow;
 
     #[tokio::test]
     async fn test_handle_define_schema_success_flow() {
@@ -320,7 +321,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_define_schema_unexpected_query_answer_flow() {
-        let error_message = "Resposta inesperada do servidor TypeDB para query define_schema.".to_string();
+        let error_message =
+            "Resposta inesperada do servidor TypeDB para query define_schema.".to_string();
         let received_type_example = "ConceptRowStream(...)";
         let expected_mcp_error_data = ErrorData {
             code: ErrorCode::INTERNAL_ERROR,
@@ -344,7 +346,6 @@ mod tests {
             None => panic!("Esperado campo data em ErrorData"),
         }
     }
-
 
     #[tokio::test]
     async fn test_handle_get_schema_success_full_flow() {

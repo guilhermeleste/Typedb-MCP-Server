@@ -28,7 +28,7 @@ use serde_json::Value as JsonValue;
 use std::borrow::Cow;
 use thiserror::Error;
 use typedb_driver::Error as TypeDBError;
- // Renomeado para evitar conflito com a crate `config`
+// Renomeado para evitar conflito com a crate `config`
 
 /// Código de erro MCP padrão para falha na autenticação.
 /// (Não exposto como constante nomeada em rmcp 0.1.5)
@@ -158,9 +158,8 @@ pub fn typedb_error_to_mcp_error_data(err: &TypeDBError, tool_name: &str) -> Err
     let typedb_message = err.message();
     let typedb_code = err.code(); // Este é o código de erro string do TypeDB, ex: "[DBS06]"
 
-    let mcp_message = format!(
-        "Erro na ferramenta MCP '{tool_name}' ao interagir com TypeDB: {typedb_message}"
-    );
+    let mcp_message =
+        format!("Erro na ferramenta MCP '{tool_name}' ao interagir com TypeDB: {typedb_message}");
 
     tracing::error!(
         tool.name = tool_name,
@@ -189,10 +188,7 @@ pub fn typedb_error_to_mcp_error_data(err: &TypeDBError, tool_name: &str) -> Err
 ///
 /// # Retorna
 /// Uma `ErrorData` configurada de acordo com o `McpServerError`.
-pub fn app_error_to_mcp_error_data(
-    err: &McpServerError,
-    tool_name_opt: Option<&str>,
-) -> ErrorData {
+pub fn app_error_to_mcp_error_data(err: &McpServerError, tool_name_opt: Option<&str>) -> ErrorData {
     let tool_name = tool_name_opt.unwrap_or("<desconhecido>");
 
     let mcp_code_val: i32;
@@ -206,11 +202,14 @@ pub fn app_error_to_mcp_error_data(
         McpServerError::Configuration(config_err) => {
             mcp_code_val = ErrorCode::INTERNAL_ERROR.0;
             mcp_message_str = format!("Erro de configuração do servidor: {config_err}");
-            error_data_json_map.insert("type".to_string(), JsonValue::String("ConfigurationError".to_string()));
-            error_data_json_map.insert("detail".to_string(), JsonValue::String(config_err.to_string()));
+            error_data_json_map
+                .insert("type".to_string(), JsonValue::String("ConfigurationError".to_string()));
+            error_data_json_map
+                .insert("detail".to_string(), JsonValue::String(config_err.to_string()));
         }
         McpServerError::Auth(auth_err_detail) => {
-            error_data_json_map.insert("type".to_string(), JsonValue::String("AuthError".to_string()));
+            error_data_json_map
+                .insert("type".to_string(), JsonValue::String("AuthError".to_string()));
             let (base_message, detail_message_str) = match auth_err_detail {
                 AuthErrorDetail::TokenMissingOrMalformed => ("Autenticação falhou".to_string(), "Token de autenticação não fornecido ou malformado.".to_string()),
                 AuthErrorDetail::TokenInvalid(reason) => ("Autenticação falhou".to_string(), format!("Token de autenticação inválido: {reason}")),
@@ -234,37 +233,45 @@ pub fn app_error_to_mcp_error_data(
                 | AuthErrorDetail::TokenExpired => {
                     mcp_code_val = MCP_ERROR_CODE_AUTHENTICATION_FAILED;
                 }
-                 AuthErrorDetail::JwksFetchFailed(_) | AuthErrorDetail::InvalidAuthConfig(_) => {
+                AuthErrorDetail::JwksFetchFailed(_) | AuthErrorDetail::InvalidAuthConfig(_) => {
                     mcp_code_val = ErrorCode::INTERNAL_ERROR.0;
                 }
                 AuthErrorDetail::IssuerMismatch { expected, found } => {
                     mcp_code_val = MCP_ERROR_CODE_AUTHORIZATION_FAILED;
-                    error_data_json_map.insert("expectedIssuers".to_string(), serde_json::json!(expected));
+                    error_data_json_map
+                        .insert("expectedIssuers".to_string(), serde_json::json!(expected));
                     error_data_json_map.insert("foundIssuer".to_string(), serde_json::json!(found));
                 }
                 AuthErrorDetail::AudienceMismatch { expected, found } => {
                     mcp_code_val = MCP_ERROR_CODE_AUTHORIZATION_FAILED;
-                    error_data_json_map.insert("expectedAudiences".to_string(), serde_json::json!(expected));
-                    error_data_json_map.insert("foundAudiences".to_string(), serde_json::json!(found));
+                    error_data_json_map
+                        .insert("expectedAudiences".to_string(), serde_json::json!(expected));
+                    error_data_json_map
+                        .insert("foundAudiences".to_string(), serde_json::json!(found));
                 }
                 AuthErrorDetail::InsufficientScope { required, possessed } => {
                     mcp_code_val = MCP_ERROR_CODE_AUTHORIZATION_FAILED;
-                    error_data_json_map.insert("requiredScopes".to_string(), serde_json::json!(required));
-                    error_data_json_map.insert("possessedScopes".to_string(), serde_json::json!(possessed));
+                    error_data_json_map
+                        .insert("requiredScopes".to_string(), serde_json::json!(required));
+                    error_data_json_map
+                        .insert("possessedScopes".to_string(), serde_json::json!(possessed));
                 }
             }
         }
         McpServerError::Io(io_err) => {
             mcp_code_val = ErrorCode::INTERNAL_ERROR.0;
             mcp_message_str = format!("Erro de I/O: {io_err}");
-            error_data_json_map.insert("type".to_string(), JsonValue::String("IoError".to_string()));
+            error_data_json_map
+                .insert("type".to_string(), JsonValue::String("IoError".to_string()));
             error_data_json_map.insert("detail".to_string(), JsonValue::String(io_err.to_string()));
         }
         McpServerError::HttpClient(http_err_msg) => {
             mcp_code_val = ErrorCode::INTERNAL_ERROR.0;
             mcp_message_str = format!("Erro no cliente HTTP: {http_err_msg}");
-            error_data_json_map.insert("type".to_string(), JsonValue::String("HttpClientError".to_string()));
-            error_data_json_map.insert("detail".to_string(), JsonValue::String(http_err_msg.clone()));
+            error_data_json_map
+                .insert("type".to_string(), JsonValue::String("HttpClientError".to_string()));
+            error_data_json_map
+                .insert("detail".to_string(), JsonValue::String(http_err_msg.clone()));
         }
         McpServerError::ToolExecution { tool_name: current_tool_name, source } => {
             tracing::error!(
@@ -277,7 +284,8 @@ pub fn app_error_to_mcp_error_data(
         McpServerError::Internal(msg) => {
             mcp_code_val = ErrorCode::INTERNAL_ERROR.0;
             mcp_message_str = format!("Erro interno do servidor: {msg}");
-            error_data_json_map.insert("type".to_string(), JsonValue::String("InternalServerError".to_string()));
+            error_data_json_map
+                .insert("type".to_string(), JsonValue::String("InternalServerError".to_string()));
             error_data_json_map.insert("detail".to_string(), JsonValue::String(msg.clone()));
         }
     }
@@ -297,7 +305,6 @@ pub fn app_error_to_mcp_error_data(
         data: Some(JsonValue::Object(error_data_json_map)),
     }
 }
-
 
 /// Formata um erro do `typedb-driver` como uma string legível para o usuário.
 ///
@@ -335,7 +342,6 @@ mod tests {
     //     fn is_open(&self) -> bool { true }
     // }
 
-
     fn create_mock_typedb_server_error(code: &str, message: &str) -> TypeDBError {
         // Usar um tipo de erro que não dependa de um ServerConnection real para ser construído.
         // TypeDBError::Other é uma boa opção para simular um erro genérico do driver.
@@ -348,32 +354,36 @@ mod tests {
         let original_message = "A test TypeDB error occurred.";
         let original_typedb_code_mock = "DBS06"; // Código de erro inventado para o teste
 
-        let typedb_err = create_mock_typedb_server_error(original_typedb_code_mock, original_message);
+        let typedb_err =
+            create_mock_typedb_server_error(original_typedb_code_mock, original_message);
 
         let error_data = typedb_error_to_mcp_error_data(&typedb_err, tool_name);
 
         assert_eq!(error_data.code, ErrorCode::INTERNAL_ERROR);
 
         // A mensagem do TypeDBError::Other será exatamente o que foi passado.
-        let expected_typedb_err_message = format!("[{original_typedb_code_mock}] {original_message}");
+        let expected_typedb_err_message =
+            format!("[{original_typedb_code_mock}] {original_message}");
         let expected_mcp_message = format!(
             "Erro na ferramenta MCP '{tool_name}' ao interagir com TypeDB: {expected_typedb_err_message}" 
         );
         assert_eq!(error_data.message.as_ref(), expected_mcp_message);
 
-        let data_json = error_data.data.as_ref().map_or_else(
-            || panic!("ErrorData deve conter campo data"),
-            |data| data,
-        );
-        let data_obj = data_json.as_object().map_or_else(
-            || panic!("Campo data deve ser um objeto JSON"),
-            |obj| obj,
-        );
+        let data_json = error_data
+            .data
+            .as_ref()
+            .map_or_else(|| panic!("ErrorData deve conter campo data"), |data| data);
+        let data_obj = data_json
+            .as_object()
+            .map_or_else(|| panic!("Campo data deve ser um objeto JSON"), |obj| obj);
         assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("TypeDBError"));
         assert_eq!(data_obj.get("toolName").and_then(|v| v.as_str()), Some(tool_name));
         // O método `code()` para TypeDBError::Other retorna uma string vazia.
         assert_eq!(data_obj.get("typedbErrorCode").and_then(|v| v.as_str()), Some(""));
-        assert_eq!(data_obj.get("typedbErrorMessage").and_then(|v| v.as_str()), Some(expected_typedb_err_message.as_str()));
+        assert_eq!(
+            data_obj.get("typedbErrorMessage").and_then(|v| v.as_str()),
+            Some(expected_typedb_err_message.as_str())
+        );
     }
 
     #[test]
@@ -381,14 +391,14 @@ mod tests {
         let context_msg = "Validando consulta de teste";
         let original_message = "Syntax error in query for test.";
         let original_typedb_code_mock = "QSC01";
-        let typedb_err = create_mock_typedb_server_error(original_typedb_code_mock, original_message);
+        let typedb_err =
+            create_mock_typedb_server_error(original_typedb_code_mock, original_message);
 
         let user_string = typedb_error_to_user_string(&typedb_err, context_msg);
 
-        let expected_typedb_err_message = format!("[{original_typedb_code_mock}] {original_message}");
-        let expected_string = format!(
-            "ERRO: {context_msg}: {expected_typedb_err_message}"
-        );
+        let expected_typedb_err_message =
+            format!("[{original_typedb_code_mock}] {original_message}");
+        let expected_string = format!("ERRO: {context_msg}: {expected_typedb_err_message}");
         assert_eq!(user_string, expected_string);
     }
 
@@ -398,17 +408,22 @@ mod tests {
         let error_data = app_error_to_mcp_error_data(&app_err, Some("any_tool"));
 
         assert_eq!(error_data.code, ErrorCode(MCP_ERROR_CODE_AUTHENTICATION_FAILED));
-        assert_eq!(error_data.message.as_ref(), "Autenticação falhou: Token de autenticação não fornecido ou malformado.");
-        let data_json = error_data.data.as_ref().map_or_else(
-            || panic!("ErrorData deve conter campo data"),
-            |data| data,
+        assert_eq!(
+            error_data.message.as_ref(),
+            "Autenticação falhou: Token de autenticação não fornecido ou malformado."
         );
-        let data_obj = data_json.as_object().map_or_else(
-            || panic!("Campo data deve ser um objeto JSON"),
-            |obj| obj,
-        );
+        let data_json = error_data
+            .data
+            .as_ref()
+            .map_or_else(|| panic!("ErrorData deve conter campo data"), |data| data);
+        let data_obj = data_json
+            .as_object()
+            .map_or_else(|| panic!("Campo data deve ser um objeto JSON"), |obj| obj);
         assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("AuthError"));
-        assert_eq!(data_obj.get("reason").and_then(|v| v.as_str()), Some("Token de autenticação não fornecido ou malformado."));
+        assert_eq!(
+            data_obj.get("reason").and_then(|v| v.as_str()),
+            Some("Token de autenticação não fornecido ou malformado.")
+        );
     }
 
     #[test]
@@ -422,17 +437,20 @@ mod tests {
         let error_data = app_error_to_mcp_error_data(&app_err, Some("tool_requiring_write"));
 
         assert_eq!(error_data.code, ErrorCode(MCP_ERROR_CODE_AUTHORIZATION_FAILED));
-        let expected_message_detail = "Escopos OAuth2 insuficientes. Requeridos: [\"write\"], Possuídos: [\"read\"].";
-        assert_eq!(error_data.message.as_ref(), format!("Autorização falhou: {expected_message_detail}"));
+        let expected_message_detail =
+            "Escopos OAuth2 insuficientes. Requeridos: [\"write\"], Possuídos: [\"read\"].";
+        assert_eq!(
+            error_data.message.as_ref(),
+            format!("Autorização falhou: {expected_message_detail}")
+        );
 
-        let data_json = error_data.data.as_ref().map_or_else(
-            || panic!("ErrorData deve conter campo data"),
-            |data| data,
-        );
-        let data_obj = data_json.as_object().map_or_else(
-            || panic!("Campo data deve ser um objeto JSON"),
-            |obj| obj,
-        );
+        let data_json = error_data
+            .data
+            .as_ref()
+            .map_or_else(|| panic!("ErrorData deve conter campo data"), |data| data);
+        let data_obj = data_json
+            .as_object()
+            .map_or_else(|| panic!("Campo data deve ser um objeto JSON"), |obj| obj);
         assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("AuthError"));
         assert_eq!(data_obj.get("reason").and_then(|v| v.as_str()), Some(expected_message_detail));
         assert_eq!(data_obj.get("requiredScopes"), Some(&serde_json::json!(required_scopes)));
@@ -449,17 +467,19 @@ mod tests {
         assert!(error_data.message.contains("Erro de configuração do servidor"));
         // Aceita qualquer mensagem que contenha a chave, independentemente do idioma ou formato
         assert!(error_data.message.contains("uma.chave.de.config"));
-        let data_json = error_data.data.as_ref().map_or_else(
-            || panic!("ErrorData deve conter campo data"),
-            |data| data,
-        );
-        let data_obj = data_json.as_object().map_or_else(
-            || panic!("Campo data deve ser um objeto JSON"),
-            |obj| obj,
-        );
+        let data_json = error_data
+            .data
+            .as_ref()
+            .map_or_else(|| panic!("ErrorData deve conter campo data"), |data| data);
+        let data_obj = data_json
+            .as_object()
+            .map_or_else(|| panic!("Campo data deve ser um objeto JSON"), |obj| obj);
         assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("ConfigurationError"));
         // Aceita qualquer mensagem que contenha a chave, independentemente do idioma ou formato
-        assert!(data_obj.get("detail").and_then(|v| v.as_str()).is_some_and(|s| s.contains("uma.chave.de.config")));
+        assert!(data_obj
+            .get("detail")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| s.contains("uma.chave.de.config")));
     }
 
     #[test]
@@ -476,18 +496,23 @@ mod tests {
         let expected_message_detail = format!(
             "Claim 'issuer' do token não corresponde. Esperado um de: {expected:?}, Obtido: {found:?}."
         );
-        assert_eq!(error_data.message.as_ref(), format!("Autorização falhou: {expected_message_detail}"));
+        assert_eq!(
+            error_data.message.as_ref(),
+            format!("Autorização falhou: {expected_message_detail}")
+        );
 
-        let data_json = error_data.data.as_ref().map_or_else(
-            || panic!("ErrorData deve conter campo data"),
-            |data| data,
-        );
-        let data_obj = data_json.as_object().map_or_else(
-            || panic!("Campo data deve ser um objeto JSON"),
-            |obj| obj,
-        );
+        let data_json = error_data
+            .data
+            .as_ref()
+            .map_or_else(|| panic!("ErrorData deve conter campo data"), |data| data);
+        let data_obj = data_json
+            .as_object()
+            .map_or_else(|| panic!("Campo data deve ser um objeto JSON"), |obj| obj);
         assert_eq!(data_obj.get("type").and_then(|v| v.as_str()), Some("AuthError"));
-        assert_eq!(data_obj.get("reason").and_then(|v| v.as_str()), Some(expected_message_detail.as_str()));
+        assert_eq!(
+            data_obj.get("reason").and_then(|v| v.as_str()),
+            Some(expected_message_detail.as_str())
+        );
         assert_eq!(data_obj.get("expectedIssuers"), Some(&serde_json::json!(expected)));
         assert_eq!(data_obj.get("foundIssuer"), Some(&serde_json::json!(found)));
     }

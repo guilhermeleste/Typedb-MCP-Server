@@ -16,11 +16,11 @@ pub mod test_env;
 pub mod test_utils;
 
 // Reexportações
-pub use client::{McpClientError, TestMcpClient};
 pub use auth_helpers::{
-    current_timestamp_secs, generate_test_jwt, JwtAuthAlgorithm, TestClaims,
-    TEST_RSA_PRIVATE_KEY_PEM, TEST_RSA_PUBLIC_KEY_PEM, TEST_HS256_SECRET,
+    current_timestamp_secs, generate_test_jwt, JwtAuthAlgorithm, TestClaims, TEST_HS256_SECRET,
+    TEST_RSA_PRIVATE_KEY_PEM, TEST_RSA_PUBLIC_KEY_PEM,
 };
+pub use client::{McpClientError, TestMcpClient};
 pub use docker_helpers::DockerComposeEnv;
 pub use mcp_utils::get_text_from_call_result;
 pub use test_env::TestEnvironment;
@@ -35,9 +35,9 @@ mod tests {
     use rmcp::model::CallToolResult;
     // Usar o caminho completo para TestClaims de auth_helpers para evitar ambiguidade se houvesse outro
     use crate::common::auth_helpers::TestClaims as AuthHelperTestClaims;
-    use std::time::Duration;
     use anyhow::Result; // Para os tipos de retorno das funções async
-    use futures_util::future::BoxFuture; // Para anotações de tipo explícitas
+    use futures_util::future::BoxFuture;
+    use std::time::Duration; // Para anotações de tipo explícitas
 
     #[test]
     fn test_common_mod_structure_and_reexports_are_accessible() {
@@ -47,7 +47,8 @@ mod tests {
         let _test_env_type_check: Option<TestEnvironment> = None;
 
         // Teste de assinatura de função síncrona
-        let _jwt_fn_signature_check: fn(AuthHelperTestClaims, JwtAuthAlgorithm) -> String = generate_test_jwt;
+        let _jwt_fn_signature_check: fn(AuthHelperTestClaims, JwtAuthAlgorithm) -> String =
+            generate_test_jwt;
         let _get_text_fn_signature_check: fn(CallToolResult) -> String = get_text_from_call_result;
         let _unique_db_name_fn_check: fn(&str) -> String = unique_db_name;
 
@@ -58,13 +59,12 @@ mod tests {
         // o que é verdade se os async blocks usarem `async move` e moverem/clonarem os dados necessários.
 
         // fn setup(test_name_suffix: &str, config_filename: &str) -> Result<Self>
-        type SetupFnType = for<'a, 'b> fn(&'a str, &'b str) -> BoxFuture<'static, Result<TestEnvironment>>;
+        type SetupFnType =
+            for<'a, 'b> fn(&'a str, &'b str) -> BoxFuture<'static, Result<TestEnvironment>>;
         let _setup_fn_check: SetupFnType = |s1, s2| {
             let s1_owned = s1.to_string();
             let s2_owned = s2.to_string();
-            Box::pin(async move {
-                TestEnvironment::setup(&s1_owned, &s2_owned).await
-            })
+            Box::pin(async move { TestEnvironment::setup(&s1_owned, &s2_owned).await })
         };
 
         // async fn create_test_db(client: &mut TestMcpClient, db_name: &str) -> Result<()>
@@ -82,12 +82,14 @@ mod tests {
         let _delete_db_fn_ptr = delete_test_db;
 
         // async fn wait_for_mcp_server_ready_from_test_env(test_env: &TestEnvironment, timeout: Duration) -> Result<serde_json::Value>
-        type WaitForReadyFnType = for<'a> fn(&'a TestEnvironment, Duration) -> BoxFuture<'a, Result<serde_json::Value>>;
-        let _wait_ready_fn_check: WaitForReadyFnType = |env, dur| Box::pin(wait_for_mcp_server_ready_from_test_env(env, dur));
-        
+        type WaitForReadyFnType =
+            for<'a> fn(&'a TestEnvironment, Duration) -> BoxFuture<'a, Result<serde_json::Value>>;
+        let _wait_ready_fn_check: WaitForReadyFnType =
+            |env, dur| Box::pin(wait_for_mcp_server_ready_from_test_env(env, dur));
+
         // Acessar constante
         assert_eq!(super::constants::MCP_SERVER_SERVICE_NAME, "typedb-mcp-server-it");
-        
+
         println!("O módulo common e suas reexportações principais são acessíveis e compilam (com verificações de tipo leves para funções async).");
         assert!(true);
     }

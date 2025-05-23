@@ -6,10 +6,8 @@
 //! (query_read, insert_data, delete_data, update_data, validate_query).
 
 use crate::common::{
-    client::McpClientError,
-    constants,
+    client::McpClientError, constants, mcp_utils::get_text_from_call_result,
     test_env::TestEnvironment,
-    mcp_utils::get_text_from_call_result,
 };
 use anyhow::{Context as AnyhowContext, Result};
 use rmcp::model::ErrorCode as McpErrorCode;
@@ -33,9 +31,7 @@ async fn setup_database_with_base_schema(
     let mut client = test_env.mcp_client_with_auth(Some(scopes_for_setup)).await?;
 
     info!("Helper: Criando banco de dados de teste: {}", db_name);
-    let create_result = client
-        .call_tool("create_database", Some(json!({ "name": db_name })))
-        .await;
+    let create_result = client.call_tool("create_database", Some(json!({ "name": db_name }))).await;
     assert!(
         create_result.is_ok(),
         "Falha ao criar banco de teste '{}' via helper: {:?}",
@@ -79,14 +75,9 @@ async fn setup_database_with_base_schema(
 }
 
 /// Helper para deletar um banco de dados de teste (melhor esforço).
-async fn delete_test_db(
-    client: &mut crate::common::client::TestMcpClient,
-    db_name: &str,
-) {
+async fn delete_test_db(client: &mut crate::common::client::TestMcpClient, db_name: &str) {
     info!("Helper: Deletando banco de dados de teste: {}", db_name);
-    let _ = client
-        .call_tool("delete_database", Some(json!({ "name": db_name })))
-        .await;
+    let _ = client.call_tool("delete_database", Some(json!({ "name": db_name }))).await;
 }
 
 #[tokio::test]
@@ -106,21 +97,19 @@ async fn test_insert_and_query_read_person() -> Result<()> {
     let insert_query = r#"insert $p isa person, has name "Alice", has age 30;"#;
     info!("Teste: Inserindo dados com query: {}", insert_query);
     let insert_result = client
-        .call_tool(
-            "insert_data",
-            Some(json!({ "database_name": db_name, "query": insert_query })),
-        )
+        .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query })))
         .await
         .context("Falha na ferramenta insert_data")?;
-    assert_eq!(insert_result.is_error.unwrap_or(false), false, "insert_data retornou is_error=true");
+    assert_eq!(
+        insert_result.is_error.unwrap_or(false),
+        false,
+        "insert_data retornou is_error=true"
+    );
 
     let read_query = r#"match $p isa person, has name $n, has age $a; get $n, $a; sort $n asc;"#;
     info!("Teste: Consultando dados com query: {}", read_query);
     let read_result = client
-        .call_tool(
-            "query_read",
-            Some(json!({ "database_name": db_name, "query": read_query })),
-        )
+        .call_tool("query_read", Some(json!({ "database_name": db_name, "query": read_query })))
         .await
         .context("Falha na ferramenta query_read")?;
 
@@ -139,7 +128,10 @@ async fn test_insert_and_query_read_person() -> Result<()> {
             "n": { "value": {"string": "Alice"}, "typeLabel": "name", "valueType": "string" }
         }
     ]);
-    assert_eq!(json_value, expected_json, "Resultado da consulta de pessoa não corresponde ao esperado.");
+    assert_eq!(
+        json_value, expected_json,
+        "Resultado da consulta de pessoa não corresponde ao esperado."
+    );
 
     delete_test_db(&mut client, &db_name).await;
     Ok(())
@@ -148,7 +140,8 @@ async fn test_insert_and_query_read_person() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_query_read_aggregate_count() -> Result<()> {
-    let test_env = TestEnvironment::setup("query_agg_count", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
+    let test_env =
+        TestEnvironment::setup("query_agg_count", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
     let db_name = unique_db_name("agg_count");
     let mut client = setup_database_with_base_schema(
         &test_env,
@@ -162,7 +155,9 @@ async fn test_query_read_aggregate_count() -> Result<()> {
         r#"insert $p isa person, has name "Charlie", has age 35;"#,
     ];
     for query in insert_queries {
-        client.call_tool("insert_data", Some(json!({ "database_name": db_name, "query": query }))).await?;
+        client
+            .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": query })))
+            .await?;
     }
 
     let agg_query = "match $p isa person; count;";
@@ -171,11 +166,11 @@ async fn test_query_read_aggregate_count() -> Result<()> {
         .call_tool("query_read", Some(json!({ "database_name": db_name, "query": agg_query })))
         .await
         .context("Falha na ferramenta query_read (aggregate)")?;
-    
+
     let text_content = get_text_from_call_result(agg_result);
     let count_value: i64 = serde_json::from_str(&text_content)
         .context("Falha ao parsear resultado de count como i64")?;
-    
+
     assert_eq!(count_value, 2, "Contagem de pessoas incorreta.");
 
     delete_test_db(&mut client, &db_name).await;
@@ -185,7 +180,8 @@ async fn test_query_read_aggregate_count() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_update_attribute_value() -> Result<()> {
-    let test_env = TestEnvironment::setup("update_attr_val", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
+    let test_env =
+        TestEnvironment::setup("update_attr_val", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
     let db_name = unique_db_name("upd_attr");
     let mut client = setup_database_with_base_schema(
         &test_env,
@@ -195,30 +191,37 @@ async fn test_update_attribute_value() -> Result<()> {
     .await?;
 
     let insert_query = r#"insert $p isa person, has name "Carol", has age 25;"#;
-    client.call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query }))).await?;
+    client
+        .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query })))
+        .await?;
 
     let update_query = r#"match $p isa person, has name "Carol", has age $a; delete $p has age $a; insert $p has age 26;"#;
     info!("Teste: Atualizando atributo com query: {}", update_query);
     let update_result = client
-        .call_tool(
-            "update_data",
-            Some(json!({ "database_name": db_name, "query": update_query })),
-        )
+        .call_tool("update_data", Some(json!({ "database_name": db_name, "query": update_query })))
         .await
         .context("Falha na ferramenta update_data")?;
-    assert_eq!(update_result.is_error.unwrap_or(false), false, "update_data retornou is_error=true");
+    assert_eq!(
+        update_result.is_error.unwrap_or(false),
+        false,
+        "update_data retornou is_error=true"
+    );
 
     let read_query = r#"match $p isa person, has name "Carol", has age $a; get $a;"#;
     let read_result = client
         .call_tool("query_read", Some(json!({ "database_name": db_name, "query": read_query })))
         .await?;
-    
+
     let text_content = get_text_from_call_result(read_result);
     let json_value: JsonValue = serde_json::from_str(&text_content)?; // Usar JsonValue
     info!("Resultado após update: {}", json_value);
 
-    let expected_json = json!([{"a": { "value": {"integer": 26}, "typeLabel": "age", "valueType": "integer" }}]);
-    assert_eq!(json_value, expected_json, "Valor do atributo 'age' não foi atualizado corretamente.");
+    let expected_json =
+        json!([{"a": { "value": {"integer": 26}, "typeLabel": "age", "valueType": "integer" }}]);
+    assert_eq!(
+        json_value, expected_json,
+        "Valor do atributo 'age' não foi atualizado corretamente."
+    );
 
     delete_test_db(&mut client, &db_name).await;
     Ok(())
@@ -227,7 +230,9 @@ async fn test_update_attribute_value() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_delete_entity_and_verify() -> Result<()> {
-    let test_env = TestEnvironment::setup("delete_entity_verify", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
+    let test_env =
+        TestEnvironment::setup("delete_entity_verify", constants::DEFAULT_TEST_CONFIG_FILENAME)
+            .await?;
     let db_name = unique_db_name("del_ent");
     let mut client = setup_database_with_base_schema(
         &test_env,
@@ -237,15 +242,14 @@ async fn test_delete_entity_and_verify() -> Result<()> {
     .await?;
 
     let insert_query = r#"insert $p isa person, has name "Dave", has age 50;"#;
-    client.call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query }))).await?;
+    client
+        .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query })))
+        .await?;
 
     let delete_query = r#"match $p isa person, has name "Dave"; delete $p;"#;
     info!("Teste: Deletando entidade com query: {}", delete_query);
     let delete_result = client
-        .call_tool(
-            "delete_data",
-            Some(json!({ "database_name": db_name, "query": delete_query })),
-        )
+        .call_tool("delete_data", Some(json!({ "database_name": db_name, "query": delete_query })))
         .await
         .context("Falha na ferramenta delete_data")?;
     let delete_text = get_text_from_call_result(delete_result);
@@ -256,11 +260,15 @@ async fn test_delete_entity_and_verify() -> Result<()> {
     let read_result_after_delete = client
         .call_tool("query_read", Some(json!({ "database_name": db_name, "query": read_query })))
         .await?;
-    
+
     let text_content_after_delete = get_text_from_call_result(read_result_after_delete);
     let json_value_after_delete: Vec<JsonValue> = serde_json::from_str(&text_content_after_delete)?; // Usar JsonValue
-    
-    assert!(json_value_after_delete.is_empty(), "Entidade 'Dave' não foi removida, resultado: {:?}", json_value_after_delete);
+
+    assert!(
+        json_value_after_delete.is_empty(),
+        "Entidade 'Dave' não foi removida, resultado: {:?}",
+        json_value_after_delete
+    );
 
     delete_test_db(&mut client, &db_name).await;
     Ok(())
@@ -269,7 +277,8 @@ async fn test_delete_entity_and_verify() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_validate_query_syntax_ok_and_fail() -> Result<()> {
-    let test_env = TestEnvironment::setup("validate_query", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
+    let test_env =
+        TestEnvironment::setup("validate_query", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
     let db_name = unique_db_name("val_q");
     let mut client = setup_database_with_base_schema(
         &test_env,
@@ -300,7 +309,8 @@ async fn test_validate_query_syntax_ok_and_fail() -> Result<()> {
     let text_err = get_text_from_call_result(validate_err_result);
     assert!(
         text_err.to_lowercase().contains("error") || text_err.to_lowercase().contains("fail"),
-        "Mensagem para query inválida não indicou erro: '{}'", text_err
+        "Mensagem para query inválida não indicou erro: '{}'",
+        text_err
     );
 
     delete_test_db(&mut client, &db_name).await;
@@ -310,11 +320,9 @@ async fn test_validate_query_syntax_ok_and_fail() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_query_data_operations_require_correct_scopes_oauth() -> Result<()> {
-    let test_env = TestEnvironment::setup(
-        "query_scopes_oauth",
-        constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME,
-    )
-    .await?;
+    let test_env =
+        TestEnvironment::setup("query_scopes_oauth", constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME)
+            .await?;
     let db_name = unique_db_name("q_scopes");
 
     // Usar o cliente retornado pelo setup_database_with_base_schema, que já tem os escopos de setup
@@ -335,30 +343,38 @@ async fn test_query_data_operations_require_correct_scopes_oauth() -> Result<()>
     assert!(result_insert_no_scope.is_err());
     if let McpClientError::McpErrorResponse { code, .. } = result_insert_no_scope.unwrap_err() {
         assert_eq!(code.0, McpErrorCode(-32001).0);
-    } else { panic!("Esperado McpErrorResponse de autorização para insert_data"); }
+    } else {
+        panic!("Esperado McpErrorResponse de autorização para insert_data");
+    }
 
     let mut client_write_perms = test_env.mcp_client_with_auth(Some("typedb:write_data")).await?;
     info!("Teste: Tentando insert_data COM escopo 'typedb:write_data'");
     let insert_ok_result = client_write_perms
         .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query })))
         .await;
-    assert!(insert_ok_result.is_ok(), "insert_data com escopo correto falhou: {:?}", insert_ok_result.err());
+    assert!(
+        insert_ok_result.is_ok(),
+        "insert_data com escopo correto falhou: {:?}",
+        insert_ok_result.err()
+    );
 
-    let mut client_no_relevant_scopes = test_env.mcp_client_with_auth(Some("other:unrelated")).await?;
+    let mut client_no_relevant_scopes =
+        test_env.mcp_client_with_auth(Some("other:unrelated")).await?;
     let read_query = "match $p isa person; get $p;";
     info!("Teste: Tentando query_read sem escopo 'typedb:read_data'");
     let result_read_no_scope = client_no_relevant_scopes
         .call_tool("query_read", Some(json!({ "database_name": db_name, "query": read_query })))
         .await;
     assert!(result_read_no_scope.is_err());
-     if let McpClientError::McpErrorResponse { code, .. } = result_read_no_scope.unwrap_err() {
+    if let McpClientError::McpErrorResponse { code, .. } = result_read_no_scope.unwrap_err() {
         assert_eq!(code.0, McpErrorCode(-32001).0);
-    } else { panic!("Esperado McpErrorResponse de autorização para query_read"); }
+    } else {
+        panic!("Esperado McpErrorResponse de autorização para query_read");
+    }
 
     // Usar o cliente com permissões de admin para deletar
-    let mut final_cleanup_client = test_env
-        .mcp_client_with_auth(Some("typedb:admin_databases"))
-        .await?;
+    let mut final_cleanup_client =
+        test_env.mcp_client_with_auth(Some("typedb:admin_databases")).await?;
     delete_test_db(&mut final_cleanup_client, &db_name).await;
     Ok(())
 }

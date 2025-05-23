@@ -24,8 +24,8 @@ use std::sync::Arc;
 use rmcp::model::{CallToolResult, Content, ErrorCode, ErrorData};
 use typedb_driver::TypeDBDriver;
 
-use crate::error::typedb_error_to_mcp_error_data;
 use super::params;
+use crate::error::typedb_error_to_mcp_error_data;
 
 /// Handler para a ferramenta `create_database`.
 ///
@@ -81,9 +81,7 @@ pub async fn handle_database_exists(
     match driver.databases().contains(params.name).await {
         Ok(exists) => {
             tracing::debug!(db.exists = %exists, "Verificação de existência do banco de dados concluída.");
-            Ok(CallToolResult::success(vec![Content::text(
-                exists.to_string(),
-            )]))
+            Ok(CallToolResult::success(vec![Content::text(exists.to_string())]))
         }
         Err(e) => {
             tracing::error!(error.message = %e, "Falha ao verificar existência do banco de dados.");
@@ -103,14 +101,16 @@ pub async fn handle_database_exists(
 /// `Ok(CallToolResult)` com um array JSON de nomes de bancos em caso de sucesso,
 /// ou `Err(ErrorData)` se ocorrer um erro.
 #[tracing::instrument(skip(driver))]
-pub async fn handle_list_databases(
-    driver: Arc<TypeDBDriver>,
-) -> Result<CallToolResult, ErrorData> {
+pub async fn handle_list_databases(driver: Arc<TypeDBDriver>) -> Result<CallToolResult, ErrorData> {
     tracing::info!("Executando ferramenta 'list_databases'");
     match driver.databases().all().await {
         Ok(databases) => {
             let names: Vec<String> = databases.iter().map(|db| db.name().to_string()).collect();
-            tracing::debug!(num_databases = names.len(), "Bancos de dados encontrados: {:?}", names);
+            tracing::debug!(
+                num_databases = names.len(),
+                "Bancos de dados encontrados: {:?}",
+                names
+            );
             match serde_json::to_string(&names) {
                 Ok(json_string) => Ok(CallToolResult::success(vec![Content::text(json_string)])),
                 Err(e) => {
@@ -178,9 +178,9 @@ mod tests {
     // use crate::tools::params::{
     //     CreateDatabaseParams, DatabaseExistsParams, DeleteDatabaseParams,
     // };
-    use typedb_driver::Error as TypeDBError;
     use rmcp::model::ErrorCode; // Necessário para o teste de erro de serialização
-    use std::borrow::Cow;      // Necessário para o teste de erro de serialização
+    use std::borrow::Cow;
+    use typedb_driver::Error as TypeDBError; // Necessário para o teste de erro de serialização
 
     #[tokio::test]
     async fn test_handle_create_database_success_flow() {
@@ -196,7 +196,7 @@ mod tests {
                     None => panic!("Esperado Content::text no índice 0"),
                 }
                 assert!(!result_content.is_error.unwrap_or(false));
-            },
+            }
             Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
         }
     }
@@ -214,7 +214,7 @@ mod tests {
                 assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
                 assert!(err_data.message.contains("Erro na ferramenta MCP 'create_database'"));
                 assert!(err_data.message.contains("Erro ao criar banco de dados"));
-            },
+            }
             Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
         }
     }
@@ -226,11 +226,9 @@ mod tests {
 
         assert!(successful_mcp_result.is_ok());
         match successful_mcp_result {
-            Ok(result_content) => {
-                match result_content.content[0].as_text() {
-                    Some(text_content) => assert_eq!(text_content.text, "true"),
-                    None => panic!("Esperado Content::text no índice 0"),
-                }
+            Ok(result_content) => match result_content.content[0].as_text() {
+                Some(text_content) => assert_eq!(text_content.text, "true"),
+                None => panic!("Esperado Content::text no índice 0"),
             },
             Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
         }
@@ -243,11 +241,9 @@ mod tests {
 
         assert!(successful_mcp_result.is_ok());
         match successful_mcp_result {
-            Ok(result_content) => {
-                match result_content.content[0].as_text() {
-                    Some(text_content) => assert_eq!(text_content.text, "false"),
-                    None => panic!("Esperado Content::text no índice 0"),
-                }
+            Ok(result_content) => match result_content.content[0].as_text() {
+                Some(text_content) => assert_eq!(text_content.text, "false"),
+                None => panic!("Esperado Content::text no índice 0"),
             },
             Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
         }
@@ -265,11 +261,9 @@ mod tests {
 
         assert!(successful_mcp_result.is_ok());
         match successful_mcp_result {
-            Ok(result_content) => {
-                match result_content.content[0].as_text() {
-                    Some(text_content) => assert_eq!(text_content.text, json_names),
-                    None => panic!("Esperado Content::text no índice 0"),
-                }
+            Ok(result_content) => match result_content.content[0].as_text() {
+                Some(text_content) => assert_eq!(text_content.text, json_names),
+                None => panic!("Esperado Content::text no índice 0"),
             },
             Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
         }
@@ -281,7 +275,9 @@ mod tests {
         let expected_mcp_error_data = ErrorData {
             code: ErrorCode::INTERNAL_ERROR,
             message: Cow::Owned(error_message.to_string()),
-            data: Some(serde_json::json!({"type": "SerializationError", "detail": "mock serde error"})),
+            data: Some(
+                serde_json::json!({"type": "SerializationError", "detail": "mock serde error"}),
+            ),
         };
         let handler_output: Result<CallToolResult, ErrorData> = Err(expected_mcp_error_data);
 
@@ -294,7 +290,7 @@ mod tests {
                     Some(data) => assert_eq!(data["type"], "SerializationError"),
                     None => panic!("Esperado campo data no erro"),
                 }
-            },
+            }
             Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
         }
     }
@@ -306,11 +302,9 @@ mod tests {
 
         assert!(successful_mcp_result.is_ok());
         match successful_mcp_result {
-            Ok(result_content) => {
-                match result_content.content[0].as_text() {
-                    Some(text_content) => assert_eq!(text_content.text, "OK"),
-                    None => panic!("Esperado Content::text no índice 0"),
-                }
+            Ok(result_content) => match result_content.content[0].as_text() {
+                Some(text_content) => assert_eq!(text_content.text, "OK"),
+                None => panic!("Esperado Content::text no índice 0"),
             },
             Err(e) => panic!("Esperado Ok, obteve Err: {e:?}"),
         }
@@ -327,7 +321,7 @@ mod tests {
         match handler_output {
             Err(err_data) => {
                 assert!(err_data.message.contains("DB não encontrado para deleção"));
-            },
+            }
             Ok(val) => panic!("Esperado Err, obteve Ok: {val:?}"),
         }
     }

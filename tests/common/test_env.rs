@@ -19,7 +19,6 @@ use super::constants;
 use super::docker_helpers::DockerComposeEnv;
 // Importar tipos necessários para initialize_mcp_session
 
-
 /// Representa um ambiente de teste de integração totalmente configurado e pronto para uso.
 ///
 /// Contém a instância do `DockerComposeEnv` para controle do Docker, e as URLs
@@ -68,15 +67,13 @@ impl TestEnvironment {
             );
         });
 
-        docker_env
-            .up(config_filename)
-            .with_context(|| {
-                format!(
-                    "Falha ao executar 'docker compose up' para projeto '{}' com config '{}'",
-                    docker_env.project_name(),
-                    config_filename
-                )
-            })?;
+        docker_env.up(config_filename).with_context(|| {
+            format!(
+                "Falha ao executar 'docker compose up' para projeto '{}' com config '{}'",
+                docker_env.project_name(),
+                config_filename
+            )
+        })?;
 
         let is_mcp_server_tls = config_filename == constants::SERVER_TLS_TEST_CONFIG_FILENAME;
         let is_oauth_enabled = config_filename == constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME;
@@ -89,7 +86,10 @@ impl TestEnvironment {
             constants::TYPEDB_SERVICE_NAME
         };
         docker_env
-            .wait_for_service_healthy(typedb_service_to_wait_for, constants::DEFAULT_TYPEDB_READY_TIMEOUT)
+            .wait_for_service_healthy(
+                typedb_service_to_wait_for,
+                constants::DEFAULT_TYPEDB_READY_TIMEOUT,
+            )
             .await
             .with_context(|| {
                 format!(
@@ -189,10 +189,7 @@ impl TestEnvironment {
         is_oauth_setup_for_this_test: bool,
         timeout: Duration,
     ) -> Result<()> {
-        let readyz_url = format!(
-            "{}://localhost:{}/readyz",
-            scheme, mcp_server_host_port
-        );
+        let readyz_url = format!("{}://localhost:{}/readyz", scheme, mcp_server_host_port);
         info!("Aguardando MCP Server em '{}' ficar pronto (timeout: {:?})", readyz_url, timeout);
 
         let client_builder = reqwest::Client::builder();
@@ -206,7 +203,10 @@ impl TestEnvironment {
         loop {
             if start_time.elapsed() >= timeout {
                 docker_env_ref.logs_all_services().unwrap_or_else(|e| {
-                    error!("Falha ao obter logs do Docker Compose durante timeout do /readyz: {}", e);
+                    error!(
+                        "Falha ao obter logs do Docker Compose durante timeout do /readyz: {}",
+                        e
+                    );
                 });
                 bail!("/readyz timeout para '{}' após {:?}", readyz_url, timeout);
             }
@@ -216,19 +216,38 @@ impl TestEnvironment {
                     let status_code = resp.status();
                     match resp.json::<serde_json::Value>().await {
                         Ok(json_body) => {
-                            trace!("/readyz em '{}': Status {}, Corpo: {:?}", readyz_url, status_code, json_body);
-                            let overall_status = json_body.get("status").and_then(|s| s.as_str()).unwrap_or("DOWN");
-                            let typedb_component_status = json_body.get("components").and_then(|c| c.get("typedb")).and_then(|t| t.as_str()).unwrap_or("DOWN");
-                            let jwks_component_status = json_body.get("components").and_then(|c| c.get("jwks")).and_then(|j| j.as_str()).unwrap_or("NOT_CONFIGURED");
+                            trace!(
+                                "/readyz em '{}': Status {}, Corpo: {:?}",
+                                readyz_url,
+                                status_code,
+                                json_body
+                            );
+                            let overall_status =
+                                json_body.get("status").and_then(|s| s.as_str()).unwrap_or("DOWN");
+                            let typedb_component_status = json_body
+                                .get("components")
+                                .and_then(|c| c.get("typedb"))
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("DOWN");
+                            let jwks_component_status = json_body
+                                .get("components")
+                                .and_then(|c| c.get("jwks"))
+                                .and_then(|j| j.as_str())
+                                .unwrap_or("NOT_CONFIGURED");
 
                             let typedb_ok = typedb_component_status.eq_ignore_ascii_case("UP");
                             let jwks_ok = if is_oauth_setup_for_this_test {
                                 jwks_component_status.eq_ignore_ascii_case("UP")
                             } else {
-                                jwks_component_status.eq_ignore_ascii_case("NOT_CONFIGURED") || !is_oauth_setup_for_this_test
+                                jwks_component_status.eq_ignore_ascii_case("NOT_CONFIGURED")
+                                    || !is_oauth_setup_for_this_test
                             };
 
-                            if status_code == StatusCode::OK && overall_status.eq_ignore_ascii_case("UP") && typedb_ok && jwks_ok {
+                            if status_code == StatusCode::OK
+                                && overall_status.eq_ignore_ascii_case("UP")
+                                && typedb_ok
+                                && jwks_ok
+                            {
                                 info!("/readyz para '{}' está UP e todas as dependências críticas configuradas para este teste estão prontas.", readyz_url);
                                 return Ok(());
                             } else {
@@ -241,8 +260,11 @@ impl TestEnvironment {
                         Err(e) => {
                             let body_text_result = client.get(&readyz_url).send().await;
                             let body_text = match body_text_result {
-                                Ok(r) => r.text().await.unwrap_or_else(|_| "Falha ao ler corpo como texto.".to_string()),
-                                Err(_) => "Falha ao re-requisitar para obter corpo como texto.".to_string(),
+                                Ok(r) => r.text().await.unwrap_or_else(|_| {
+                                    "Falha ao ler corpo como texto.".to_string()
+                                }),
+                                Err(_) => "Falha ao re-requisitar para obter corpo como texto."
+                                    .to_string(),
                             };
                             debug!("/readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Corpo como texto: '{}'. Aguardando...", readyz_url, status_code, e, body_text);
                         }
@@ -323,7 +345,11 @@ impl TestEnvironment {
                 nbf: Some(now),
                 iss: Some(constants::TEST_JWT_ISSUER.to_string()),
                 aud: Some(serde_json::json!(constants::TEST_JWT_AUDIENCE)),
-                scope: if effective_scopes.is_empty() { None } else { Some(effective_scopes.to_string()) },
+                scope: if effective_scopes.is_empty() {
+                    None
+                } else {
+                    Some(effective_scopes.to_string())
+                },
                 custom_claim: None,
             };
             Some(auth_helpers::generate_test_jwt(claims, JwtAuthAlgorithm::RS256))
@@ -346,7 +372,8 @@ impl TestEnvironment {
             client_info: client_impl,
         };
 
-        let client = TestMcpClient::connect_and_initialize( // CORRIGIDO: Chamada para connect_and_initialize
+        let client = TestMcpClient::connect_and_initialize(
+            // CORRIGIDO: Chamada para connect_and_initialize
             &self.mcp_ws_url,
             token_to_send,
             constants::DEFAULT_CONNECT_TIMEOUT,
@@ -354,9 +381,15 @@ impl TestEnvironment {
             initialize_params, // Passar os parâmetros de inicialização
         )
         .await
-        .with_context(|| format!("Falha ao conectar e inicializar TestMcpClient para {}", self.mcp_ws_url))?;
-        
-        info!("Cliente MCP conectado e inicializado para {}. Info do Servidor: {:?}", self.mcp_ws_url, client.get_server_info());
+        .with_context(|| {
+            format!("Falha ao conectar e inicializar TestMcpClient para {}", self.mcp_ws_url)
+        })?;
+
+        info!(
+            "Cliente MCP conectado e inicializado para {}. Info do Servidor: {:?}",
+            self.mcp_ws_url,
+            client.get_server_info()
+        );
         Ok(client)
     }
 }
@@ -372,7 +405,7 @@ impl Drop for TestEnvironment {
                 "Falha ao derrubar o ambiente Docker Compose no drop para projeto '{}': {}. \
                 Pode ser necessário limpar manualmente.",
                 self.docker_env.project_name(),
-                 e
+                e
             );
         } else {
             info!(
@@ -401,7 +434,11 @@ mod tests {
         .await
         .context("Falha no TestEnvironment::setup com config default")?;
 
-        info!("Ambiente de teste default (projeto: '{}') configurado com sucesso. MCP WS URL: {}", test_env.docker_env.project_name(), test_env.mcp_ws_url);
+        info!(
+            "Ambiente de teste default (projeto: '{}') configurado com sucesso. MCP WS URL: {}",
+            test_env.docker_env.project_name(),
+            test_env.mcp_ws_url
+        );
         assert!(!test_env.is_mcp_server_tls);
         assert!(!test_env.is_oauth_enabled);
         assert!(!test_env.is_typedb_tls_connection);
@@ -423,18 +460,28 @@ mod tests {
         .await
         .context("Falha no TestEnvironment::setup com config OAuth")?;
 
-        info!("Ambiente de teste OAuth (projeto: '{}') configurado. MCP WS URL: {}", test_env.docker_env.project_name(), test_env.mcp_ws_url);
+        info!(
+            "Ambiente de teste OAuth (projeto: '{}') configurado. MCP WS URL: {}",
+            test_env.docker_env.project_name(),
+            test_env.mcp_ws_url
+        );
         assert!(test_env.is_oauth_enabled);
         assert!(!test_env.is_mcp_server_tls);
         assert!(!test_env.is_typedb_tls_connection);
 
-        let mut client = test_env.mcp_client_with_auth(Some("test:scope read")).await
+        let mut client = test_env
+            .mcp_client_with_auth(Some("test:scope read"))
+            .await
             .context("Falha ao obter cliente MCP autenticado para ambiente OAuth")?;
-        
+
         let list_tools_result = client.list_tools(None).await;
-        assert!(list_tools_result.is_ok(), "list_tools falhou com cliente autenticado: {:?}", list_tools_result.err());
+        assert!(
+            list_tools_result.is_ok(),
+            "list_tools falhou com cliente autenticado: {:?}",
+            list_tools_result.err()
+        );
         info!("list_tools com OAuth e escopo 'test:scope read' bem-sucedido.");
-        
+
         Ok(())
     }
 
@@ -451,16 +498,24 @@ mod tests {
         .await
         .context("Falha no TestEnvironment::setup com config Server TLS")?;
 
-        info!("Ambiente de teste Server TLS (projeto: '{}') configurado. MCP WS URL: {}", test_env.docker_env.project_name(), test_env.mcp_ws_url);
+        info!(
+            "Ambiente de teste Server TLS (projeto: '{}') configurado. MCP WS URL: {}",
+            test_env.docker_env.project_name(),
+            test_env.mcp_ws_url
+        );
         assert!(test_env.is_mcp_server_tls);
         assert!(!test_env.is_oauth_enabled);
         assert!(!test_env.is_typedb_tls_connection);
-        
+
         match test_env.mcp_client_with_auth(None).await {
             Ok(mut client) => {
                 info!("Conexão WSS com servidor MCP TLS bem-sucedida.");
                 let list_tools_result = client.list_tools(None).await;
-                assert!(list_tools_result.is_ok(), "list_tools falhou com cliente conectado via WSS: {:?}", list_tools_result.err());
+                assert!(
+                    list_tools_result.is_ok(),
+                    "list_tools falhou com cliente conectado via WSS: {:?}",
+                    list_tools_result.err()
+                );
                 info!("list_tools com WSS bem-sucedido.");
             }
             Err(e) => {

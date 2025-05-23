@@ -24,8 +24,8 @@ use crate::config; // Para config::TracingConfig
 use opentelemetry::KeyValue; // opentelemetry v0.25.0
 use opentelemetry_otlp::WithExportConfig; // opentelemetry-otlp v0.20.0
 use opentelemetry_sdk::{
-    trace as sdktrace,           // opentelemetry-sdk v0.25.0
-    Resource,                    // opentelemetry-sdk v0.25.0
+    trace as sdktrace, // opentelemetry-sdk v0.25.0
+    Resource,          // opentelemetry-sdk v0.25.0
 };
 // opentelemetry-semantic-conventions v0.17.0
 use opentelemetry_semantic_conventions::resource as semconv_resource;
@@ -46,9 +46,8 @@ use opentelemetry_semantic_conventions::resource as semconv_resource;
 /// # Erros
 /// Pode retornar `sdktrace::TraceError` se houver problemas ao configurar o pipeline OTLP.
 #[tracing::instrument(skip(config), name = "init_opentelemetry_tracing_pipeline")]
-pub fn init_tracing_pipeline(
-    config: &config::TracingConfig,
-) -> Result<(), sdktrace::TraceError> { // Corrigido para sdktrace::TraceError
+pub fn init_tracing_pipeline(config: &config::TracingConfig) -> Result<(), sdktrace::TraceError> {
+    // Corrigido para sdktrace::TraceError
     if !config.enabled {
         tracing::info!("OpenTelemetry tracing está desabilitado na configuração.");
         return Ok(());
@@ -94,14 +93,23 @@ pub fn init_tracing_pipeline(
                 let ratio = config.sampler_arg.parse().unwrap_or(1.0);
                 sdktrace::Sampler::TraceIdRatioBased(ratio)
             }
-            "parentbased_always_on" => sdktrace::Sampler::ParentBased(Box::new(sdktrace::Sampler::AlwaysOn)),
-            "parentbased_always_off" => sdktrace::Sampler::ParentBased(Box::new(sdktrace::Sampler::AlwaysOff)),
+            "parentbased_always_on" => {
+                sdktrace::Sampler::ParentBased(Box::new(sdktrace::Sampler::AlwaysOn))
+            }
+            "parentbased_always_off" => {
+                sdktrace::Sampler::ParentBased(Box::new(sdktrace::Sampler::AlwaysOff))
+            }
             "parentbased_traceidratio" => {
                 let ratio = config.sampler_arg.parse().unwrap_or(1.0);
-                sdktrace::Sampler::ParentBased(Box::new(sdktrace::Sampler::TraceIdRatioBased(ratio)))
+                sdktrace::Sampler::ParentBased(Box::new(sdktrace::Sampler::TraceIdRatioBased(
+                    ratio,
+                )))
             }
             _ => {
-                tracing::warn!("Sampler de tracing desconhecido ou não especificado ('{}'), usando AlwaysOn.", config.sampler);
+                tracing::warn!(
+                    "Sampler de tracing desconhecido ou não especificado ('{}'), usando AlwaysOn.",
+                    config.sampler
+                );
                 sdktrace::Sampler::AlwaysOn
             }
         })
@@ -157,7 +165,10 @@ mod tests {
         match result {
             Err(sdktrace::TraceError::Other(s)) => {
                 let msg = format!("{s}");
-                assert!(msg.contains("OTEL_EXPORTER_OTLP_ENDPOINT"), "Mensagem de erro inesperada: {msg}");
+                assert!(
+                    msg.contains("OTEL_EXPORTER_OTLP_ENDPOINT"),
+                    "Mensagem de erro inesperada: {msg}"
+                );
             }
             Err(e) => {
                 panic!("Erro inesperado para endpoint ausente: {e:?}");
@@ -184,8 +195,8 @@ mod tests {
         // global::tracer_provider() retorna Arc<dyn TracerProvider>
         // TracerProvider (trait) tem o método tracer()
         let _ = global::tracer_provider().tracer("test_tracer_init_success"); // suprime warning de variável não usada
-        // Não há método público para inspecionar o nome da instrumentação diretamente.
-        // Apenas garantir que não houve erro já é suficiente.
+                                                                              // Não há método público para inspecionar o nome da instrumentação diretamente.
+                                                                              // Apenas garantir que não houve erro já é suficiente.
 
         shutdown_tracer_provider();
     }
@@ -200,7 +211,11 @@ mod tests {
             sampler_arg: "0.0001".to_string(),
         };
         let init_result = init_tracing_pipeline(&config);
-        assert!(init_result.is_ok(), "init_tracing_pipeline falhou para traceidratio: {:?}", init_result.err());
+        assert!(
+            init_result.is_ok(),
+            "init_tracing_pipeline falhou para traceidratio: {:?}",
+            init_result.err()
+        );
         shutdown_tracer_provider();
     }
 
@@ -214,7 +229,11 @@ mod tests {
             sampler_arg: "1.0".to_string(),
         };
         let init_result = init_tracing_pipeline(&config);
-        assert!(init_result.is_ok(), "init_tracing_pipeline falhou com sampler desconhecido: {:?}", init_result.err());
+        assert!(
+            init_result.is_ok(),
+            "init_tracing_pipeline falhou com sampler desconhecido: {:?}",
+            init_result.err()
+        );
         shutdown_tracer_provider();
     }
 }

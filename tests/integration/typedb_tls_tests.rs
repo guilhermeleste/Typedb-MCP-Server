@@ -7,10 +7,10 @@
 
 use crate::common::{
     constants,
-    test_env::TestEnvironment,
     // Helpers como create_test_db, delete_test_db, unique_db_name são reexportados por common
-    create_test_db, 
-    delete_test_db, 
+    create_test_db,
+    delete_test_db,
+    test_env::TestEnvironment,
     unique_db_name,
 };
 use anyhow::{Context as AnyhowContext, Result};
@@ -61,10 +61,7 @@ async fn test_mcp_server_connects_to_typedb_with_tls_successfully() -> Result<()
         "Falha ao criar banco de dados quando o MCP Server deveria estar conectado ao TypeDB via TLS. Erro: {:?}",
         create_result.err()
     );
-    info!(
-        "Banco de dados '{}' criado com sucesso sobre conexão TypeDB TLS.",
-        db_name
-    );
+    info!("Banco de dados '{}' criado com sucesso sobre conexão TypeDB TLS.", db_name);
 
     // Listar bancos para confirmar
     let list_result = client.call_tool("list_databases", None).await?;
@@ -102,24 +99,31 @@ async fn test_mcp_server_fails_to_connect_to_typedb_tls_with_wrong_ca() -> Resul
     );
     // Se o arquivo `typedb_tls_wrong_ca.test.toml` não existir, o `TestEnvironment::setup` abaixo falhará
     // ao tentar carregar uma config inexistente ou o servidor MCP falhará ao iniciar.
-    
+
     // Tentativa de setup (espera-se que o /readyz do MCP server falhe ou nunca fique UP)
     let test_env_result = TestEnvironment::setup(
         "mcp_to_typedb_tls_badca",
         config_filename_wrong_ca, // Este arquivo precisaria existir em tests/test_configs/
-    ).await;
+    )
+    .await;
 
     if test_env_result.is_ok() {
         let test_env = test_env_result.unwrap();
         // Se o setup passou, o /readyz do MCP pode estar UP, mas o componente TypeDB deve estar DOWN.
-        let readyz_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
-        let client = reqwest::Client::builder().danger_accept_invalid_certs(test_env.is_mcp_server_tls).build()?;
+        let readyz_url =
+            format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(test_env.is_mcp_server_tls)
+            .build()?;
         let resp = client.get(&readyz_url).send().await?.json::<serde_json::Value>().await?;
-        
+
         assert_eq!(resp.get("status").and_then(|s|s.as_str()), Some("DOWN"),
             "MCP Server deveria estar DOWN no /readyz se não conseguiu conectar ao TypeDB TLS com CA errada.");
-        assert_eq!(resp.get("components").and_then(|c|c.get("typedb")).and_then(|s|s.as_str()), Some("DOWN"),
-            "Componente TypeDB deveria estar DOWN no /readyz.");
+        assert_eq!(
+            resp.get("components").and_then(|c| c.get("typedb")).and_then(|s| s.as_str()),
+            Some("DOWN"),
+            "Componente TypeDB deveria estar DOWN no /readyz."
+        );
         info!("MCP Server /readyz indicou falha na conexão com TypeDB (CA errada), como esperado.");
     } else {
         info!("TestEnvironment::setup falhou como esperado, pois o servidor MCP provavelmente não conseguiu iniciar/ficar pronto devido à falha de conexão TLS com o TypeDB (CA errada). Erro: {:?}", test_env_result.err());
@@ -174,27 +178,35 @@ async fn test_mcp_server_fails_if_typedb_is_not_tls_but_mcp_expects_tls() -> Res
     */
 
     let config_filename_expect_tls = "typedb_expect_tls_got_plain.test.toml"; // Precisa criar este arquivo
-     warn!(
+    warn!(
         "Teste '{}' está INCOMPLETO e será IGNORADO até que o arquivo de configuração '{}' \
         seja criado e o comportamento de falha do servidor seja confirmado.",
-        "test_mcp_server_fails_if_typedb_is_not_tls_but_mcp_expects_tls", config_filename_expect_tls
+        "test_mcp_server_fails_if_typedb_is_not_tls_but_mcp_expects_tls",
+        config_filename_expect_tls
     );
 
-    let test_env_result = TestEnvironment::setup(
-        "mcp_expect_tls_typedb_plain",
-        config_filename_expect_tls,
-    ).await;
+    let test_env_result =
+        TestEnvironment::setup("mcp_expect_tls_typedb_plain", config_filename_expect_tls).await;
 
     if test_env_result.is_ok() {
         let test_env = test_env_result.unwrap();
-        let readyz_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
-        let client = reqwest::Client::builder().danger_accept_invalid_certs(test_env.is_mcp_server_tls).build()?;
+        let readyz_url =
+            format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
+        let client = reqwest::Client::builder()
+            .danger_accept_invalid_certs(test_env.is_mcp_server_tls)
+            .build()?;
         let resp = client.get(&readyz_url).send().await?.json::<serde_json::Value>().await?;
-        
-        assert_eq!(resp.get("status").and_then(|s|s.as_str()), Some("DOWN"),
-            "MCP Server deveria estar DOWN no /readyz se tentou TLS com TypeDB não-TLS.");
-        assert_eq!(resp.get("components").and_then(|c|c.get("typedb")).and_then(|s|s.as_str()), Some("DOWN"),
-            "Componente TypeDB deveria estar DOWN no /readyz.");
+
+        assert_eq!(
+            resp.get("status").and_then(|s| s.as_str()),
+            Some("DOWN"),
+            "MCP Server deveria estar DOWN no /readyz se tentou TLS com TypeDB não-TLS."
+        );
+        assert_eq!(
+            resp.get("components").and_then(|c| c.get("typedb")).and_then(|s| s.as_str()),
+            Some("DOWN"),
+            "Componente TypeDB deveria estar DOWN no /readyz."
+        );
         info!("MCP Server /readyz indicou falha na conexão com TypeDB (esperava TLS, obteve plain), como esperado.");
     } else {
         info!("TestEnvironment::setup falhou como esperado, pois o servidor MCP provavelmente não conseguiu iniciar/ficar pronto devido à falha de handshake TLS com o TypeDB. Erro: {:?}", test_env_result.err());

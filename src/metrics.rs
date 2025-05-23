@@ -27,9 +27,7 @@
 //! sejam corretamente estabelecidos antes de seu primeiro uso.
 
 // metrics v0.24.2: APIs validadas
-use metrics::{
-    describe_counter, describe_gauge, describe_histogram, SharedString, Unit,
-};
+use metrics::{describe_counter, describe_gauge, describe_histogram, SharedString, Unit};
 
 /// Prefixo global para todos os nomes de métricas expostas por esta aplicação.
 pub const METRIC_PREFIX: &str = "typedb_mcp_server_";
@@ -70,8 +68,7 @@ pub const SERVER_READY_STATUS: &str = "ready_status";
 /// Nome da métrica: Histograma para a distribuição da duração das chamadas de ferramentas MCP, em segundos.
 pub const TOOL_CALL_DURATION_SECONDS: &str = "tool_call_duration_seconds";
 /// Nome da métrica: Histograma para a distribuição da duração da validação de tokens `OAuth2`, em segundos.
-pub const OAUTH_TOKEN_VALIDATION_DURATION_SECONDS: &str =
-    "oauth_token_validation_duration_seconds";
+pub const OAUTH_TOKEN_VALIDATION_DURATION_SECONDS: &str = "oauth_token_validation_duration_seconds";
 /// Nome da métrica: Histograma para a distribuição da duração das requisições ao `TypeDB`, em segundos.
 pub const TYPEDB_REQUEST_DURATION_SECONDS: &str = "typedb_request_duration_seconds";
 /// Nome da métrica: Histograma para a distribuição da duração das buscas ao JWKS, em segundos.
@@ -101,7 +98,9 @@ pub fn register_metrics_descriptions() {
     describe_counter!(
         format!("{}{}", METRIC_PREFIX, WEBSOCKET_CONNECTIONS_TOTAL),
         Unit::Count,
-        SharedString::from("Número total de conexões WebSocket estabelecidas desde o início do servidor.")
+        SharedString::from(
+            "Número total de conexões WebSocket estabelecidas desde o início do servidor."
+        )
     );
     describe_counter!(
         format!("{}{}", METRIC_PREFIX, TOOL_CALLS_TOTAL),
@@ -111,7 +110,9 @@ pub fn register_metrics_descriptions() {
     describe_counter!(
         format!("{}{}", METRIC_PREFIX, OAUTH_TOKENS_VALIDATED_TOTAL),
         Unit::Count,
-        SharedString::from("Número total de tokens OAuth2 processados para validação, com label de status.")
+        SharedString::from(
+            "Número total de tokens OAuth2 processados para validação, com label de status."
+        )
     );
     describe_counter!(
         format!("{}{}", METRIC_PREFIX, TYPEDB_REQUESTS_TOTAL),
@@ -148,7 +149,9 @@ pub fn register_metrics_descriptions() {
     describe_gauge!(
         format!("{}{}", METRIC_PREFIX, SERVER_READY_STATUS),
         Unit::Count,
-        SharedString::from("Status de prontidão do servidor (1 se pronto para receber tráfego, 0 caso contrário).")
+        SharedString::from(
+            "Status de prontidão do servidor (1 se pronto para receber tráfego, 0 caso contrário)."
+        )
     );
 
     // Histogramas
@@ -179,7 +182,9 @@ pub fn register_metrics_descriptions() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use metrics::{Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, Unit, set_global_recorder};
+    use metrics::{
+        set_global_recorder, Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, Unit,
+    };
     use serial_test::serial;
     use std::sync::{Arc, Mutex};
 
@@ -232,11 +237,17 @@ mod tests {
             });
         }
 
-        fn register_counter(&self, _key: &Key, _metadata: &Metadata<'_>) -> Counter { Counter::noop() }
-        fn register_gauge(&self, _key: &Key, _metadata: &Metadata<'_>) -> Gauge { Gauge::noop() }
-        fn register_histogram(&self, _key: &Key, _metadata: &Metadata<'_>) -> Histogram { Histogram::noop() }
+        fn register_counter(&self, _key: &Key, _metadata: &Metadata<'_>) -> Counter {
+            Counter::noop()
+        }
+        fn register_gauge(&self, _key: &Key, _metadata: &Metadata<'_>) -> Gauge {
+            Gauge::noop()
+        }
+        fn register_histogram(&self, _key: &Key, _metadata: &Metadata<'_>) -> Histogram {
+            Histogram::noop()
+        }
     }
-    
+
     fn install_test_recorder(recorder: Arc<MockMetricsRecorder>) -> bool {
         match set_global_recorder(recorder) {
             Ok(()) => {
@@ -284,11 +295,8 @@ mod tests {
             format!("{METRIC_PREFIX}{JWKS_KEYS_CACHED_COUNT}"),
             "typedb_mcp_server_jwks_keys_cached_count"
         );
+        assert_eq!(format!("{METRIC_PREFIX}{SERVER_INFO_GAUGE}"), "typedb_mcp_server_info");
         assert_eq!(
-            format!("{METRIC_PREFIX}{SERVER_INFO_GAUGE}"),
-            "typedb_mcp_server_info"
-        );
-         assert_eq!(
             format!("{METRIC_PREFIX}{SERVER_READY_STATUS}"),
             "typedb_mcp_server_ready_status"
         );
@@ -323,9 +331,9 @@ mod tests {
         let Ok(descriptions) = mock_recorder.descriptions.lock() else {
             panic!("Falha ao adquirir lock do descriptions no teste: lock envenenado");
         };
-        
+
         let num_expected_metrics = 4 + 4 + 6;
-        
+
         assert_eq!(
             descriptions.len(),
             num_expected_metrics,
@@ -338,12 +346,14 @@ mod tests {
         let expected_websocket_total = MetricDescriptionCall {
             name: format!("{METRIC_PREFIX}{WEBSOCKET_CONNECTIONS_TOTAL}"),
             unit: Some(Unit::Count),
-            description: "Número total de conexões WebSocket estabelecidas desde o início do servidor.".to_string(),
+            description:
+                "Número total de conexões WebSocket estabelecidas desde o início do servidor."
+                    .to_string(),
         };
         assert!(
             descriptions.contains(&expected_websocket_total),
             "Descrição para WEBSOCKET_CONNECTIONS_TOTAL não encontrada ou incorreta. Detalhe: {:?}",
-            descriptions.iter().find(|d|d.name == expected_websocket_total.name)
+            descriptions.iter().find(|d| d.name == expected_websocket_total.name)
         );
 
         let expected_tool_duration = MetricDescriptionCall {
@@ -354,7 +364,7 @@ mod tests {
         assert!(
             descriptions.contains(&expected_tool_duration),
             "Descrição para TOOL_CALL_DURATION_SECONDS não encontrada ou incorreta. Detalhe: {:?}",
-            descriptions.iter().find(|d|d.name == expected_tool_duration.name)
+            descriptions.iter().find(|d| d.name == expected_tool_duration.name)
         );
 
         let expected_server_info = MetricDescriptionCall {
@@ -365,7 +375,7 @@ mod tests {
         assert!(
             descriptions.contains(&expected_server_info),
             "Descrição para SERVER_INFO_GAUGE não encontrada ou incorreta. Detalhe: {:?}",
-            descriptions.iter().find(|d|d.name == expected_server_info.name)
+            descriptions.iter().find(|d| d.name == expected_server_info.name)
         );
     }
 }

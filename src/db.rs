@@ -78,12 +78,8 @@ pub async fn connect(
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| TypeDBDriver::DEFAULT_ADDRESS.to_string());
 
-    let username = username_opt
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "admin".to_string());
-    let password = password_opt
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "password".to_string());
+    let username = username_opt.filter(|s| !s.is_empty()).unwrap_or_else(|| "admin".to_string());
+    let password = password_opt.filter(|s| !s.is_empty()).unwrap_or_else(|| "password".to_string());
 
     let credentials = Credentials::new(&username, &password);
 
@@ -114,7 +110,9 @@ pub async fn connect(
             );
             DriverOptions::new(true, Some(ca_path))?
         } else {
-            tracing::error!("Conexão TLS com TypeDB habilitada, mas TYPEDB_TLS_CA_PATH não foi fornecido.");
+            tracing::error!(
+                "Conexão TLS com TypeDB habilitada, mas TYPEDB_TLS_CA_PATH não foi fornecido."
+            );
             return Err(TypeDBError::Other(
                 "TYPEDB_TLS_CA_PATH é obrigatório quando TLS para TypeDB está habilitado."
                     .to_string(),
@@ -134,10 +132,7 @@ pub async fn connect(
 
     match TypeDBDriver::new(&address, credentials, driver_options).await {
         Ok(driver) => {
-            tracing::info!(
-                "Conexão com TypeDB em {} estabelecida com sucesso.",
-                address
-            );
+            tracing::info!("Conexão com TypeDB em {} estabelecida com sucesso.", address);
             Ok(driver)
         }
         Err(e) => {
@@ -173,25 +168,20 @@ mod tests {
                 driver.force_close()?;
                 Ok(())
             }
-            Err(e) => {
-                Err(format!(
-                    "Falha ao conectar com credenciais e endereço default (sem TLS): {e:?}"
-                ).into())
-            }
+            Err(e) => Err(format!(
+                "Falha ao conectar com credenciais e endereço default (sem TLS): {e:?}"
+            )
+            .into()),
         }
     }
 
     // Similar ao anterior, mas com endereço explícito.
     #[tokio::test]
     #[ignore]
-    async fn test_connect_specific_address_no_tls_success() -> Result<(), Box<dyn std::error::Error>> {
-        let driver_result = connect(
-            Some(TypeDBDriver::DEFAULT_ADDRESS.to_string()),
-            None,
-            None,
-            false,
-            None,
-        ).await;
+    async fn test_connect_specific_address_no_tls_success() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let driver_result =
+            connect(Some(TypeDBDriver::DEFAULT_ADDRESS.to_string()), None, None, false, None).await;
         match driver_result {
             Ok(driver) => {
                 assert!(driver.is_open(), "Driver deveria estar aberto após conexão bem-sucedida");
@@ -199,9 +189,7 @@ mod tests {
                 Ok(())
             }
             Err(e) => {
-                Err(format!(
-                    "Falha ao conectar com endereço específico (sem TLS): {e:?}"
-                ).into())
+                Err(format!("Falha ao conectar com endereço específico (sem TLS): {e:?}").into())
             }
         }
     }
@@ -216,17 +204,16 @@ mod tests {
             None,
         )
         .await;
-        assert!(
-            driver_result.is_err(),
-            "Conexão com endereço inválido (sem TLS) deveria falhar."
-        );
+        assert!(driver_result.is_err(), "Conexão com endereço inválido (sem TLS) deveria falhar.");
         // Verifica o tipo de erro, se possível e estável
         match driver_result {
             Err(e) => match e {
                 TypeDBDriverError::Connection(
                     typedb_driver::error::ConnectionError::ServerConnectionFailed { .. }
                     | typedb_driver::error::ConnectionError::ConnectionFailed
-                    | typedb_driver::error::ConnectionError::ServerConnectionFailedStatusError { .. },
+                    | typedb_driver::error::ConnectionError::ServerConnectionFailedStatusError {
+                        ..
+                    },
                 ) => {
                     // Erro esperado
                 }
@@ -268,9 +255,7 @@ mod tests {
                 );
             }
             Ok(_) => {
-                panic!(
-                    "Esperado erro de CA path obrigatório, mas a conexão retornou Ok()"
-                );
+                panic!("Esperado erro de CA path obrigatório, mas a conexão retornou Ok()");
             }
         }
     }
@@ -304,8 +289,7 @@ mod tests {
         // Garantir que o arquivo não existe (improvável, mas para segurança)
         let _ = std::fs::remove_file(non_existent_path);
 
-        let result =
-            connect(None, None, None, true, Some(non_existent_path.to_string())).await;
+        let result = connect(None, None, None, true, Some(non_existent_path.to_string())).await;
         assert!(result.is_err());
         match result {
             Err(TypeDBDriverError::Other(msg)) => {
@@ -319,9 +303,7 @@ mod tests {
                 );
             }
             Ok(_) => {
-                panic!(
-                    "Esperado erro de arquivo CA não encontrado, mas a conexão retornou Ok()"
-                );
+                panic!("Esperado erro de arquivo CA não encontrado, mas a conexão retornou Ok()");
             }
         }
     }
@@ -329,7 +311,8 @@ mod tests {
     // Este teste verifica a lógica de configuração do DriverOptions quando um CA válido (dummy) é fornecido.
     // Ele não tenta uma conexão real, pois isso exigiria um servidor TypeDB com TLS e este CA específico.
     #[tokio::test]
-    async fn test_connect_tls_enabled_valid_ca_file_configures_options_correctly_but_connection_may_fail() -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_connect_tls_enabled_valid_ca_file_configures_options_correctly_but_connection_may_fail(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempdir()?;
         let ca_file_path = dir.path().join("dummy_ca.pem");
         let mut file = File::create(&ca_file_path)?;
@@ -342,7 +325,8 @@ mod tests {
         // Usamos um endereço que provavelmente não terá um servidor TypeDB com TLS esperando este CA.
         // O objetivo é testar se a lógica de `DriverOptions::new` é chamada corretamente.
         // A falha na conexão é esperada aqui, pois não há servidor real configurado.
-        let ca_file_path_str = ca_file_path.to_str().ok_or("Falha ao converter path do CA para string")?.to_string();
+        let ca_file_path_str =
+            ca_file_path.to_str().ok_or("Falha ao converter path do CA para string")?.to_string();
         // O pânico pode ocorrer em thread de background do gRPC worker devido à dependência.
         // O objetivo é garantir que a configuração de TLS é tentada e a falha é tratada como erro.
         let result = std::panic::catch_unwind(|| {

@@ -21,11 +21,12 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use percent_encoding::percent_decode_str;
 use rmcp::model::{
-    AnnotateAble, ErrorCode, ErrorData, RawResource, RawResourceTemplate, Resource, ResourceTemplate,
+    AnnotateAble, ErrorCode, ErrorData, RawResource, RawResourceTemplate, Resource,
+    ResourceTemplate,
 };
 use typedb_driver::TypeDBDriver;
-use percent_encoding::percent_decode_str;
 
 use crate::error::typedb_error_to_mcp_error_data;
 
@@ -86,7 +87,8 @@ const SCHEMA_TEMPLATE_DESCRIPTION: &str = "Retorna o esquema TypeQL para o banco
 /// Retorna uma lista de `Resource` para os recursos estáticos definidos.
 ///
 /// Estes recursos fornecem informações gerais sobre `TypeQL` e o uso do servidor.
-#[must_use] pub fn list_static_resources() -> Vec<Resource> {
+#[must_use]
+pub fn list_static_resources() -> Vec<Resource> {
     // Campos de RawResource (uri, name, description, mime_type) são String em rmcp 0.1.5
     // Conversão explícita de usize para u32 para o campo size.
     // Se o conteúdo exceder u32::MAX, loga warning e omite o campo size (None).
@@ -99,7 +101,9 @@ const SCHEMA_TEMPLATE_DESCRIPTION: &str = "Retorna o esquema TypeQL para o banco
     );
     let tx_guide_size = u32::try_from(TRANSACTIONS_GUIDE_CONTENT.len()).map_or_else(
         |_| {
-            tracing::warn!("Conteúdo TRANSACTIONS_GUIDE_CONTENT excede u32::MAX, omitindo campo size.");
+            tracing::warn!(
+                "Conteúdo TRANSACTIONS_GUIDE_CONTENT excede u32::MAX, omitindo campo size."
+            );
             None
         },
         Some,
@@ -127,7 +131,8 @@ const SCHEMA_TEMPLATE_DESCRIPTION: &str = "Retorna o esquema TypeQL para o banco
 /// Retorna uma lista de `ResourceTemplate` para os recursos dinâmicos.
 ///
 /// Atualmente, inclui um template para obter o esquema de um banco de dados.
-#[must_use] pub fn list_resource_templates() -> Vec<ResourceTemplate> {
+#[must_use]
+pub fn list_resource_templates() -> Vec<ResourceTemplate> {
     // Campos de RawResourceTemplate são String em rmcp 0.1.5
     vec![RawResourceTemplate {
         uri_template: SCHEMA_TEMPLATE_URI_TEMPLATE.to_string(),
@@ -170,7 +175,8 @@ fn parse_schema_uri(uri_str: &str) -> Result<(String, String), ErrorData> {
     if !uri_str.starts_with("schema://current/") {
         return Err(ErrorData {
             code: ErrorCode::RESOURCE_NOT_FOUND,
-            message: Cow::Owned(format!( // Cow::Owned para String dinâmica
+            message: Cow::Owned(format!(
+                // Cow::Owned para String dinâmica
                 "URI de esquema inválida: '{uri_str}'. Deve começar com 'schema://current/'."
             )),
             data: None,
@@ -195,10 +201,15 @@ fn parse_schema_uri(uri_str: &str) -> Result<(String, String), ErrorData> {
         if c == '%' {
             let h1 = chars.peek().copied();
             let h2 = {
-                if h1.is_some() { chars.nth(0) } else { None }
+                if h1.is_some() {
+                    chars.nth(0)
+                } else {
+                    None
+                }
             };
             if !(h1.map(|x| x.is_ascii_hexdigit()).unwrap_or(false)
-                && h2.map(|x| x.is_ascii_hexdigit()).unwrap_or(false)) {
+                && h2.map(|x| x.is_ascii_hexdigit()).unwrap_or(false))
+            {
                 return Err(ErrorData {
                     code: ErrorCode::INVALID_PARAMS,
                     message: Cow::Owned(format!(
@@ -307,13 +318,10 @@ mod tests {
         match query_types_res_opt {
             Some(query_types_res) => {
                 assert_eq!(query_types_res.name, QUERY_TYPES_NAME);
-                assert_eq!(
-                    query_types_res.description.as_deref(),
-                    Some(QUERY_TYPES_DESCRIPTION)
-                );
+                assert_eq!(query_types_res.description.as_deref(), Some(QUERY_TYPES_DESCRIPTION));
                 assert_eq!(query_types_res.mime_type.as_deref(), Some("text/plain"));
                 assert_eq!(query_types_res.size, u32::try_from(QUERY_TYPES_CONTENT.len()).ok());
-            },
+            }
             None => panic!("Recurso QUERY_TYPES_URI não encontrado."),
         }
     }
@@ -341,7 +349,7 @@ mod tests {
             Ok((db, stype)) => {
                 assert_eq!(db, "my_db");
                 assert_eq!(stype, "full");
-            },
+            }
             Err(e) => panic!("Esperado Ok para schema://current/my_db, obteve Err: {e:?}"),
         }
 
@@ -359,8 +367,10 @@ mod tests {
             Ok((db, stype)) => {
                 assert_eq!(db, "mydb");
                 assert_eq!(stype, "full");
-            },
-            Err(e) => panic!("Esperado Ok para schema://current/mydb?type=invalid_type_value, obteve Err: {e:?}"),
+            }
+            Err(e) => panic!(
+                "Esperado Ok para schema://current/mydb?type=invalid_type_value, obteve Err: {e:?}"
+            ),
         }
     }
 

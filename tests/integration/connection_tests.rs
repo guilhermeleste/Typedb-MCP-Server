@@ -44,7 +44,7 @@ async fn test_websocket_connection_succeeds_default_config() -> Result<()> {
 async fn test_websocket_connection_fails_to_wrong_path() -> Result<()> {
     let test_env =
         TestEnvironment::setup("conn_ws_badpath", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
-    
+
     // Determinar o esquema e a porta do host com base na configuração do test_env
     let (scheme_ws, host_port_str) = if test_env.is_mcp_server_tls {
         ("wss", constants::MCP_SERVER_HOST_HTTPS_PORT.to_string())
@@ -54,8 +54,7 @@ async fn test_websocket_connection_fails_to_wrong_path() -> Result<()> {
 
     let bad_ws_url = format!(
         "{}://localhost:{}/wrong/mcp/path", // Caminho intencionalmente errado
-        scheme_ws,
-        host_port_str
+        scheme_ws, host_port_str
     );
 
     info!(
@@ -84,11 +83,8 @@ async fn test_websocket_connection_fails_to_wrong_path() -> Result<()> {
     )
     .await;
 
-    assert!(
-        client_result.is_err(),
-        "Conexão com path WS inválido deveria falhar."
-    );
-    
+    assert!(client_result.is_err(), "Conexão com path WS inválido deveria falhar.");
+
     // Para inspecionar o erro sem consumi-lo para o log, e depois para o match:
     let err_for_log = match &client_result {
         Ok(_) => "Sucesso inesperado".to_string(),
@@ -110,10 +106,7 @@ async fn test_websocket_connection_fails_to_wrong_path() -> Result<()> {
             // ou um erro TLS/TCP pode ocorrer antes que uma resposta HTTP 404 seja formada.
         }
         Err(other_err) => {
-            panic!(
-                "Tipo de erro inesperado para path WS inválido: {:?}",
-                other_err
-            );
+            panic!("Tipo de erro inesperado para path WS inválido: {:?}", other_err);
         }
         Ok(_) => {
             panic!("Conexão com path WS inválido deveria ter falhado, mas obteve Ok.");
@@ -125,7 +118,8 @@ async fn test_websocket_connection_fails_to_wrong_path() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_tls_connection_succeeds_with_wss() -> Result<()> {
-    let test_env = TestEnvironment::setup( // Corrigido
+    let test_env = TestEnvironment::setup(
+        // Corrigido
         "conn_server_tls_ok",
         constants::SERVER_TLS_TEST_CONFIG_FILENAME,
     )
@@ -156,7 +150,8 @@ async fn test_server_tls_connection_succeeds_with_wss() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_server_tls_connection_fails_with_ws() -> Result<()> {
-    let test_env = TestEnvironment::setup( // Corrigido
+    let test_env = TestEnvironment::setup(
+        // Corrigido
         "conn_server_tls_ws_fail",
         constants::SERVER_TLS_TEST_CONFIG_FILENAME,
     )
@@ -164,9 +159,9 @@ async fn test_server_tls_connection_fails_with_ws() -> Result<()> {
     assert!(test_env.is_mcp_server_tls);
 
     let ws_url_to_https_port = format!(
-        "ws://localhost:{}{}", 
+        "ws://localhost:{}{}",
         constants::MCP_SERVER_HOST_HTTPS_PORT, // Conectando à porta HTTPS...
-        constants::MCP_SERVER_DEFAULT_WEBSOCKET_PATH // ...mas com esquema ws://
+        constants::MCP_SERVER_DEFAULT_WEBSOCKET_PATH  // ...mas com esquema ws://
     );
 
     info!(
@@ -195,10 +190,7 @@ async fn test_server_tls_connection_fails_with_ws() -> Result<()> {
     )
     .await;
 
-    assert!(
-        client_result.is_err(),
-        "Conexão WS para porta HTTPS do servidor deveria falhar."
-    );
+    assert!(client_result.is_err(), "Conexão WS para porta HTTPS do servidor deveria falhar.");
     info!(
         "Conexão WS para porta HTTPS falhou como esperado: {:?}",
         client_result.err().unwrap() // unwrap aqui é seguro devido ao assert! acima
@@ -209,7 +201,8 @@ async fn test_server_tls_connection_fails_with_ws() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_oauth_connection_succeeds_with_valid_token() -> Result<()> {
-    let test_env = TestEnvironment::setup( // Corrigido
+    let test_env = TestEnvironment::setup(
+        // Corrigido
         "conn_oauth_valid_token",
         constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME,
     )
@@ -234,7 +227,8 @@ async fn test_oauth_connection_succeeds_with_valid_token() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_oauth_connection_fails_with_invalid_token_signature() -> Result<()> {
-    let test_env = TestEnvironment::setup( // Corrigido
+    let test_env = TestEnvironment::setup(
+        // Corrigido
         "conn_oauth_bad_sig",
         constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME,
     )
@@ -252,9 +246,14 @@ async fn test_oauth_connection_fails_with_invalid_token_signature() -> Result<()
         iss: Some(constants::TEST_JWT_ISSUER.to_string()),
         aud: Some(serde_json::json!(constants::TEST_JWT_AUDIENCE)),
         scope: Some("test:scope".to_string()),
-        iat: Some(now), nbf: Some(now), custom_claim: None,
+        iat: Some(now),
+        nbf: Some(now),
+        custom_claim: None,
     };
-    let bad_token = crate::common::auth_helpers::generate_test_jwt(claims, crate::common::auth_helpers::JwtAuthAlgorithm::HS256);
+    let bad_token = crate::common::auth_helpers::generate_test_jwt(
+        claims,
+        crate::common::auth_helpers::JwtAuthAlgorithm::HS256,
+    );
 
     let client_capabilities = rmcp::model::ClientCapabilities::default();
     let client_impl = rmcp::model::Implementation {
@@ -277,13 +276,20 @@ async fn test_oauth_connection_fails_with_invalid_token_signature() -> Result<()
     .await;
 
     assert!(client_result.is_err(), "Conexão com token de assinatura inválida deveria falhar.");
-    
-    let err_for_log = match &client_result { Ok(_) => "Sucesso inesperado".to_string(), Err(e) => format!("{:?}", e) };
+
+    let err_for_log = match &client_result {
+        Ok(_) => "Sucesso inesperado".to_string(),
+        Err(e) => format!("{:?}", e),
+    };
     info!("Conexão OAuth com token de assinatura inválida falhou como esperado: {}", err_for_log);
 
     match client_result {
         Err(McpClientError::HandshakeFailed(status, _)) => {
-            assert_eq!(status, http::StatusCode::UNAUTHORIZED, "Esperado status 401 para token inválido.");
+            assert_eq!(
+                status,
+                http::StatusCode::UNAUTHORIZED,
+                "Esperado status 401 para token inválido."
+            );
         }
         Err(other_err) => {
             panic!("Tipo de erro inesperado para token inválido: {:?}", other_err);
@@ -298,7 +304,8 @@ async fn test_oauth_connection_fails_with_invalid_token_signature() -> Result<()
 #[tokio::test]
 #[serial]
 async fn test_oauth_connection_fails_without_token_when_required() -> Result<()> {
-    let test_env = TestEnvironment::setup( // Corrigido
+    let test_env = TestEnvironment::setup(
+        // Corrigido
         "conn_oauth_no_token",
         constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME,
     )
@@ -322,7 +329,7 @@ async fn test_oauth_connection_fails_without_token_when_required() -> Result<()>
 
     let client_result = crate::common::client::TestMcpClient::connect_and_initialize(
         &test_env.mcp_ws_url,
-        None, 
+        None,
         constants::DEFAULT_CONNECT_TIMEOUT,
         constants::DEFAULT_REQUEST_TIMEOUT,
         initialize_params,
@@ -330,21 +337,27 @@ async fn test_oauth_connection_fails_without_token_when_required() -> Result<()>
     .await;
 
     assert!(client_result.is_err(), "Conexão sem token quando OAuth é obrigatório deveria falhar.");
-    let err_for_log = match &client_result { Ok(_) => "Sucesso inesperado".to_string(), Err(e) => format!("{:?}", e) };
+    let err_for_log = match &client_result {
+        Ok(_) => "Sucesso inesperado".to_string(),
+        Err(e) => format!("{:?}", e),
+    };
     info!("Conexão OAuth sem token falhou como esperado: {}", err_for_log);
 
     match client_result {
         Err(McpClientError::HandshakeFailed(status, _)) => {
             assert!(
                 status == http::StatusCode::UNAUTHORIZED || status == http::StatusCode::BAD_REQUEST,
-                "Esperado status 401 ou 400 para token ausente, obtido: {}", status
+                "Esperado status 401 ou 400 para token ausente, obtido: {}",
+                status
             );
         }
         Err(other_err) => {
             panic!("Tipo de erro inesperado para token ausente: {:?}", other_err);
         }
         Ok(_) => {
-            panic!("Conexão sem token quando OAuth é obrigatório deveria ter falhado, mas obteve Ok.");
+            panic!(
+                "Conexão sem token quando OAuth é obrigatório deveria ter falhado, mas obteve Ok."
+            );
         }
     }
     Ok(())

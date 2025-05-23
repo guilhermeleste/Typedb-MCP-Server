@@ -30,14 +30,15 @@ pub fn unique_db_name(prefix: &str) -> String {
 /// * `db_name`: O nome do banco de dados a ser criado.
 pub async fn create_test_db(client: &mut TestMcpClient, db_name: &str) -> Result<()> {
     info!("Helper Comum: Criando banco de dados de teste: '{}'", db_name);
-    let result = client
-        .call_tool("create_database", Some(json!({ "name": db_name })))
-        .await
-        .with_context(|| format!("Helper Comum: Falha ao chamar create_database para '{}'", db_name))?;
+    let result =
+        client.call_tool("create_database", Some(json!({ "name": db_name }))).await.with_context(
+            || format!("Helper Comum: Falha ao chamar create_database para '{}'", db_name),
+        )?;
 
     let response_text = super::mcp_utils::get_text_from_call_result(result);
     if response_text != "OK" {
-        bail!( // Usar bail! de anyhow
+        bail!(
+            // Usar bail! de anyhow
             "Helper Comum: Resposta inesperada ao criar banco de dados '{}': {}",
             db_name,
             response_text
@@ -57,10 +58,7 @@ pub async fn create_test_db(client: &mut TestMcpClient, db_name: &str) -> Result
 /// * `db_name`: O nome do banco de dados a ser deletado.
 pub async fn delete_test_db(client: &mut TestMcpClient, db_name: &str) {
     info!("Helper Comum: Deletando banco de dados de teste: '{}'", db_name);
-    match client
-        .call_tool("delete_database", Some(json!({ "name": db_name })))
-        .await
-    {
+    match client.call_tool("delete_database", Some(json!({ "name": db_name }))).await {
         Ok(result) => {
             let response_text = super::mcp_utils::get_text_from_call_result(result);
             if response_text == "OK" {
@@ -73,10 +71,7 @@ pub async fn delete_test_db(client: &mut TestMcpClient, db_name: &str) {
             }
         }
         Err(e) => {
-            warn!(
-                "Helper Comum: Falha ao deletar banco de dados de teste '{}': {:?}",
-                db_name, e
-            );
+            warn!("Helper Comum: Falha ao deletar banco de dados de teste '{}': {:?}", db_name, e);
         }
     }
 }
@@ -116,11 +111,14 @@ pub async fn define_test_db_schema(client: &mut TestMcpClient, db_name: &str) ->
             Some(json!({ "database_name": db_name, "schema_definition": schema })),
         )
         .await
-        .with_context(|| format!("Helper Comum: Falha ao definir esquema base para '{}'", db_name))?;
+        .with_context(|| {
+            format!("Helper Comum: Falha ao definir esquema base para '{}'", db_name)
+        })?;
 
     let response_text = super::mcp_utils::get_text_from_call_result(define_result);
     if response_text != "OK" {
-        bail!( // Usar bail!
+        bail!(
+            // Usar bail!
             "Helper Comum: Resposta inesperada ao definir esquema para '{}': {}",
             db_name,
             response_text
@@ -129,7 +127,6 @@ pub async fn define_test_db_schema(client: &mut TestMcpClient, db_name: &str) ->
     info!("Helper Comum: Esquema base definido para '{}'.", db_name);
     Ok(())
 }
-
 
 /// Aguarda até que o endpoint `/readyz` do Typedb-MCP-Server (acessado via `TestEnvironment`)
 /// indique que o servidor e suas dependências críticas estão prontos.
@@ -168,7 +165,8 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
             test_env.docker_env.logs_all_services().unwrap_or_else(|e| {
                 error!("Helper Comum: Falha ao obter logs do Docker Compose durante timeout do /readyz: {}", e); // Corrigido: error!
             });
-            bail!("Helper Comum: /readyz timeout para '{}' após {:?}", readyz_url, timeout); // Corrigido: bail!
+            bail!("Helper Comum: /readyz timeout para '{}' após {:?}", readyz_url, timeout);
+            // Corrigido: bail!
         }
 
         match client.get(&readyz_url).send().await {
@@ -176,19 +174,38 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
                 let status_code = resp.status();
                 match resp.json::<serde_json::Value>().await {
                     Ok(json_body) => {
-                        trace!("Helper Comum: /readyz em '{}': Status {}, Corpo: {:?}", readyz_url, status_code, json_body); // Corrigido: trace!
-                        let overall_status = json_body.get("status").and_then(|s| s.as_str()).unwrap_or("DOWN");
-                        let typedb_component_status = json_body.get("components").and_then(|c| c.get("typedb")).and_then(|t| t.as_str()).unwrap_or("DOWN");
-                        let jwks_component_status = json_body.get("components").and_then(|c| c.get("jwks")).and_then(|j| j.as_str()).unwrap_or("NOT_CONFIGURED");
+                        trace!(
+                            "Helper Comum: /readyz em '{}': Status {}, Corpo: {:?}",
+                            readyz_url,
+                            status_code,
+                            json_body
+                        ); // Corrigido: trace!
+                        let overall_status =
+                            json_body.get("status").and_then(|s| s.as_str()).unwrap_or("DOWN");
+                        let typedb_component_status = json_body
+                            .get("components")
+                            .and_then(|c| c.get("typedb"))
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("DOWN");
+                        let jwks_component_status = json_body
+                            .get("components")
+                            .and_then(|c| c.get("jwks"))
+                            .and_then(|j| j.as_str())
+                            .unwrap_or("NOT_CONFIGURED");
 
                         let typedb_ok = typedb_component_status.eq_ignore_ascii_case("UP");
                         let jwks_ok = if test_env.is_oauth_enabled {
                             jwks_component_status.eq_ignore_ascii_case("UP")
                         } else {
-                            jwks_component_status.eq_ignore_ascii_case("NOT_CONFIGURED") || !test_env.is_oauth_enabled
+                            jwks_component_status.eq_ignore_ascii_case("NOT_CONFIGURED")
+                                || !test_env.is_oauth_enabled
                         };
 
-                        if status_code == StatusCode::OK && overall_status.eq_ignore_ascii_case("UP") && typedb_ok && jwks_ok {
+                        if status_code == StatusCode::OK
+                            && overall_status.eq_ignore_ascii_case("UP")
+                            && typedb_ok
+                            && jwks_ok
+                        {
                             info!("Helper Comum: /readyz para '{}' está UP e todas as dependências configuradas estão prontas.", readyz_url);
                             return Ok(json_body);
                         } else {
@@ -199,26 +216,29 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
                         }
                     }
                     Err(e) => {
-                        if let Ok(resp_text_fallback_result) = client.get(&readyz_url).send().await {
+                        if let Ok(resp_text_fallback_result) = client.get(&readyz_url).send().await
+                        {
                             if let Ok(resp_text_fallback) = resp_text_fallback_result.text().await {
                                 debug!("Helper Comum: /readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Corpo como texto: '{}'. Aguardando...", readyz_url, status_code, e, resp_text_fallback);
                             } else {
-                                 debug!("Helper Comum: /readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Falha também ao ler corpo como texto. Aguardando...", readyz_url, status_code, e);
+                                debug!("Helper Comum: /readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Falha também ao ler corpo como texto. Aguardando...", readyz_url, status_code, e);
                             }
                         } else {
-                             debug!("Helper Comum: /readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Falha também ao re-requisitar para ler corpo como texto. Aguardando...", readyz_url, status_code, e);
+                            debug!("Helper Comum: /readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Falha também ao re-requisitar para ler corpo como texto. Aguardando...", readyz_url, status_code, e);
                         }
                     }
                 }
             }
             Err(e) => {
-                debug!("Helper Comum: Aguardando /readyz em '{}': {}. Tentando novamente...", readyz_url, e);
+                debug!(
+                    "Helper Comum: Aguardando /readyz em '{}': {}. Tentando novamente...",
+                    readyz_url, e
+                );
             }
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -230,7 +250,10 @@ mod tests {
     fn test_unique_db_name_creates_different_names() {
         let name1 = unique_db_name("prefix");
         let name2 = unique_db_name("prefix");
-        assert_ne!(name1, name2, "unique_db_name deveria gerar nomes diferentes para o mesmo prefixo.");
+        assert_ne!(
+            name1, name2,
+            "unique_db_name deveria gerar nomes diferentes para o mesmo prefixo."
+        );
         assert!(name1.starts_with("prefix_"));
     }
 
@@ -239,16 +262,18 @@ mod tests {
     #[ignore]
     async fn test_wait_for_readyz_helper_example_usage() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-        
+
         let test_env = TestEnvironment::setup(
             "wait_readyz_helper_usage",
             constants::DEFAULT_TEST_CONFIG_FILENAME,
-        ).await?;
-        
+        )
+        .await?;
+
         let readyz_json = wait_for_mcp_server_ready_from_test_env(
             &test_env,
-            constants::DEFAULT_MCP_SERVER_READY_TIMEOUT
-        ).await?;
+            constants::DEFAULT_MCP_SERVER_READY_TIMEOUT,
+        )
+        .await?;
 
         assert_eq!(readyz_json.get("status").and_then(|s| s.as_str()), Some("UP"));
         info!("Exemplo de uso wait_for_readyz_helper: /readyz está UP.");

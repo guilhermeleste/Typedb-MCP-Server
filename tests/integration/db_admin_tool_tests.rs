@@ -7,9 +7,9 @@
 
 use crate::common::{
     constants,
-    // Corrigido: Importar TestEnvironment para chamar TestEnvironment::setup
-    test_env::TestEnvironment, 
     mcp_utils::get_text_from_call_result,
+    // Corrigido: Importar TestEnvironment para chamar TestEnvironment::setup
+    test_env::TestEnvironment,
 };
 use anyhow::{Context as AnyhowContext, Result};
 use rmcp::model::ErrorCode as McpErrorCode;
@@ -24,14 +24,9 @@ fn unique_db_name(suffix: &str) -> String {
 }
 
 /// Helper para criar um banco de dados de teste.
-async fn create_test_db(
-    client: &mut crate::common::client::TestMcpClient,
-    db_name: &str,
-) {
+async fn create_test_db(client: &mut crate::common::client::TestMcpClient, db_name: &str) {
     info!("Helper: Criando banco de dados de teste: {}", db_name);
-    let result = client
-        .call_tool("create_database", Some(json!({ "name": db_name })))
-        .await;
+    let result = client.call_tool("create_database", Some(json!({ "name": db_name }))).await;
     assert!(
         result.is_ok(),
         "Falha ao criar banco de teste '{}' via helper: {:?}",
@@ -39,37 +34,29 @@ async fn create_test_db(
         result.err()
     );
     let response_text = get_text_from_call_result(result.unwrap());
-    assert_eq!(
-        response_text, "OK",
-        "Resposta inesperada ao criar banco de teste '{}'",
-        db_name
-    );
+    assert_eq!(response_text, "OK", "Resposta inesperada ao criar banco de teste '{}'", db_name);
     info!("Helper: Banco de dados de teste '{}' criado com sucesso.", db_name);
 }
 
 /// Helper para deletar um banco de dados de teste (melhor esforço).
-async fn delete_test_db(
-    client: &mut crate::common::client::TestMcpClient,
-    db_name: &str,
-) {
+async fn delete_test_db(client: &mut crate::common::client::TestMcpClient, db_name: &str) {
     info!("Helper: Deletando banco de dados de teste: {}", db_name);
-    match client
-        .call_tool("delete_database", Some(json!({ "name": db_name })))
-        .await
-    {
+    match client.call_tool("delete_database", Some(json!({ "name": db_name }))).await {
         Ok(result) => {
             let response_text = get_text_from_call_result(result);
             if response_text == "OK" {
                 info!("Helper: Banco de dados de teste '{}' deletado com sucesso.", db_name);
             } else {
-                warn!( // Usa warn! importado
+                warn!(
+                    // Usa warn! importado
                     "Helper: Resposta inesperada ao deletar banco de dados '{}': {}",
                     db_name, response_text
                 );
             }
         }
         Err(e) => {
-            warn!( // Usa warn! importado
+            warn!(
+                // Usa warn! importado
                 "Helper: Falha ao deletar banco de dados de teste '{}': {:?}",
                 db_name, e
             );
@@ -83,9 +70,7 @@ async fn test_create_database_succeeds_with_valid_name() -> Result<()> {
     // Corrigido: Chamar TestEnvironment::setup
     let test_env =
         TestEnvironment::setup("db_create_ok", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
-    let mut client = test_env
-        .mcp_client_with_auth(Some("typedb:manage_databases"))
-        .await?;
+    let mut client = test_env.mcp_client_with_auth(Some("typedb:manage_databases")).await?;
 
     let db_name = unique_db_name("create_valid");
     info!("Teste: Criando banco '{}'", db_name);
@@ -114,9 +99,7 @@ async fn test_create_database_succeeds_with_valid_name() -> Result<()> {
 async fn test_create_existing_database_fails_gracefully() -> Result<()> {
     let test_env =
         TestEnvironment::setup("db_create_dup", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
-    let mut client = test_env
-        .mcp_client_with_auth(Some("typedb:manage_databases"))
-        .await?;
+    let mut client = test_env.mcp_client_with_auth(Some("typedb:manage_databases")).await?;
 
     let db_name = unique_db_name("create_duplicate");
     create_test_db(&mut client, &db_name).await;
@@ -136,8 +119,10 @@ async fn test_create_existing_database_fails_gracefully() -> Result<()> {
                 message
             );
             assert!(
-                message.to_lowercase().contains("database") && message.to_lowercase().contains("exists"),
-                "Mensagem de erro não indicou que o banco já existe: {}", message
+                message.to_lowercase().contains("database")
+                    && message.to_lowercase().contains("exists"),
+                "Mensagem de erro não indicou que o banco já existe: {}",
+                message
             );
         }
         other_err => panic!("Tipo de erro inesperado ao criar banco duplicado: {:?}", other_err),
@@ -152,9 +137,7 @@ async fn test_create_existing_database_fails_gracefully() -> Result<()> {
 async fn test_list_databases_empty_and_with_content() -> Result<()> {
     let test_env =
         TestEnvironment::setup("db_list", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
-    let mut client = test_env
-        .mcp_client_with_auth(Some("typedb:manage_databases"))
-        .await?;
+    let mut client = test_env.mcp_client_with_auth(Some("typedb:manage_databases")).await?;
 
     info!("Teste: Listando bancos em servidor limpo.");
     let result_empty = client
@@ -162,13 +145,9 @@ async fn test_list_databases_empty_and_with_content() -> Result<()> {
         .await
         .context("Falha ao chamar list_databases (vazio)")?;
     let text_empty = get_text_from_call_result(result_empty);
-    let dbs_empty: Vec<String> =
-        serde_json::from_str(&text_empty).context("Resposta de list_databases (vazio) não é JSON array")?;
-    assert!(
-        dbs_empty.is_empty(),
-        "Esperado lista vazia de bancos, obteve: {:?}",
-        dbs_empty
-    );
+    let dbs_empty: Vec<String> = serde_json::from_str(&text_empty)
+        .context("Resposta de list_databases (vazio) não é JSON array")?;
+    assert!(dbs_empty.is_empty(), "Esperado lista vazia de bancos, obteve: {:?}", dbs_empty);
 
     let db_name1 = unique_db_name("list_1");
     let db_name2 = unique_db_name("list_2");
@@ -213,10 +192,8 @@ async fn test_list_databases_empty_and_with_content() -> Result<()> {
 async fn test_database_exists_functionality() -> Result<()> {
     let test_env =
         TestEnvironment::setup("db_exists", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
-    let mut client = test_env
-        .mcp_client_with_auth(Some("typedb:manage_databases"))
-        .await?;
-    
+    let mut client = test_env.mcp_client_with_auth(Some("typedb:manage_databases")).await?;
+
     let db_name_existing = unique_db_name("exists_true");
     let db_name_non_existing = unique_db_name("exists_false");
 
@@ -226,7 +203,10 @@ async fn test_database_exists_functionality() -> Result<()> {
         .await
         .context(format!("Falha ao chamar database_exists para '{}'", db_name_non_existing))?;
     let text_false = get_text_from_call_result(result_false);
-    assert_eq!(text_false, "false", "database_exists deveria retornar 'false' para banco inexistente.");
+    assert_eq!(
+        text_false, "false",
+        "database_exists deveria retornar 'false' para banco inexistente."
+    );
 
     create_test_db(&mut client, &db_name_existing).await;
     info!("Teste: Verificando banco existente '{}'", db_name_existing);
@@ -253,9 +233,8 @@ async fn test_delete_database_succeeds_and_removes_db() -> Result<()> {
     let db_name = unique_db_name("delete_target");
     create_test_db(&mut client, &db_name).await;
 
-    let exists_before_result = client
-        .call_tool("database_exists", Some(json!({ "name": db_name })))
-        .await?;
+    let exists_before_result =
+        client.call_tool("database_exists", Some(json!({ "name": db_name }))).await?;
     assert_eq!(get_text_from_call_result(exists_before_result), "true");
 
     info!("Teste: Deletando banco '{}'", db_name);
@@ -267,9 +246,8 @@ async fn test_delete_database_succeeds_and_removes_db() -> Result<()> {
     assert_eq!(delete_text, "OK", "Resposta incorreta ao deletar banco.");
 
     info!("Teste: Verificando se o banco '{}' foi deletado.", db_name);
-    let exists_after_result = client
-        .call_tool("database_exists", Some(json!({ "name": db_name })))
-        .await?;
+    let exists_after_result =
+        client.call_tool("database_exists", Some(json!({ "name": db_name }))).await?;
     let exists_after_text = get_text_from_call_result(exists_after_result);
     assert_eq!(exists_after_text, "false", "Banco não foi removido após delete_database.");
     Ok(())
@@ -279,10 +257,9 @@ async fn test_delete_database_succeeds_and_removes_db() -> Result<()> {
 #[serial]
 async fn test_delete_non_existent_database_fails_gracefully() -> Result<()> {
     let test_env =
-        TestEnvironment::setup("db_delete_missing", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
-    let mut client = test_env
-        .mcp_client_with_auth(Some("typedb:admin_databases"))
-        .await?;
+        TestEnvironment::setup("db_delete_missing", constants::DEFAULT_TEST_CONFIG_FILENAME)
+            .await?;
+    let mut client = test_env.mcp_client_with_auth(Some("typedb:admin_databases")).await?;
 
     let db_name_missing = unique_db_name("delete_non_existent");
     info!("Teste: Tentando deletar banco inexistente '{}'", db_name_missing);
@@ -291,20 +268,26 @@ async fn test_delete_non_existent_database_fails_gracefully() -> Result<()> {
         .call_tool("delete_database", Some(json!({ "name": db_name_missing })))
         .await
         .expect_err("Esperado erro ao tentar deletar banco inexistente, mas obteve Ok.");
-    
+
     match result_err {
         crate::common::client::McpClientError::McpErrorResponse { code, message, .. } => {
             assert_eq!(
                 code.0,
                 McpErrorCode::INTERNAL_ERROR.0,
-                "Código de erro inesperado para deleção de banco inexistente. Mensagem: {}", message
+                "Código de erro inesperado para deleção de banco inexistente. Mensagem: {}",
+                message
             );
             assert!(
-                message.to_lowercase().contains("database") && (message.to_lowercase().contains("not found") || message.to_lowercase().contains("does not exist")),
-                "Mensagem de erro não indicou que o banco não existe: {}", message
+                message.to_lowercase().contains("database")
+                    && (message.to_lowercase().contains("not found")
+                        || message.to_lowercase().contains("does not exist")),
+                "Mensagem de erro não indicou que o banco não existe: {}",
+                message
             );
         }
-        other_err => panic!("Tipo de erro inesperado ao deletar banco inexistente: {:?}", other_err),
+        other_err => {
+            panic!("Tipo de erro inesperado ao deletar banco inexistente: {:?}", other_err)
+        }
     }
     Ok(())
 }
@@ -312,33 +295,43 @@ async fn test_delete_non_existent_database_fails_gracefully() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_db_admin_operations_require_correct_scopes() -> Result<()> {
-    let test_env = TestEnvironment::setup(
-        "db_admin_scopes",
-        constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME,
-    )
-    .await?;
+    let test_env =
+        TestEnvironment::setup("db_admin_scopes", constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME)
+            .await?;
     let db_name = unique_db_name("authz_db");
 
     let mut client_no_perms = test_env.mcp_client_with_auth(Some("other:scope")).await?;
-    
-    info!("Teste: Tentando create_database sem escopo 'typedb:manage_databases'");
-    let res_create_no_perms = client_no_perms.call_tool("create_database", Some(json!({"name": db_name}))).await;
-    assert!(res_create_no_perms.is_err());
-    if let crate::common::client::McpClientError::McpErrorResponse { code, .. } = res_create_no_perms.unwrap_err() {
-        assert_eq!(code.0, rmcp::model::ErrorCode(-32001).0); // Authorization Failed
-    } else { panic!("Esperado McpErrorResponse de autorização para create_database"); }
 
-    let mut client_manage_perms = test_env.mcp_client_with_auth(Some("typedb:manage_databases")).await?;
+    info!("Teste: Tentando create_database sem escopo 'typedb:manage_databases'");
+    let res_create_no_perms =
+        client_no_perms.call_tool("create_database", Some(json!({"name": db_name}))).await;
+    assert!(res_create_no_perms.is_err());
+    if let crate::common::client::McpClientError::McpErrorResponse { code, .. } =
+        res_create_no_perms.unwrap_err()
+    {
+        assert_eq!(code.0, rmcp::model::ErrorCode(-32001).0); // Authorization Failed
+    } else {
+        panic!("Esperado McpErrorResponse de autorização para create_database");
+    }
+
+    let mut client_manage_perms =
+        test_env.mcp_client_with_auth(Some("typedb:manage_databases")).await?;
     create_test_db(&mut client_manage_perms, &db_name).await;
 
     info!("Teste: Tentando delete_database com escopo 'typedb:manage_databases' (insuficiente)");
-    let res_delete_manage_perms = client_manage_perms.call_tool("delete_database", Some(json!({"name": db_name}))).await;
+    let res_delete_manage_perms =
+        client_manage_perms.call_tool("delete_database", Some(json!({"name": db_name}))).await;
     assert!(res_delete_manage_perms.is_err());
-    if let crate::common::client::McpClientError::McpErrorResponse { code, .. } = res_delete_manage_perms.unwrap_err() {
+    if let crate::common::client::McpClientError::McpErrorResponse { code, .. } =
+        res_delete_manage_perms.unwrap_err()
+    {
         assert_eq!(code.0, rmcp::model::ErrorCode(-32001).0); // Authorization Failed
-    } else { panic!("Esperado McpErrorResponse de autorização para delete_database"); }
+    } else {
+        panic!("Esperado McpErrorResponse de autorização para delete_database");
+    }
 
-    let mut client_admin_perms = test_env.mcp_client_with_auth(Some("typedb:admin_databases")).await?;
+    let mut client_admin_perms =
+        test_env.mcp_client_with_auth(Some("typedb:admin_databases")).await?;
     delete_test_db(&mut client_admin_perms, &db_name).await;
     Ok(())
 }

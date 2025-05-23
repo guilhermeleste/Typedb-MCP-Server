@@ -25,7 +25,7 @@
 use axum::extract::ws::{Message as AxumMessage, WebSocket};
 use futures_util::{
     sink::Sink,
-    stream::{Stream},
+    stream::Stream,
     // SinkExt as FuturesSinkExt, // Removido, métodos de SinkExt são geralmente acessados via trait
 };
 use pin_project_lite::pin_project;
@@ -84,7 +84,10 @@ impl Stream for WebSocketTransport {
                     }
                 }
                 Poll::Ready(Some(Err(e))) => {
-                    tracing::error!("WebSocketTransport: Erro no stream WebSocket: {}. Encerrando stream.", e);
+                    tracing::error!(
+                        "WebSocketTransport: Erro no stream WebSocket: {}. Encerrando stream.",
+                        e
+                    );
                     return Poll::Ready(None);
                 }
                 Poll::Ready(None) => {
@@ -126,8 +129,13 @@ impl WebSocketTransport {
         tracing::trace!("WebSocketTransport: Recebido Pong WebSocket.");
     }
 
-    fn handle_close(close_frame: Option<&axum::extract::ws::CloseFrame>) -> Poll<Option<ClientJsonRpcMessage>> {
-        tracing::debug!("WebSocketTransport: Recebido frame Close WebSocket do peer: {:?}. Encerrando stream.", close_frame);
+    fn handle_close(
+        close_frame: Option<&axum::extract::ws::CloseFrame>,
+    ) -> Poll<Option<ClientJsonRpcMessage>> {
+        tracing::debug!(
+            "WebSocketTransport: Recebido frame Close WebSocket do peer: {:?}. Encerrando stream.",
+            close_frame
+        );
         Poll::Ready(None)
     }
 }
@@ -151,17 +159,20 @@ impl Sink<ServerJsonRpcMessage> for WebSocketTransport {
             Ok(text_payload) => {
                 // AxumMessage::Text espera Utf8Bytes
                 let utf8_bytes = axum::extract::ws::Utf8Bytes::from(text_payload.as_str());
-                self.project()
-                    .ws_socket
-                    .start_send(AxumMessage::Text(utf8_bytes))
-                    .map_err(|e| {
-                        tracing::warn!(error.message = %e, "Erro ao iniciar envio no WebSocket Sink.");
-                        io::Error::new(io::ErrorKind::BrokenPipe, e.to_string())
-                    })
+                self.project().ws_socket.start_send(AxumMessage::Text(utf8_bytes)).map_err(|e| {
+                    tracing::warn!(error.message = %e, "Erro ao iniciar envio no WebSocket Sink.");
+                    io::Error::new(io::ErrorKind::BrokenPipe, e.to_string())
+                })
             }
             Err(e) => {
-                tracing::error!("WebSocketTransport: Falha ao serializar ServerJsonRpcMessage para JSON: {}", e);
-                Err(io::Error::new(io::ErrorKind::InvalidInput, format!("Falha ao serializar JSON-RPC para envio: {e}")))
+                tracing::error!(
+                    "WebSocketTransport: Falha ao serializar ServerJsonRpcMessage para JSON: {}",
+                    e
+                );
+                Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Falha ao serializar JSON-RPC para envio: {e}"),
+                ))
             }
         }
     }
@@ -196,12 +207,14 @@ mod tests {
         routing::get,
         Router,
     };
-    use futures_util::SinkExt; // Manter para os testes, para chamar os métodos no client_socket
     use bytes::Bytes;
-    use tokio_tungstenite::tungstenite::protocol::frame::Utf8Bytes;
     use futures_util::stream::StreamExt as FuturesStreamExt;
-    use rmcp::model::{JsonRpcNotification, NotificationNoParam, InitializedNotificationMethod, Extensions};
+    use futures_util::SinkExt; // Manter para os testes, para chamar os métodos no client_socket
+    use rmcp::model::{
+        Extensions, InitializedNotificationMethod, JsonRpcNotification, NotificationNoParam,
+    };
     use tokio::net::TcpListener;
+    use tokio_tungstenite::tungstenite::protocol::frame::Utf8Bytes;
     use tokio_tungstenite::{connect_async, tungstenite::Message as TungsteniteMessage};
 
     async fn test_ws_handler(
@@ -209,15 +222,17 @@ mod tests {
         AxumState(sender): AxumState<tokio::sync::mpsc::Sender<WebSocket>>,
     ) -> impl AxumIntoResponse {
         ws.on_upgrade(move |socket| async move {
-            if sender.send(socket).await.is_err(){
-                 tracing::error!("Falha ao enviar socket WebSocket para o canal de teste.");
+            if sender.send(socket).await.is_err() {
+                tracing::error!("Falha ao enviar socket WebSocket para o canal de teste.");
             }
         })
     }
 
     async fn connected_pair() -> (
         WebSocketTransport,
-        tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
     ) {
         let (socket_tx, mut socket_rx) = tokio::sync::mpsc::channel::<WebSocket>(1);
         let app = Router::new().route("/ws_test", get(test_ws_handler)).with_state(socket_tx);
@@ -249,9 +264,11 @@ mod tests {
     async fn test_websocket_transport_sends_server_message_and_receives_client_message() {
         let (mut transport_server_side, mut client_socket) = connected_pair().await;
 
-        let server_msg_payload = rmcp::model::ServerNotification::ToolListChangedNotification(
-            NotificationNoParam { method: rmcp::model::ToolListChangedNotificationMethod, extensions: Extensions::default() }
-        );
+        let server_msg_payload =
+            rmcp::model::ServerNotification::ToolListChangedNotification(NotificationNoParam {
+                method: rmcp::model::ToolListChangedNotificationMethod,
+                extensions: Extensions::default(),
+            });
         let server_msg = ServerJsonRpcMessage::Notification(JsonRpcNotification {
             jsonrpc: rmcp::model::JsonRpcVersion2_0,
             notification: server_msg_payload,
@@ -282,9 +299,11 @@ mod tests {
             other => panic!("Cliente não recebeu mensagem de texto ou recebeu tipo de frame inesperado: {other:?}"),
         }
 
-        let client_msg_payload = rmcp::model::ClientNotification::InitializedNotification(
-            NotificationNoParam { method: InitializedNotificationMethod, extensions: Extensions::default() }
-        );
+        let client_msg_payload =
+            rmcp::model::ClientNotification::InitializedNotification(NotificationNoParam {
+                method: InitializedNotificationMethod,
+                extensions: Extensions::default(),
+            });
         let client_rpc_msg = ClientJsonRpcMessage::Notification(JsonRpcNotification {
             jsonrpc: rmcp::model::JsonRpcVersion2_0,
             notification: client_msg_payload,
@@ -293,7 +312,10 @@ mod tests {
             Ok(s) => s,
             Err(e) => panic!("Falha ao serializar client_rpc_msg: {e}"),
         };
-        if let Err(e) = client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str.as_str()))).await {
+        if let Err(e) = client_socket
+            .send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str.as_str())))
+            .await
+        {
             panic!("Envio do cliente falhou: {e}");
         }
         match FuturesStreamExt::next(&mut transport_server_side).await {
@@ -318,7 +340,10 @@ mod tests {
         if let Err(e) = client_socket.close(None).await {
             panic!("Cliente falhou ao fechar conexão: {e}");
         }
-        assert!(FuturesStreamExt::next(&mut transport_server_side).await.is_none(), "Stream do servidor deveria terminar após o cliente fechar");
+        assert!(
+            FuturesStreamExt::next(&mut transport_server_side).await.is_none(),
+            "Stream do servidor deveria terminar após o cliente fechar"
+        );
     }
 
     #[tokio::test]
@@ -327,7 +352,7 @@ mod tests {
         if let Err(e) = transport_server_side.close().await {
             panic!("Servidor falhou ao fechar o Sink do transporte: {e}");
         }
-        
+
         match FuturesStreamExt::next(&mut client_socket).await {
             Some(Ok(TungsteniteMessage::Close(_))) => { /* esperado */ }
             other => panic!("Cliente não recebeu frame de Close, obteve: {other:?}"),
@@ -337,15 +362,19 @@ mod tests {
     #[tokio::test]
     async fn test_websocket_transport_ignores_invalid_json_from_client_and_continues() {
         let (mut transport_server_side, mut client_socket) = connected_pair().await;
-        
-        let invalid_json = "{\"jsonrpc\": \"2.0\", \"method\": \"foo\", \"params\": {"; 
-        if let Err(e) = client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(invalid_json))).await {
+
+        let invalid_json = "{\"jsonrpc\": \"2.0\", \"method\": \"foo\", \"params\": {";
+        if let Err(e) =
+            client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(invalid_json))).await
+        {
             panic!("Envio do cliente (JSON inválido) falhou: {e}");
         }
-        
-        let client_msg_payload = rmcp::model::ClientNotification::InitializedNotification(
-            NotificationNoParam { method: InitializedNotificationMethod, extensions: Extensions::default() }
-        );
+
+        let client_msg_payload =
+            rmcp::model::ClientNotification::InitializedNotification(NotificationNoParam {
+                method: InitializedNotificationMethod,
+                extensions: Extensions::default(),
+            });
         let client_rpc_msg_valid = ClientJsonRpcMessage::Notification(JsonRpcNotification {
             jsonrpc: rmcp::model::JsonRpcVersion2_0,
             notification: client_msg_payload,
@@ -354,7 +383,10 @@ mod tests {
             Ok(s) => s,
             Err(e) => panic!("Falha ao serializar client_rpc_msg_valid: {e}"),
         };
-        if let Err(e) = client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str_valid.as_str()))).await {
+        if let Err(e) = client_socket
+            .send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str_valid.as_str())))
+            .await
+        {
             panic!("Envio do cliente (JSON válido) falhou: {e}");
         }
         match FuturesStreamExt::next(&mut transport_server_side).await {
@@ -372,14 +404,18 @@ mod tests {
     #[tokio::test]
     async fn test_websocket_transport_ignores_binary_message_from_client() {
         let (mut transport_server_side, mut client_socket) = connected_pair().await;
-        
-        if let Err(e) = client_socket.send(TungsteniteMessage::Binary(Bytes::from(vec![1u8,2u8,3u8]))).await {
+
+        if let Err(e) =
+            client_socket.send(TungsteniteMessage::Binary(Bytes::from(vec![1u8, 2u8, 3u8]))).await
+        {
             panic!("Envio binário do cliente falhou: {e}");
         }
-        
-        let client_msg_payload = rmcp::model::ClientNotification::InitializedNotification(
-            NotificationNoParam { method: InitializedNotificationMethod, extensions: Extensions::default() }
-        );
+
+        let client_msg_payload =
+            rmcp::model::ClientNotification::InitializedNotification(NotificationNoParam {
+                method: InitializedNotificationMethod,
+                extensions: Extensions::default(),
+            });
         let client_rpc_msg_valid = ClientJsonRpcMessage::Notification(JsonRpcNotification {
             jsonrpc: rmcp::model::JsonRpcVersion2_0,
             notification: client_msg_payload,
@@ -388,7 +424,10 @@ mod tests {
             Ok(s) => s,
             Err(e) => panic!("Falha ao serializar client_rpc_msg_valid: {e}"),
         };
-        if let Err(e) = client_socket.send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str_valid.as_str()))).await {
+        if let Err(e) = client_socket
+            .send(TungsteniteMessage::Text(Utf8Bytes::from(client_msg_str_valid.as_str())))
+            .await
+        {
             panic!("Envio de texto do cliente falhou: {e}");
         }
         match FuturesStreamExt::next(&mut transport_server_side).await {
@@ -399,7 +438,9 @@ mod tests {
                 };
                 assert_eq!(received_str, client_msg_str_valid);
             }
-            other => panic!("Esperava uma mensagem de texto válida após mensagem binária, obteve {other:?}"),
+            other => panic!(
+                "Esperava uma mensagem de texto válida após mensagem binária, obteve {other:?}"
+            ),
         }
     }
 }
