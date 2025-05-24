@@ -92,6 +92,11 @@ pub mod schema_ops_tool_tests;
 #[path = "integration/typedb_tls_tests.rs"]
 pub mod typedb_tls_tests;
 
+/// Testes de robustez do cleanup automático do TestEnvironment.
+/// Verifica se o Drop trait funciona corretamente em cenários adversos.
+#[path = "integration/cleanup_tests.rs"]
+pub mod cleanup_tests;
+
 // Se você adicionar novos arquivos de teste em `tests/integration/`,
 // adicione uma declaração de módulo similar para eles aqui.
 // Exemplo:

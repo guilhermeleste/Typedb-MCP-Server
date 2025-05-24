@@ -23,8 +23,6 @@ x-default-variables: &default-env
   sleep_interval: ${sleep_interval:-3}
   elapsed_time: ${elapsed_time:-0}
 
-version: '3.8'
-
 services:
   # Serviço principal Typedb-MCP-Server para testes
   typedb-mcp-server-it:

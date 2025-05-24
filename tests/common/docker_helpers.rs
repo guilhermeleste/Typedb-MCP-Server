@@ -63,6 +63,28 @@ impl DockerComposeEnv {
         &self.project_name
     }
 
+    /// Retorna todas as variáveis de ambiente necessárias para evitar warnings do Docker Compose.
+    ///
+    /// Centraliza a definição das variáveis de ambiente para garantir consistência
+    /// entre os comandos `up` e `down`.
+    fn get_compose_env_vars(&self, config_filename_opt: Option<&str>) -> Vec<(String, String)> {
+        let mcp_config_path = if let Some(config_filename) = config_filename_opt {
+            format!("/app/test_configs/{}", config_filename)
+        } else {
+            "/dev/null".to_string()
+        };
+
+        vec![
+            ("MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV".to_string(), mcp_config_path),
+            ("MCP_TYPEDB__ADDRESS".to_string(), "typedb-server-it:1729".to_string()),
+            ("target_typedb_host_port".to_string(), "typedb-server-it:1729".to_string()),
+            ("timeout_duration".to_string(), "120".to_string()),
+            ("target_typedb_service_name".to_string(), "typedb-server-it".to_string()),
+            ("sleep_interval".to_string(), "3".to_string()),
+            ("elapsed_time".to_string(), "0".to_string()),
+        ]
+    }
+
     /// Executa um comando `docker compose`.
     ///
     /// # Arguments
@@ -155,9 +177,11 @@ impl DockerComposeEnv {
             self.project_name(), config_filename, active_profiles.as_deref().unwrap_or_default()
         );
 
-        let mcp_config_path_in_container = format!("/app/test_configs/{}", config_filename);
-        let env_vars_for_compose_process =
-            vec![("MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV", mcp_config_path_in_container)];
+        let env_vars_for_compose_process = self.get_compose_env_vars(Some(config_filename));
+        let env_vars_refs: Vec<(&str, String)> = env_vars_for_compose_process
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.clone()))
+            .collect();
         
         let up_subcommand_args: Vec<&str> = 
             vec!["up", "-d", "--remove-orphans", "--force-recreate", "--build", "--wait"];
@@ -176,7 +200,7 @@ impl DockerComposeEnv {
         self.run_compose_command(
             &global_args_str_refs,
             &up_subcommand_args,
-            Some(&env_vars_for_compose_process),
+            Some(&env_vars_refs),
         )
         .with_context(|| format!("Falha em 'docker compose up' para projeto '{}', config MCP: '{}', perfis: {:?}", self.project_name(), config_filename, active_profiles.as_deref().unwrap_or_default()))?;
 
@@ -193,6 +217,14 @@ impl DockerComposeEnv {
             "Derrubando ambiente Docker Compose para projeto: '{}' (remover volumes: {})",
             self.project_name(), remove_volumes
         );
+        
+        // Usa as mesmas variáveis de ambiente para evitar warnings do Docker Compose
+        let env_vars_for_compose_process = self.get_compose_env_vars(None);
+        let env_vars_refs: Vec<(&str, String)> = env_vars_for_compose_process
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.clone()))
+            .collect();
+        
         let mut subcommand_args = vec!["down", "--remove-orphans"];
         if remove_volumes {
             subcommand_args.push("-v");
@@ -200,19 +232,132 @@ impl DockerComposeEnv {
         subcommand_args.push("--timeout");
         subcommand_args.push("30"); // Timeout para parada graciosa
 
-        // ENVs para evitar warnings de substituição no `down`
-        let env_vars_for_down_process = vec![
-            ("MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV", "/dev/null".to_string()),
-            // Adicione outras que o `docker-compose.test.yml` possa esperar para substituição, se houver.
-        ];
-
-        match self.run_compose_command(&[], &subcommand_args, Some(&env_vars_for_down_process)) {
-            Ok(_) => info!("Ambiente Docker Compose para projeto '{}' derrubado.", self.project_name()),
+        match self.run_compose_command(&[], &subcommand_args, Some(&env_vars_refs)) {
+            Ok(_) => {
+                info!("Ambiente Docker Compose para projeto '{}' derrubado.", self.project_name());
+                
+                // Cleanup adicional para garantir remoção completa de containers órfãos
+                if let Err(e) = self.force_cleanup_orphaned_containers() {
+                    warn!("Cleanup adicional de containers órfãos falhou para projeto '{}': {}. Isso pode ser normal se não houver containers órfãos.", self.project_name(), e);
+                }
+            },
             Err(e) => {
-                error!("Erro ao derrubar ambiente Docker Compose para projeto '{}': {}. Limpeza manual pode ser necessária.", self.project_name(), e);
+                error!("Erro ao derrubar ambiente Docker Compose para projeto '{}': {}. Tentando cleanup forçado.", self.project_name(), e);
+                
+                // Tenta cleanup forçado mesmo se down() falhou
+                if let Err(cleanup_err) = self.force_cleanup_orphaned_containers() {
+                    warn!("Cleanup forçado também falhou para projeto '{}': {}", self.project_name(), cleanup_err);
+                }
+                
                 return Err(e);
             }
         }
+        Ok(())
+    }
+
+    /// Força a remoção de containers órfãos para este projeto, mesmo se docker compose down falhou.
+    fn force_cleanup_orphaned_containers(&self) -> Result<()> {
+        debug!("Executando cleanup forçado de containers órfãos para projeto '{}'", self.project_name());
+        
+        // Lista containers órfãos para este projeto específico
+        let list_output = Command::new("docker")
+            .arg("ps")
+            .arg("-a")
+            .arg("--filter")
+            .arg(&format!("label=com.docker.compose.project={}", self.project_name()))
+            .arg("--format")
+            .arg("{{.ID}}")
+            .output()
+            .with_context(|| format!("Falha ao listar containers para projeto '{}'", self.project_name()))?;
+
+        if !list_output.status.success() {
+            bail!("Falha ao listar containers órfãos para projeto '{}'", self.project_name());
+        }
+
+        let container_ids_string = String::from_utf8_lossy(&list_output.stdout);
+        let container_ids: Vec<&str> = container_ids_string
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+
+        if container_ids.is_empty() {
+            debug!("Nenhum container órfão encontrado para projeto '{}'", self.project_name());
+        } else {
+            info!("Removendo {} containers órfãos para projeto '{}': {:?}", 
+                  container_ids.len(), self.project_name(), container_ids);
+
+            // Remove containers órfãos forçadamente
+            let mut remove_cmd = Command::new("docker");
+            remove_cmd.arg("rm").arg("-f");
+            remove_cmd.args(&container_ids);
+
+            let remove_output = remove_cmd.output()
+                .with_context(|| format!("Falha ao executar 'docker rm -f' para containers órfãos do projeto '{}'", self.project_name()))?;
+
+            if !remove_output.status.success() {
+                let stderr = String::from_utf8_lossy(&remove_output.stderr);
+                bail!("Falha ao remover containers órfãos para projeto '{}': {}", self.project_name(), stderr);
+            }
+
+            info!("Containers órfãos removidos com sucesso para projeto '{}'", self.project_name());
+        }
+
+        // Cleanup adicional: remover redes órfãs do projeto
+        self.force_cleanup_orphaned_networks()
+            .with_context(|| format!("Falha no cleanup de redes órfãs para projeto '{}'", self.project_name()))?;
+
+        Ok(())
+    }
+
+    /// Força a remoção de redes órfãs para este projeto.
+    fn force_cleanup_orphaned_networks(&self) -> Result<()> {
+        debug!("Executando cleanup forçado de redes órfãs para projeto '{}'", self.project_name());
+
+        // Lista redes órfãs para este projeto específico
+        let list_output = Command::new("docker")
+            .arg("network")
+            .arg("ls")
+            .arg("--filter")
+            .arg(&format!("label=com.docker.compose.project={}", self.project_name()))
+            .arg("--format")
+            .arg("{{.ID}}")
+            .output()
+            .with_context(|| format!("Falha ao listar redes para projeto '{}'", self.project_name()))?;
+
+        if !list_output.status.success() {
+            bail!("Falha ao listar redes órfãs para projeto '{}'", self.project_name());
+        }
+
+        let network_ids_string = String::from_utf8_lossy(&list_output.stdout);
+        let network_ids: Vec<&str> = network_ids_string
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect();
+
+        if network_ids.is_empty() {
+            debug!("Nenhuma rede órfã encontrada para projeto '{}'", self.project_name());
+            return Ok(());
+        }
+
+        info!("Removendo {} redes órfãs para projeto '{}': {:?}", 
+              network_ids.len(), self.project_name(), network_ids);
+
+        // Remove redes órfãs forçadamente
+        let mut remove_cmd = Command::new("docker");
+        remove_cmd.arg("network").arg("rm");
+        remove_cmd.args(&network_ids);
+
+        let remove_output = remove_cmd.output()
+            .with_context(|| format!("Falha ao executar 'docker network rm' para redes órfãs do projeto '{}'", self.project_name()))?;
+
+        if !remove_output.status.success() {
+            let stderr = String::from_utf8_lossy(&remove_output.stderr);
+            // Networks podem falhar ao remover se ainda estiverem em uso, isso é ok
+            warn!("Algumas redes podem não ter sido removidas para projeto '{}': {}", self.project_name(), stderr);
+        } else {
+            info!("Redes órfãs removidas com sucesso para projeto '{}'", self.project_name());
+        }
+
         Ok(())
     }
     
