@@ -3,123 +3,172 @@
 # Esta versão utiliza chaves em `camelCase` para alinhar com as diretivas
 # `#[serde(rename_all = "camelCase")]` nas structs de configuração em `src/config.rs`.
 #
-# Cenário de Teste:
+# Cenário de Teste para o qual este arquivo é geralmente usado:
 # - OAuth2: Desabilitado.
-# - TLS para o servidor MCP: Desabilitado (escuta em HTTP/WS).
-# - Conexão com TypeDB: Sem TLS, apontando para o serviço 'typedb-server-it'.
+# - TLS para o servidor MCP: Desabilitado (o servidor MCP escuta em HTTP/WS).
+# - Conexão do servidor MCP com TypeDB: Sem TLS, apontando para o serviço Docker 'typedb-server-it'.
 
+# Configurações do próprio Typedb-MCP-Server.
 [server]
-# Endereço de bind INTERNO ao contêiner para o servidor MCP (HTTP/WS).
+# Endereço de bind (IP:PORTA) INTERNO ao contêiner para o servidor MCP.
 # O servidor escutará em todas as interfaces neste IP e porta.
+# Default em src/config.rs é "0.0.0.0:8787".
 bindAddress = "0.0.0.0:8787"
 
-# Endereço de bind INTERNO ao contêiner para o endpoint de métricas Prometheus.
+# Endereço de bind (IP:PORTA) INTERNO ao contêiner para o endpoint de métricas Prometheus.
+# Default em src/config.rs (via main.rs) é "0.0.0.0:9090".
 metricsBindAddress = "0.0.0.0:9090"
 
 # Caminho do endpoint WebSocket MCP.
+# Default em src/config.rs (via main.rs) é "/mcp/ws".
 mcpWebsocketPath = "/mcp/ws"
 
 # Caminho do endpoint de métricas Prometheus.
+# Default em src/config.rs (via main.rs) é "/metrics".
 metricsPath = "/metrics"
 
 # Habilita TLS (HTTPS/WSS) para o servidor MCP.
+# Default em src/config.rs é false.
 tlsEnabled = false
-# Caminho DENTRO do contêiner para o certificado do servidor MCP (fullchain).
-# Necessário apenas se server.tlsEnabled = true.
+
+# Caminho DENTRO do contêiner para o arquivo PEM do certificado do servidor MCP (fullchain).
+# Obrigatório e deve ser um caminho válido se `server.tlsEnabled = true`.
+# Exemplo para testes: "/app/test_certs/mcp-server.crt" (se montado).
 # tlsCertPath = "/app/test_certs/mcp-server.crt"
-# Caminho DENTRO do contêiner para a chave privada do servidor MCP.
-# Necessário apenas se server.tlsEnabled = true.
+
+# Caminho DENTRO do contêiner para o arquivo PEM da chave privada do servidor MCP.
+# Obrigatório e deve ser um caminho válido se `server.tlsEnabled = true`.
+# Exemplo para testes: "/app/test_certs/mcp-server.key"
 # tlsKeyPath = "/app/test_certs/mcp-server.key"
 
 # Número de threads worker para o runtime Tokio.
-# Se omitido ou None, o servidor usará o número de CPUs lógicas.
+# Se omitido ou null, o servidor usará o número de CPUs lógicas disponíveis.
+# Default em src/config.rs é None.
 # workerThreads = 4
 
+
+# Configurações para a conexão do Typedb-MCP-Server com o banco de dados TypeDB.
 [typedb]
-# Endereço do servidor TypeDB (nome do serviço na rede Docker).
-# Este é o endereço que o servidor MCP usará para se conectar ao TypeDB.
-address = "typedb-server-it:1729"
+# Endereço do servidor TypeDB. Para testes de integração, este é o nome do serviço
+# TypeDB na rede Docker interna (ex: "typedb-server-it:1729").
+# Default em src/config.rs é "localhost:1729".
+address = "typedb-server-it:1729" # Valor crucial para os testes de integração.
 
 # Nome de usuário para autenticação com TypeDB.
+# Default em src/config.rs é Some("admin").
 username = "admin"
-# A SENHA (TYPEDB_PASSWORD) é injetada como uma variável de ambiente
-# no contêiner typedb-mcp-server-it através do docker-compose.test.yml.
+# A SENHA DO TYPEDB (`TYPEDB_PASSWORD`) DEVE ser fornecida via variável de ambiente
+# (TYPEDB_PASSWORD_TEST para docker-compose.test.yml).
 
-# Habilita TLS para a conexão do servidor MCP com o TypeDB.
+# Habilita (true) ou desabilita (false) TLS para a conexão com o servidor TypeDB.
+# Default em src/config.rs é false.
 tlsEnabled = false
-# Caminho DENTRO do contêiner para o certificado da CA raiz.
-# Necessário apenas se typedb.tlsEnabled = true e o TypeDB Server usar uma CA customizada/autoassinada.
+
+# Caminho DENTRO do contêiner do MCP Server para o arquivo PEM do certificado da
+# Autoridade Certificadora (CA) raiz.
+# Usado para verificar o certificado do servidor TypeDB se `typedb.tlsEnabled = true`
+# e o TypeDB Server usar uma CA customizada ou autoassinada.
+# Default em src/config.rs é None.
+# Exemplo para testes: "/app/test_certs/rootCA.pem" (se montado).
 # tlsCaPath = "/app/test_certs/rootCA.pem"
 
+
+# Configurações de autenticação OAuth 2.0 para os clientes que se conectam ao Typedb-MCP-Server.
 [oauth]
-# Habilita a autenticação OAuth 2.0 para clientes MCP.
+# Habilita (true) ou desabilita (false) a autenticação OAuth2.
+# Default em src/config.rs é false.
 enabled = false
 
 # URI do endpoint JWKS (JSON Web Key Set) do Authorization Server.
-# Necessário apenas se oauth.enabled = true.
-# No ambiente de teste, aponta para o mock-oauth2-server.
-# jwksUri = "http://mock-oauth2-server/.well-known/jwks.json"
+# Obrigatório se `oauth.enabled = true`.
+# Para testes com OAuth, apontaria para o `mock-oauth2-server`.
+# Ex: "http://mock-oauth2-server/.well-known/jwks.json"
+# jwksUri = ""
 
-# Issuer(s) esperado(s) no token JWT.
-# Necessário se oauth.enabled = true e a validação de issuer estiver ativa.
-# Deve corresponder ao que auth_helpers.rs gera para tokens de teste.
-# issuer = ["test-issuer"]
+# Issuer(s) esperado(s) no token JWT (claim "iss"). Pode ser uma lista de strings.
+# Se definido, o token será validado contra estes valores.
+# Default em src/config.rs é None.
+# Ex: issuer = ["https://meu-auth-server.com"]
+# issuer = []
 
-# Audience(s) esperado(s) no token JWT.
-# Necessário se oauth.enabled = true e a validação de audience estiver ativa.
-# Deve corresponder ao que auth_helpers.rs gera para tokens de teste.
-# audience = ["test-audience"]
+# Audience(s) esperado(s) no token JWT (claim "aud"). O token deve conter um destes.
+# Se definido, o token será validado contra estes valores. Pode ser uma lista de strings.
+# Default em src/config.rs é None.
+# Ex: audience = ["api://meu-mcp-server"]
+# audience = []
 
 # Lista de escopos OAuth2 que um token DEVE conter para acesso geral ao servidor.
-# Opcional, se não definido, nenhum escopo global específico é exigido.
+# Se não definido ou vazio, nenhum escopo específico é exigido para funcionalidades básicas.
+# A autorização granular por ferramenta MCP pode impor requisitos de escopo adicionais.
+# Default em src/config.rs é None.
+# Ex: requiredScopes = ["mcp:access", "typedb:read"]
 # requiredScopes = []
 
-# Intervalo para recarregar o JWKS do Authorization Server. Formato legível.
-# Opcional, default é "1h" (definido em src/config.rs).
-# jwksRefreshInterval = "5m"
+# Intervalo para recarregar o JWKS do Authorization Server.
+# Formato: string legível por humanos (ex: "1h", "30m", "3600s").
+# Este valor é para `jwks_refresh_interval_raw` na struct Settings.
+# Default programático (via DEFAULT_JWKS_REFRESH_INTERVAL_STR) é "1h".
+jwksRefreshInterval = "1h"
 
 # Timeout em segundos para a requisição HTTP ao buscar o JWKS.
-# Opcional, default é 30s (definido em src/config.rs).
+# Default em src/config.rs é Some(30).
 # jwksRequestTimeoutSeconds = 10
 
+
+# Configurações de logging para a aplicação.
 [logging]
-# String de configuração para o filtro de log do `tracing_subscriber`.
-# Formato: "[level],[target=level],[target2=level]".
-# Para testes, logs mais verbosos do servidor e driver são úteis.
+# String de configuração para o filtro de log do `tracing_subscriber`
+# (ex: "info,typedb_mcp_server_lib=debug,typedb_driver=trace").
+# Default em src/config.rs é "info,typedb_mcp_server_lib=info,typedb_driver=info".
 rustLog = "info,typedb_mcp_server_lib=debug,typedb_mcp_server=debug,typedb_mcp_server_lib::config=trace,typedb_driver=info,hyper=warn,h2=warn,tower=warn"
 
-[rateLimit]
-# Habilita a limitação de taxa (Rate Limiting) por IP.
-enabled = true
 
-# Número de requisições permitidas por segundo, por IP.
-# Elevado para não impactar testes normais, a menos que o teste seja especificamente para rate limiting.
-requestsPerSecond = 1000
-
-# Número de requisições permitidas em um burst (rajada), por IP.
-burstSize = 2000
-
+# Configurações de CORS (Cross-Origin Resource Sharing).
 [cors]
 # Lista de origens permitidas para acessar o servidor MCP.
-# "*" é permissivo e geralmente adequado para ambientes de teste.
+# Usar `["*"]` permite todas as origens (adequado para testes, mas NÃO para produção sem análise).
+# Default em src/config.rs é `vec!["*".to_string()]`.
 allowedOrigins = ["*"]
 
+
+# Configurações de Limitação de Taxa (Rate Limiting) por IP.
+[rateLimit] # A seção no TOML deve corresponder ao `rename = "rateLimit"` em `Settings` ou ser `rate_limit` se não houver rename.
+# Habilita (true) ou desabilita (false) o rate limiting.
+# Default em src/config.rs é true.
+enabled = true
+
+# Número de requisições (ou novas conexões) permitidas por segundo, por IP.
+# Default em src/config.rs é Some(100).
+requestsPerSecond = 1000 # Valor alto para não interferir em testes normais
+
+# Número de requisições permitidas em um burst (rajada), por IP.
+# Default em src/config.rs é Some(200).
+burstSize = 2000
+
+
+# Configurações para Tracing Distribuído (OpenTelemetry).
 [tracing]
-# Habilita o tracing OpenTelemetry. Desabilitado por padrão para testes.
+# Habilita (true) ou desabilita (false) o tracing OpenTelemetry.
+# Default em src/config.rs é false.
 enabled = false
 
 # Endpoint do coletor OTLP (geralmente gRPC).
-# Obrigatório se tracing.enabled = true.
-# exporterOtlpEndpoint = "http://jaeger-collector:4317" # Exemplo, se um coletor estivesse no compose
+# Obrigatório se `tracing.enabled = true`.
+# Default em src/config.rs é None.
+# Ex: "http://localhost:4317" (para um coletor OTLP/gRPC local).
+# exporterOtlpEndpoint = ""
 
-# Nome do serviço para OpenTelemetry.
+# Nome do serviço que aparecerá no sistema de tracing.
+# Default em src/config.rs é "typedb-mcp-server".
 serviceName = "typedb-mcp-server-test-default"
 
 # Estratégia de amostragem para traces.
 # Valores comuns: "always_on", "always_off", "traceidratio".
-# sampler = "always_on" # Default programático
+# Default em src/config.rs é "always_on".
+sampler = "always_on"
 
 # Argumento para o sampler.
-# Para "traceidratio", é a taxa (ex: "0.1" para 10%).
+# Para "traceidratio", é a taxa (ex: "0.1" para 10% de traces).
 # Para "always_on" ou "always_off", geralmente "1.0" ou não é usado.
-# samplerArg = "1.0" # Default programático
+# Default em src/config.rs é "1.0".
+samplerArg = "1.0"

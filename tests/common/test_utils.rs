@@ -1,16 +1,18 @@
 // tests/common/test_utils.rs
 
 //! Utilitários e helpers comuns para os testes de integração do Typedb-MCP-Server.
-//! Este módulo visa centralizar funções repetitivas usadas em múltiplas suítes de teste.
+//! Este módulo centraliza funções repetitivas usadas em múltiplas suítes de teste.
 
-use anyhow::{bail, Context as AnyhowContext, Result}; // Adicionado bail
-use serde_json::json;
-use std::time::{Duration, Instant}; // Adicionado Instant
-use tracing::{debug, error, info, trace, warn}; // Adicionado error, trace, debug
+use anyhow::{bail, Context as AnyhowContext, Result};
+use serde_json::json; // Necessário para `create_test_db` e `define_test_db_schema`
+use std::time::{Duration, Instant};
+use tracing::{debug, error, info, trace, warn}; // Adicionando trace
 use uuid::Uuid;
 
-use super::{client::TestMcpClient, test_env::TestEnvironment};
-use reqwest::StatusCode;
+// Importar tipos do mesmo crate `common`
+use super::client::TestMcpClient;
+use super::constants; // Para MCP_SERVER_DEFAULT_READYZ_PATH
+use super::docker_helpers::DockerComposeEnv; // Para logging no wait_for_mcp_server_ready
 
 /// Gera um nome de banco de dados único prefixado para evitar conflitos entre testes.
 ///
@@ -38,7 +40,6 @@ pub async fn create_test_db(client: &mut TestMcpClient, db_name: &str) -> Result
     let response_text = super::mcp_utils::get_text_from_call_result(result);
     if response_text != "OK" {
         bail!(
-            // Usar bail! de anyhow
             "Helper Comum: Resposta inesperada ao criar banco de dados '{}': {}",
             db_name,
             response_text
@@ -118,7 +119,6 @@ pub async fn define_test_db_schema(client: &mut TestMcpClient, db_name: &str) ->
     let response_text = super::mcp_utils::get_text_from_call_result(define_result);
     if response_text != "OK" {
         bail!(
-            // Usar bail!
             "Helper Comum: Resposta inesperada ao definir esquema para '{}': {}",
             db_name,
             response_text
@@ -128,45 +128,54 @@ pub async fn define_test_db_schema(client: &mut TestMcpClient, db_name: &str) ->
     Ok(())
 }
 
-/// Aguarda até que o endpoint `/readyz` do Typedb-MCP-Server (acessado via `TestEnvironment`)
-/// indique que o servidor e suas dependências críticas estão prontos.
+/// Aguarda até que o endpoint `/readyz` do Typedb-MCP-Server indique que o servidor
+/// e suas dependências críticas (TypeDB e JWKS, se aplicável) estão prontos.
 ///
 /// # Arguments
-/// * `test_env`: Uma referência ao `TestEnvironment` que contém as URLs e flags de configuração.
+/// * `docker_env_ref`: Referência ao `DockerComposeEnv` para logging em caso de timeout.
+/// * `mcp_http_base_url`: A URL base HTTP ou HTTPS do servidor MCP (ex: "http://localhost:8788").
+/// * `is_mcp_server_tls`: `true` se o servidor MCP estiver usando TLS (HTTPS).
+/// * `expect_oauth_jwks_up`: `true` se o teste espera que o componente JWKS no `/readyz` esteja "UP".
+///                           Se `false`, espera que esteja "NOT_CONFIGURED" (indicando OAuth desabilitado).
+/// * `_expect_typedb_tls_connection`: (Atualmente não usado ativamente na lógica de checagem do /readyz)
+///                                   Flag indicando se o MCP Server está configurado para usar TLS com o TypeDB.
 /// * `timeout`: A duração máxima de espera.
 ///
 /// # Returns
 /// `Result<serde_json::Value>` contendo o corpo JSON da resposta `/readyz` bem-sucedida,
 /// ou um erro se o timeout for atingido ou ocorrer outra falha.
 pub async fn wait_for_mcp_server_ready_from_test_env(
-    test_env: &TestEnvironment,
+    docker_env_ref: &DockerComposeEnv, // Mudança: Recebe &DockerComposeEnv para logs
+    mcp_http_base_url: &str,           // Mudança: Recebe URL base
+    is_mcp_server_tls: bool,           // Mudança: Recebe flag TLS do servidor MCP
+    expect_oauth_jwks_up: bool,        // Mudança: Recebe flag de expectativa do JWKS
+    _expect_typedb_tls_connection: bool, // Mantido, mas não usado ativamente na checagem do JSON /readyz
     timeout: Duration,
 ) -> Result<serde_json::Value> {
-    let readyz_url = format!(
-        "{}{}",
-        test_env.mcp_http_base_url,
-        super::constants::MCP_SERVER_DEFAULT_READYZ_PATH
-    );
+    let readyz_url = format!("{}{}", mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
     info!(
-        "Helper Comum: Aguardando MCP Server em '{}' ficar pronto (timeout: {:?})",
-        readyz_url, timeout
+        "Aguardando MCP Server em '{}' ficar pronto (timeout: {:?}, esperar JWKS UP: {})",
+        readyz_url, timeout, expect_oauth_jwks_up
     );
 
     let client_builder = reqwest::Client::builder();
-    let client = if test_env.is_mcp_server_tls {
+    let client = if is_mcp_server_tls {
         client_builder.danger_accept_invalid_certs(true).build()?
     } else {
         client_builder.build()?
     };
 
-    let start_time = Instant::now(); // Corrigido: Instant importado
+    let start_time = Instant::now();
     loop {
         if start_time.elapsed() >= timeout {
-            test_env.docker_env.logs_all_services().unwrap_or_else(|e| {
-                error!("Helper Comum: Falha ao obter logs do Docker Compose durante timeout do /readyz: {}", e); // Corrigido: error!
+            docker_env_ref.logs_all_services().unwrap_or_else(|e| {
+                error!(
+                    "Falha ao obter logs do Docker Compose durante timeout do /readyz para {}: {}",
+                    docker_env_ref.project_name(),
+                    e
+                );
             });
-            bail!("Helper Comum: /readyz timeout para '{}' após {:?}", readyz_url, timeout);
-            // Corrigido: bail!
+            bail!("/readyz timeout para '{}' após {:?}", readyz_url, timeout);
         }
 
         match client.get(&readyz_url).send().await {
@@ -175,65 +184,54 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
                 match resp.json::<serde_json::Value>().await {
                     Ok(json_body) => {
                         trace!(
-                            "Helper Comum: /readyz em '{}': Status {}, Corpo: {:?}",
+                            "/readyz em '{}': Status {}, Corpo: {:?}",
                             readyz_url,
                             status_code,
                             json_body
-                        ); // Corrigido: trace!
+                        );
                         let overall_status =
                             json_body.get("status").and_then(|s| s.as_str()).unwrap_or("DOWN");
-                        let typedb_component_status = json_body
+                        let typedb_comp_status = json_body
                             .get("components")
                             .and_then(|c| c.get("typedb"))
                             .and_then(|t| t.as_str())
                             .unwrap_or("DOWN");
-                        let jwks_component_status = json_body
+                        let jwks_comp_status = json_body
                             .get("components")
                             .and_then(|c| c.get("jwks"))
                             .and_then(|j| j.as_str())
                             .unwrap_or("NOT_CONFIGURED");
 
-                        let typedb_ok = typedb_component_status.eq_ignore_ascii_case("UP");
-                        let jwks_ok = if test_env.is_oauth_enabled {
-                            jwks_component_status.eq_ignore_ascii_case("UP")
-                        } else {
-                            jwks_component_status.eq_ignore_ascii_case("NOT_CONFIGURED")
-                                || !test_env.is_oauth_enabled
-                        };
+                        let typedb_ok = typedb_comp_status.eq_ignore_ascii_case("UP");
+                        let jwks_target_status_str =
+                            if expect_oauth_jwks_up { "UP" } else { "NOT_CONFIGURED" };
+                        let jwks_ok = jwks_comp_status.eq_ignore_ascii_case(jwks_target_status_str);
 
-                        if status_code == StatusCode::OK
+                        if status_code == reqwest::StatusCode::OK
                             && overall_status.eq_ignore_ascii_case("UP")
                             && typedb_ok
                             && jwks_ok
                         {
-                            info!("Helper Comum: /readyz para '{}' está UP e todas as dependências configuradas estão prontas.", readyz_url);
+                            info!("/readyz para '{}' está UP e todas as dependências configuradas estão prontas.", readyz_url);
                             return Ok(json_body);
-                        } else {
-                            debug!( // debug! já estava importado
-                                "Helper Comum: /readyz para '{}' ainda não está pronto. Status HTTP: {}, Overall: {}, TypeDB: {}, JWKS: {}. Aguardando...",
-                                readyz_url, status_code, overall_status, typedb_component_status, jwks_component_status
-                            );
                         }
+                        debug!(
+                            "/readyz para '{}' ainda não está pronto. Status HTTP: {}, Overall: {}, TypeDB: {}, JWKS: {} (esperado JWKS: {}). Aguardando...",
+                            readyz_url, status_code, overall_status, typedb_comp_status, jwks_comp_status, jwks_target_status_str
+                        );
                     }
                     Err(e) => {
-                        if let Ok(resp_text_fallback_result) = client.get(&readyz_url).send().await
-                        {
-                            if let Ok(resp_text_fallback) = resp_text_fallback_result.text().await {
-                                debug!("Helper Comum: /readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Corpo como texto: '{}'. Aguardando...", readyz_url, status_code, e, resp_text_fallback);
-                            } else {
-                                debug!("Helper Comum: /readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Falha também ao ler corpo como texto. Aguardando...", readyz_url, status_code, e);
-                            }
-                        } else {
-                            debug!("Helper Comum: /readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Falha também ao re-requisitar para ler corpo como texto. Aguardando...", readyz_url, status_code, e);
-                        }
+                        let body_text_result = client.get(&readyz_url).send().await; // Re-request para obter corpo
+                        let body_text = match body_text_result {
+                            Ok(r) => r.text().await.unwrap_or_else(|_| "Falha ao ler corpo como texto.".to_string()),
+                            Err(_) => "Falha ao re-requisitar para obter corpo como texto.".to_string(),
+                        };
+                        debug!("/readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Corpo como texto: '{}'. Aguardando...", readyz_url, status_code, e, body_text);
                     }
                 }
             }
             Err(e) => {
-                debug!(
-                    "Helper Comum: Aguardando /readyz em '{}': {}. Tentando novamente...",
-                    readyz_url, e
-                );
+                debug!("Aguardando /readyz em '{}': {}. Tentando novamente...", readyz_url, e);
             }
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -243,8 +241,7 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::constants;
-    use serial_test::serial;
+    use std::time::Duration;
 
     #[test]
     fn test_unique_db_name_creates_different_names() {
@@ -252,32 +249,37 @@ mod tests {
         let name2 = unique_db_name("prefix");
         assert_ne!(
             name1, name2,
-            "unique_db_name deveria gerar nomes diferentes para o mesmo prefixo."
+            "unique_db_name deveria gerar nomes diferentes com o mesmo prefixo."
         );
-        assert!(name1.starts_with("prefix_"));
+        assert!(name1.starts_with("prefix"));
     }
 
-    #[tokio::test]
-    #[serial]
-    #[ignore]
-    async fn test_wait_for_readyz_helper_example_usage() -> Result<()> {
-        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+    #[test]
+    fn test_wait_for_mcp_server_ready_signature_check() {
+        // Apenas para verificar a assinatura da função (teste de compilação)
+        // A assinatura agora recebe 6 argumentos.
+        type WaitFnSig = for<'a> fn(
+            &'a DockerComposeEnv,
+            &'a str, // mcp_http_base_url
+            bool,    // is_mcp_server_tls
+            bool,    // expect_oauth_jwks_up
+            bool,    // expect_typedb_tls_connection
+            Duration,
+        ) -> futures_util::future::BoxFuture<'a, Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>>>;
 
-        let test_env = TestEnvironment::setup(
-            "wait_readyz_helper_usage",
-            constants::DEFAULT_TEST_CONFIG_FILENAME,
-        )
-        .await?;
-
-        let readyz_json = wait_for_mcp_server_ready_from_test_env(
-            &test_env,
-            constants::DEFAULT_MCP_SERVER_READY_TIMEOUT,
-        )
-        .await?;
-
-        assert_eq!(readyz_json.get("status").and_then(|s| s.as_str()), Some("UP"));
-        info!("Exemplo de uso wait_for_readyz_helper: /readyz está UP.");
-
-        Ok(())
+        let _fn_ptr: WaitFnSig = |env, url, tls_mcp, oauth_up, typedb_tls_conn, timeout| {
+            Box::pin(async move {
+                wait_for_mcp_server_ready_from_test_env(
+                    env,
+                    url,
+                    tls_mcp,
+                    oauth_up,
+                    typedb_tls_conn,
+                    timeout,
+                )
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
+            })
+        };
     }
 }

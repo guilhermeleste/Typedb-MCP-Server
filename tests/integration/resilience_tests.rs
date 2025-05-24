@@ -166,9 +166,16 @@ async fn test_server_recovers_after_typedb_temporary_outage() -> Result<()> {
     tokio::time::sleep(Duration::from_secs(15)).await;
 
     info!("Teste: Verificando /readyz do MCP Server durante a falha do TypeDB.");
-    // Usar o helper wait_for_mcp_server_ready_from_test_env que agora está em common::test_utils
-    let readyz_down_result =
-        wait_for_mcp_server_ready_from_test_env(&test_env, Duration::from_secs(30)).await;
+    // Usar o helper wait_for_mcp_server_ready_from_test_env com nova assinatura
+    let readyz_down_result = wait_for_mcp_server_ready_from_test_env(
+        &test_env.docker_env,
+        &test_env.mcp_http_base_url,
+        test_env.is_mcp_server_tls,
+        test_env.is_oauth_enabled,
+        false, // _expect_typedb_tls_connection (não usado)
+        Duration::from_secs(30),
+    )
+    .await;
 
     // O wait_for_mcp_server_ready_from_test_env espera por UP. Se TypeDB está DOWN, ele deve retornar Err.
     assert!(readyz_down_result.is_err(), "MCP Server não ficou DOWN no /readyz como esperado (wait_for_mcp_server_ready_from_test_env deveria falhar).");
@@ -211,10 +218,16 @@ async fn test_server_recovers_after_typedb_temporary_outage() -> Result<()> {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     info!("Teste: Verificando /readyz do MCP Server após recuperação do TypeDB.");
-    let readyz_up_again =
-        wait_for_mcp_server_ready_from_test_env(&test_env, Duration::from_secs(45))
-            .await
-            .context("MCP Server não voltou ao estado UP após recuperação do TypeDB")?;
+    let readyz_up_again = wait_for_mcp_server_ready_from_test_env(
+        &test_env.docker_env,
+        &test_env.mcp_http_base_url,
+        test_env.is_mcp_server_tls,
+        test_env.is_oauth_enabled,
+        false, // _expect_typedb_tls_connection (não usado)
+        Duration::from_secs(45),
+    )
+    .await
+    .context("MCP Server não voltou ao estado UP após recuperação do TypeDB")?;
     assert_eq!(
         readyz_up_again.get("components").and_then(|c| c.get("typedb")).and_then(|s| s.as_str()),
         Some("UP")

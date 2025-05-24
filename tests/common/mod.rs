@@ -81,11 +81,20 @@ mod tests {
         // (não retorna Result)
         let _delete_db_fn_ptr = delete_test_db;
 
-        // async fn wait_for_mcp_server_ready_from_test_env(test_env: &TestEnvironment, timeout: Duration) -> Result<serde_json::Value>
-        type WaitForReadyFnType =
-            for<'a> fn(&'a TestEnvironment, Duration) -> BoxFuture<'a, Result<serde_json::Value>>;
-        let _wait_ready_fn_check: WaitForReadyFnType =
-            |env, dur| Box::pin(wait_for_mcp_server_ready_from_test_env(env, dur));
+        // async fn wait_for_mcp_server_ready_from_test_env com nova assinatura
+        type WaitForReadyFnType = for<'a> fn(
+            &'a DockerComposeEnv,
+            &'a str,
+            bool,
+            bool,
+            bool,
+            Duration,
+        ) -> BoxFuture<'a, Result<serde_json::Value>>;
+        let _wait_ready_fn_check: WaitForReadyFnType = |docker_env, url, tls, oauth, typedb_tls, dur| {
+            Box::pin(wait_for_mcp_server_ready_from_test_env(
+                docker_env, url, tls, oauth, typedb_tls, dur,
+            ))
+        };
 
         // Acessar constante
         assert_eq!(super::constants::MCP_SERVER_SERVICE_NAME, "typedb-mcp-server-it");
