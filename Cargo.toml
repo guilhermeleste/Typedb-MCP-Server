@@ -11,6 +11,12 @@ keywords = ["mcp", "typedb", "database", "websocket", "oauth2", "server", "rust"
 categories = ["database", "network-programming", "web-programming::http-server", "api-bindings"]
 rust-version = "1.87.0"
 
+[features]
+default = []
+smoke-tests = []
+integration-tests = []
+full-tests = []
+
 [dependencies]
 
 axum-server = { version = "0.6", features = ["tls-rustls"] }
@@ -55,6 +61,8 @@ typedb-driver = "3.2.0"
 uuid = { version = "1.16.0", features = ["v4", "serde"] }
 humantime = "2.2.0"
 serial_test = "3.2.0"
+serde_yaml = "0.9.34"
+chrono = { version = "0.4.41", features = ["serde"] }
 
 
 [dev-dependencies]
@@ -87,9 +95,19 @@ strip = true
 debug = false
 
 [profile.test]
-
 opt-level = 1
 debug = true
+
+[profile.test-fast]
+inherits = "test"
+opt-level = 2
+debug = false
+
+[profile.test-smoke]
+inherits = "test"
+opt-level = 3
+debug = false
+lto = "thin"
 
 
 

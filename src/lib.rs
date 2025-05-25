@@ -50,6 +50,11 @@ pub mod db;
 /// de dependências e a formatação para o protocolo MCP.
 pub mod error;
 
+/// Módulo para registro, rastreamento e prevenção de erros.
+/// Fornece funcionalidades para capturar erros sistematicamente, identificar padrões,
+/// implementar soluções robustas e criar medidas preventivas automáticas.
+pub mod error_registry;
+
 /// Módulo contendo o handler principal do serviço MCP (`McpServiceHandler`).
 /// Implementa o trait `ServerHandler` da crate `rmcp` e orquestra a
 /// execução das ferramentas MCP disponíveis.
