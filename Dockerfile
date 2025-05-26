@@ -21,7 +21,7 @@ COPY src ./src
 RUN cargo build --release --locked
 
 # ----------- FINAL STAGE (RUNTIME) -----------
-FROM ubuntu:24.04 AS final
+FROM ubuntu:25.10 AS final
 
 ENV APP_NAME=typedb_mcp_server
 
