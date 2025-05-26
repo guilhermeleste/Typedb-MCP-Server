@@ -43,14 +43,13 @@ use typedb_mcp_server_lib::{
     mcp_service_handler::McpServiceHandler,
     metrics, telemetry,
     transport::WebSocketTransport,
-    AuthErrorDetail, McpServerError,
+    AuthErrorDetail, McpServerError, // McpServerError para erros locais
 };
 // Crates de Observabilidade
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use reqwest::Client as ReqwestClient;
 use rmcp::service::ServiceExt as RmcpServiceExt;
-use tracing::{Dispatch, Instrument}; // Instrument importado
-                                     // Corrigido: util::SubscriberInitExt removido se .init() não for usado. Prelude é bom.
+use tracing::{warn, Dispatch, Instrument}; // Instrument e warn importados
 use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
 use typedb_driver::TypeDBDriver;
 
@@ -157,40 +156,67 @@ async fn initialize_core_services(
             let mcp_error =
                 McpServerError::from(typedb_mcp_server_lib::error::TypeDBErrorWrapper::from(e));
             tracing::error!("Falha fatal ao conectar com TypeDB: {}", mcp_error);
+            // Retorna o erro para impedir a inicialização
             return Err(Box::new(mcp_error));
         }
     };
 
-    let jwks_cache = if settings.oauth.enabled {
+    let jwks_cache_option = if settings.oauth.enabled {
         let jwks_uri = settings.oauth.jwks_uri.as_ref().ok_or_else(|| {
             let msg = "OAuth2 habilitado, mas oauth.jwks_uri não configurado.";
             tracing::error!("{}", msg);
-            McpServerError::Auth(AuthErrorDetail::InvalidAuthConfig(msg.to_string()))
+            // Envolve em Box<dyn StdError ...>
+            Box::new(McpServerError::Auth(AuthErrorDetail::InvalidAuthConfig(msg.to_string())))
+                as Box<dyn StdError + Send + Sync>
         })?;
+
+        let http_client_timeout = settings
+            .oauth
+            .jwks_request_timeout_seconds
+            .map_or_else(
+                || {
+                    warn!("oauth.jwks_request_timeout_seconds não configurado, usando default de 10s.");
+                    Duration::from_secs(10)
+                },
+                Duration::from_secs,
+            );
+        
         let http_client = ReqwestClient::builder()
-            .timeout(
-                settings
-                    .oauth
-                    .jwks_request_timeout_seconds
-                    .map_or(Duration::from_secs(10), Duration::from_secs),
-            )
-            .build()?;
+            .timeout(http_client_timeout)
+            .build()
+            .map_err(|e| Box::new(McpServerError::Internal(format!("Falha ao construir HTTP client para JWKS: {}", e))))?;
+            
+        let jwks_refresh_interval = settings.oauth.jwks_refresh_interval.unwrap_or_else(|| {
+            warn!("oauth.jwks_refresh_interval não pôde ser parseado ou estava ausente, usando default de 1 hora para o cache.");
+            Duration::from_secs(3600) // 1 hora
+        });
+
         let cache = Arc::new(JwksCache::new(
             jwks_uri.clone(),
-            settings.oauth.jwks_refresh_interval.unwrap_or(Duration::from_secs(3600)),
+            jwks_refresh_interval,
             http_client,
         ));
-        if let Err(e) = cache.refresh_keys().await {
-            tracing::warn!("Falha no refresh inicial do JWKS: {}", e);
-        } else {
-            tracing::info!("JWKS cache inicializado.");
+
+        // Tratar falha no refresh inicial do JWKS como erro fatal
+        match cache.refresh_keys().await {
+            Ok(()) => {
+                tracing::info!("JWKS cache inicializado e populado com sucesso de {}.", jwks_uri);
+                Some(cache)
+            }
+            Err(e) => {
+                let err_msg = format!("Falha crítica no refresh inicial do JWKS de {}: {}. O servidor não pode iniciar com OAuth habilitado sem acesso ao JWKS.", jwks_uri, e);
+                tracing::error!("{}", err_msg);
+                // Retorna o erro para impedir a inicialização
+                return Err(Box::new(McpServerError::Auth(AuthErrorDetail::JwksFetchFailed(err_msg))));
+            }
         }
-        Some(cache)
     } else {
-        None
+        None // OAuth desabilitado, sem cache JWKS
     };
-    Ok((typedb_driver_instance, jwks_cache))
+    
+    Ok((typedb_driver_instance, jwks_cache_option))
 }
+
 
 /// Cria o estado da aplicação compartilhado.
 fn create_app_state(
@@ -240,7 +266,8 @@ fn build_axum_router(
                 oauth_middleware,
             ));
         } else {
-            tracing::error!("OAuth habilitado, mas JwksCache ausente. Autenticação falhará.");
+            // Este caso não deveria ser alcançado se initialize_core_services falhar em caso de erro no JWKS
+            tracing::error!("OAuth habilitado, mas JwksCache ausente. Autenticação falhará. Isso é um erro de lógica interna.");
         }
     } else {
         tracing::info!("Autenticação OAuth2 desabilitada.");
@@ -381,17 +408,9 @@ fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
 
         return rt.block_on(async_main(settings));
     }
-    // O código não deve alcançar este ponto devido ao retorno ou pânico dentro do bloco.
-    // Se alcançado, indica um erro lógico na estrutura do main.
-    // No entanto, o compilador já detecta que o código acima sempre retorna ou entra em pânico.
-    // Portanto, a macro unreachable!() aqui seria, ela mesma, inalcançável e geraria um aviso.
-    // A função main já tem seu tipo de retorno satisfeito pelo `return` acima.
 }
 
 /// Função principal assíncrona.
-// [REMOVIDO]: #[tracing::instrument] removido para evitar pânico de ciclo de vida de spans
-// em função executada via block_on fora do contexto natural do executor async.
-// O tracing deve ser feito apenas em tasks spawnadas ou handlers HTTP.
 async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Send + Sync>> {
     let global_shutdown_token = CancellationToken::new();
     setup_signal_handler(global_shutdown_token.clone());
@@ -409,8 +428,20 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
             None
         }
     };
+    
+    tracing::info!("Chamando initialize_core_services...");
+    let core_services_result = initialize_core_services(&settings).await;
 
-    let (typedb_driver, jwks_cache) = initialize_core_services(&settings).await?;
+    let (typedb_driver, jwks_cache) = match core_services_result {
+        Ok(services) => {
+            tracing::info!("initialize_core_services retornou Ok.");
+            services
+        }
+        Err(e) => {
+            tracing::error!("Falha na inicialização dos serviços principais (TypeDB ou JWKS): {}", e);
+            return Err(e); 
+        }
+    };
 
     let app_state = create_app_state(
         typedb_driver.clone(),
@@ -421,6 +452,7 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
 
     let router = build_axum_router(app_state, &settings, metrics_handle_opt);
 
+    tracing::info!("Iniciando servidor Axum...");
     if let Err(e) = run_axum_server(router, &settings, global_shutdown_token.clone()).await {
         tracing::error!("Erro fatal ao executar o servidor Axum: {}", e);
         if !global_shutdown_token.is_cancelled() {
@@ -430,12 +462,14 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
     }
 
     global_shutdown_token.cancelled().await;
-    tracing::info!("Token de desligamento global recebido, iniciando limpeza de recursos...");
+    tracing::info!("Token de desligamento global recebido após axum_server, iniciando limpeza de recursos...");
 
     cleanup_resources(typedb_driver, &settings).await?;
 
+    tracing::info!("async_main concluído com sucesso.");
     Ok(())
 }
+
 
 /// Handler para o endpoint de liveness (`/livez`).
 async fn livez_handler() -> StatusCode {
@@ -467,8 +501,9 @@ async fn readyz_handler(State(app_state): State<AppState>) -> impl IntoResponse 
                 ready_components.insert("jwks".to_string(), serde_json::json!("UP"));
             }
         } else {
+            // Este caso deveria ser evitado pela falha na inicialização do JWKS.
             tracing::error!(
-                "/readyz: OAuth habilitado mas JwksCache ausente. Erro de configuração."
+                "/readyz: OAuth habilitado mas JwksCache ausente. Erro de configuração fatal."
             );
             ready_components.insert("jwks".to_string(), serde_json::json!("CONFIG_ERROR"));
             overall_ready = false;

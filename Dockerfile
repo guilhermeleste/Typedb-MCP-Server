@@ -27,7 +27,7 @@ ENV APP_NAME=typedb_mcp_server
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends ca-certificates curl && \
+    apt-get install -y --no-install-recommends ca-certificates curl netcat-openbsd && \
     rm -rf /var/lib/apt/lists/*
 
 # Usuário não-root

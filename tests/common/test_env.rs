@@ -10,7 +10,8 @@
 //!   e prontos para uso nos testes de integração.
 
 use anyhow::{Context as AnyhowContext, Result};
-use tracing::{error, info, warn}; // `debug` e `trace` não são mais usados diretamente aqui.
+use std::time::Duration; // Adicionado para o delay
+use tracing::{error, info, warn}; 
 
 // Importa helpers e constantes do mesmo crate `common`
 use super::auth_helpers::{self, JwtAuthAlgorithm};
@@ -183,6 +184,7 @@ impl TestEnvironment {
             &format!("mcp_{}", test_name_suffix),
         );
 
+        // Garantir limpeza prévia
         docker_env.down(true).unwrap_or_else(|e| {
             warn!(
                 "Falha (ignorada) ao derrubar ambiente docker preexistente para o projeto '{}': {}. \
@@ -209,6 +211,7 @@ impl TestEnvironment {
                 )
             })?;
 
+        // Espera pelo TypeDB primeiro, pois o MCP server sempre depende dele
         info!(
             "Aguardando serviço TypeDB ('{}') ficar saudável para projeto '{}'.",
             typedb_service_to_wait_for,
@@ -228,6 +231,7 @@ impl TestEnvironment {
                 )
             })?;
 
+        // Se OAuth estiver habilitado, espere pelo mock OAuth server
         if is_oauth_enabled {
             info!(
                 "Aguardando serviço Mock OAuth ('{}') ficar saudável para projeto '{}'.",
@@ -247,9 +251,12 @@ impl TestEnvironment {
                         docker_env.project_name()
                     )
                 })?;
+            
+            // MODIFICAÇÃO AQUI: Adicionado pequeno delay
+            info!("Mock OAuth Server está 'healthy'. Adicionando pequeno delay de 2s para garantir que o Nginx sirva o JWKS.");
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
         
-        // Construir URLs ANTES de passá-las para wait_for_mcp_server_ready_from_test_env
         let (mcp_ws_url, mcp_http_base_url) = if is_mcp_server_tls {
             (
                 format!(
@@ -270,12 +277,13 @@ impl TestEnvironment {
             )
         };
         
+        // Agora espera pelo MCP server, que pode depender do JWKS se OAuth estiver ativo
         wait_for_mcp_server_ready_from_test_env(
-            &docker_env,                  // Passa DockerComposeEnv
-            &mcp_http_base_url,           // Passa a URL base HTTP/S construída
-            is_mcp_server_tls,            // Flag TLS do servidor MCP
-            is_oauth_enabled,             // Flag para expectativa do JWKS
-            is_typedb_tls_connection,     // Flag para conexão TypeDB TLS
+            &docker_env,
+            &mcp_http_base_url,
+            is_mcp_server_tls,
+            is_oauth_enabled,
+            is_typedb_tls_connection,
             constants::DEFAULT_MCP_SERVER_READY_TIMEOUT,
         )
         .await
@@ -354,7 +362,7 @@ impl TestEnvironment {
         } else {
             if scopes.is_some() && !scopes.unwrap_or("").is_empty() {
                 warn!("TestEnvironment: Solicitado cliente com escopos ('{}'), mas OAuth não está habilitado para este ambiente (config: '{}'). Conectando sem token.", 
-                      scopes.unwrap_or(""), 
+                      scopes.unwrap_or("<nenhum>"), 
                       self.determine_config_filename_from_flags()
                 );
             }
@@ -425,7 +433,7 @@ mod tests {
     use super::*;
     use serial_test::serial; 
     use crate::common::constants; 
- // Importar Duration explicitamente para o teste
+    // Importar Duration explicitamente para o teste
 
     #[tokio::test]
     #[serial]
@@ -564,7 +572,7 @@ mod tests {
         // Configuração personalizada: TypeDB TLS + OAuth Mock + MCP Server TLS
         let config = TestConfiguration::custom(
             vec![TestProfile::TypeDbTls, TestProfile::OAuthMock],
-            constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME,
+            constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME, // Ajuste o nome do arquivo conforme necessário para esta combinação
             true, // MCP Server TLS
         );
         
@@ -589,13 +597,13 @@ mod tests {
         // Usando API fluente para construir configuração
         let config = TestConfiguration::default(constants::DEFAULT_TEST_CONFIG_FILENAME)
             .with_profile(TestProfile::OAuthMock)
-            .with_mcp_tls(false);
+            .with_mcp_tls(false); // MCP server TLS desabilitado
         
         let test_env = TestEnvironment::setup_with_profiles("profiles_fluent", config).await?;
         
         assert!(!test_env.is_mcp_server_tls);
         assert!(test_env.is_oauth_enabled);
-        assert!(!test_env.is_typedb_tls_connection);
+        assert!(!test_env.is_typedb_tls_connection); // TypeDB TLS não foi adicionado
         assert!(test_env.mcp_ws_url.starts_with("ws://localhost:8788"));
         
         info!("✅ TestEnvironment com API fluente configurado com sucesso");
