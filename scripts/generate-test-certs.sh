@@ -242,7 +242,7 @@ log_info "  Hosts: ${MCP_SERVER_HOSTS}"
 log_info "  Certificado: ${OUTPUT_DIR}/${MCP_CERT_FILE}"
 log_info "  Chave Privada: ${OUTPUT_DIR}/${MCP_KEY_FILE}"
 if mkcert -cert-file "${OUTPUT_DIR}/${MCP_CERT_FILE}" -key-file "${OUTPUT_DIR}/${MCP_KEY_FILE}" ${MCP_SERVER_HOSTS}; then
-    chmod 600 "${OUTPUT_DIR}/${MCP_KEY_FILE}"
+    chmod 644 "${OUTPUT_DIR}/${MCP_KEY_FILE}"
     log_info "Certificado do Typedb-MCP-Server gerado com sucesso."
 else
     log_error "Falha ao gerar certificado para Typedb-MCP-Server."
@@ -254,7 +254,7 @@ log_info "  Hosts: ${TYPEDB_SERVER_HOSTS}"
 log_info "  Certificado: ${OUTPUT_DIR}/${TYPEDB_CERT_FILE}"
 log_info "  Chave Privada: ${OUTPUT_DIR}/${TYPEDB_KEY_FILE}"
 if mkcert -cert-file "${OUTPUT_DIR}/${TYPEDB_CERT_FILE}" -key-file "${OUTPUT_DIR}/${TYPEDB_KEY_FILE}" ${TYPEDB_SERVER_HOSTS}; then
-    chmod 600 "${OUTPUT_DIR}/${TYPEDB_KEY_FILE}"
+    chmod 644 "${OUTPUT_DIR}/${TYPEDB_KEY_FILE}"
     log_info "Certificado do servidor TypeDB de teste gerado com sucesso."
 else
     log_error "Falha ao gerar certificado para o servidor TypeDB de teste."
