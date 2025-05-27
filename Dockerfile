@@ -42,9 +42,13 @@ USER $APP_NAME
 
 EXPOSE 8787 8443 9090
 
-# Healthcheck customizado para o MCP Server (ajustável via compose)
+# Healthcheck customizado para o MCP Server (detecta TLS automaticamente)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8787/livez || exit 1
+  CMD if [ "$TLS_ENABLED" = "true" ]; then \
+        curl -k -f https://localhost:8443/livez || exit 1; \
+      else \
+        curl -f http://localhost:8787/livez || exit 1; \
+      fi
 
 ENTRYPOINT ["/usr/local/bin/typedb_mcp_server"]
 CMD []

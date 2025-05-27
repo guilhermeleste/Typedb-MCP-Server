@@ -557,23 +557,28 @@ async fn websocket_handler(
             .into_response();
     }
 
-    let conn_cancellation_token = app_state.global_shutdown_token.child_token();
+    // Clonar os Arcs e o token que serão movidos para a closure on_upgrade
+    let mcp_handler_clone = app_state.mcp_handler.clone();
+    let global_shutdown_token_clone = app_state.global_shutdown_token.clone();
 
     ws.on_upgrade(move |socket| {
         // user_id_for_log (String) é movido para esta closure externa
         // addr (SocketAddr) também é movido
         async move {
-            tracing::info!("Conexão WebSocket MCP estabelecida.");
-            let mcp_handler_instance = (*app_state.mcp_handler).clone();
-            let adapter = WebSocketTransport::new(socket);
-            let service_shutdown_token_for_task = conn_cancellation_token.clone();
+            // Criar o child_token AQUI, dentro da closure que vive com a conexão.
+            // Ele será dropado (e cancelado) apenas quando esta task 'on_upgrade' terminar.
+            let connection_specific_shutdown_token = global_shutdown_token_clone.child_token();
             
+            tracing::info!("Conexão WebSocket MCP estabelecida.");
+            let adapter = WebSocketTransport::new(socket);
             // user_id_for_log já é uma String possuída aqui.
             // Movê-la diretamente para a task interna.
             let user_id_for_inner_task = user_id_for_log; 
 
             tokio::spawn(async move {
-                let service_result = mcp_handler_instance.serve_with_ct(adapter, service_shutdown_token_for_task).await;
+                // Clone do McpServiceHandler para mover ownership para a task
+                let mcp_handler_instance = (*mcp_handler_clone).clone();
+                let service_result = mcp_handler_instance.serve_with_ct(adapter, connection_specific_shutdown_token).await;
                 if let Err(e) = service_result {
                     let error_string = e.to_string();
                     if error_string.contains("operação cancelada")

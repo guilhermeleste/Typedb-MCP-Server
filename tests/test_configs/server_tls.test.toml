@@ -37,9 +37,8 @@ tlsEnabled = false # TLS para a conexão com TypeDB está desabilitado neste cen
 enabled = false
 
 [logging]
-# Nível de log com trace para a camada de servidor TLS (axum_server) e HTTP (hyper, h2, tower)
-# pode ser útil para depurar problemas de handshake TLS.
-rustLog = "info,typedb_mcp_server_lib=debug,typedb_mcp_server=debug,typedb_driver=info,axum_server=trace,hyper=warn,h2=warn,tower=warn"
+# Nível de log máximo para capturar crash/pânico do servidor TLS
+rustLog = "trace,typedb_mcp_server_lib=trace,typedb_mcp_server=trace,typedb_driver=trace,axum_server=trace,hyper=trace,h2=trace,tower=trace,rustls=trace,tokio_rustls=trace,tokio=debug"
 
 [rateLimit]
 enabled = true

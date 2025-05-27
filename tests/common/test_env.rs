@@ -201,7 +201,10 @@ impl TestEnvironment {
         let active_profiles = config.as_compose_profiles();
         let typedb_service_to_wait_for = config.typedb_service_to_wait_for();
         
-        docker_env.up(&config.config_filename, Some(active_profiles.clone()))
+        // Não usar --wait do Docker Compose quando MCP server usar TLS, pois o healthcheck HTTP padrão falhará
+        let should_wait_docker_compose_health = !is_mcp_server_tls;
+        
+        docker_env.up(&config.config_filename, Some(active_profiles.clone()), should_wait_docker_compose_health, is_mcp_server_tls)
             .with_context(|| {
                 format!(
                     "Falha ao executar 'docker compose up' para projeto '{}' com config MCP '{}' e perfis {:?}",

@@ -67,7 +67,7 @@ impl DockerComposeEnv {
     ///
     /// Centraliza a definição das variáveis de ambiente para garantir consistência
     /// entre os comandos `up` e `down`.
-    fn get_compose_env_vars(&self, config_filename_opt: Option<&str>) -> Vec<(String, String)> {
+    fn get_compose_env_vars(&self, config_filename_opt: Option<&str>, tls_enabled: bool) -> Vec<(String, String)> {
         let mcp_config_path = if let Some(config_filename) = config_filename_opt {
             format!("/app/test_configs/{}", config_filename)
         } else {
@@ -77,6 +77,7 @@ impl DockerComposeEnv {
         vec![
             ("MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV".to_string(), mcp_config_path),
             ("MCP_TYPEDB__ADDRESS".to_string(), "typedb-server-it:1729".to_string()),
+            ("TLS_ENABLED".to_string(), if tls_enabled { "true".to_string() } else { "false".to_string() }),
             ("target_typedb_host_port".to_string(), "typedb-server-it:1729".to_string()),
             ("timeout_duration".to_string(), "120".to_string()),
             ("target_typedb_service_name".to_string(), "typedb-server-it".to_string()),
@@ -171,20 +172,26 @@ impl DockerComposeEnv {
     /// # Arguments
     /// * `config_filename`: Nome do arquivo de configuração TOML (ex: "default.test.toml") para o MCP Server.
     /// * `active_profiles`: Opcional. Perfis do Docker Compose a serem ativados.
-    pub fn up(&self, config_filename: &str, active_profiles: Option<Vec<String>>) -> Result<()> {
+    /// * `wait_for_health`: Se `true`, usa `--wait` do Docker Compose para aguardar healthchecks.
+    /// * `tls_enabled`: Se `true`, define TLS_ENABLED=true para o healthcheck do Dockerfile.
+    pub fn up(&self, config_filename: &str, active_profiles: Option<Vec<String>>, wait_for_health: bool, tls_enabled: bool) -> Result<()> {
         info!(
-            "Iniciando ambiente Docker Compose para projeto: '{}', config MCP: '{}', perfis: {:?}",
-            self.project_name(), config_filename, active_profiles.as_deref().unwrap_or_default()
+            "Iniciando ambiente Docker Compose para projeto: '{}', config MCP: '{}', perfis: {:?}, wait_for_health: {}, tls_enabled: {}",
+            self.project_name(), config_filename, active_profiles.as_deref().unwrap_or_default(), wait_for_health, tls_enabled
         );
 
-        let env_vars_for_compose_process = self.get_compose_env_vars(Some(config_filename));
+        let env_vars_for_compose_process = self.get_compose_env_vars(Some(config_filename), tls_enabled);
         let env_vars_refs: Vec<(&str, String)> = env_vars_for_compose_process
             .iter()
             .map(|(k, v)| (k.as_str(), v.clone()))
             .collect();
         
-        let up_subcommand_args: Vec<&str> = 
-            vec!["up", "-d", "--remove-orphans", "--force-recreate", "--build", "--wait"];
+        let mut up_subcommand_args: Vec<&str> = 
+            vec!["up", "-d", "--remove-orphans", "--force-recreate", "--build"];
+        
+        if wait_for_health {
+            up_subcommand_args.push("--wait");
+        }
 
         let mut global_args_owned: Vec<String> = Vec::new();
         if let Some(profiles) = &active_profiles {
@@ -219,7 +226,7 @@ impl DockerComposeEnv {
         );
         
         // Usa as mesmas variáveis de ambiente para evitar warnings do Docker Compose
-        let env_vars_for_compose_process = self.get_compose_env_vars(None);
+        let env_vars_for_compose_process = self.get_compose_env_vars(None, false);
         let env_vars_refs: Vec<(&str, String)> = env_vars_for_compose_process
             .iter()
             .map(|(k, v)| (k.as_str(), v.clone()))
@@ -497,6 +504,19 @@ impl DockerComposeEnv {
             tokio::time::sleep(check_interval).await;
         }
     }
+
+    /// Inicia o ambiente Docker Compose (versão de compatibilidade).
+    /// 
+    /// Esta versão mantém compatibilidade com código existente que não especifica
+    /// o parâmetro `wait_for_health`. Por padrão, usa `--wait` e TLS_ENABLED=false.
+    ///
+    /// # Arguments
+    /// * `config_filename`: Nome do arquivo de configuração TOML (ex: "default.test.toml") para o MCP Server.
+    /// * `active_profiles`: Opcional. Perfis do Docker Compose a serem ativados.
+    #[allow(dead_code)]
+    pub fn up_compat(&self, config_filename: &str, active_profiles: Option<Vec<String>>) -> Result<()> {
+        self.up(config_filename, active_profiles, true, false)
+    }
 }
 
 impl Drop for DockerComposeEnv {
@@ -564,7 +584,7 @@ services:
         info!("Iniciando teste test_docker_compose_env_up_down_cycle_with_minimal_service");
         let env = DockerComposeEnv::new(&compose_path_str, "hlp_cycle_min");
         
-        env.up("dummy_config.toml", None) 
+        env.up("dummy_config.toml", None, true, false) 
             .context("Falha no env.up() no teste de ciclo de vida com serviço mínimo")?;
         
         env.wait_for_service_healthy("alpine-dummy-service", Duration::from_secs(20))
@@ -588,7 +608,7 @@ services:
         let compose_path_str = constants::DEFAULT_DOCKER_COMPOSE_TEST_FILE; 
         let env = DockerComposeEnv::new(compose_path_str, "hlp_real_svc");
 
-        env.up(constants::DEFAULT_TEST_CONFIG_FILENAME, Some(vec!["typedb_default".to_string()])) // Ativa apenas typedb_default
+        env.up(constants::DEFAULT_TEST_CONFIG_FILENAME, Some(vec!["typedb_default".to_string()]), true, false) // Ativa apenas typedb_default
             .context("Falha ao executar 'up' com config default e perfil typedb_default")?;
 
         env.wait_for_service_healthy(constants::TYPEDB_SERVICE_NAME, constants::DEFAULT_TYPEDB_READY_TIMEOUT)

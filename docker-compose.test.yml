@@ -67,6 +67,11 @@ services:
       #   Tem precedência sobre o valor no arquivo TOML
       - MCP_TYPEDB__ADDRESS=${MCP_TYPEDB__ADDRESS:-typedb-server-it:1729}
       
+      # TLS_ENABLED:
+      #   Variável usada pelo HEALTHCHECK no Dockerfile para detectar se TLS está habilitado
+      #   Deve ser "true" quando server.tlsEnabled=true na configuração TOML
+      - TLS_ENABLED=${TLS_ENABLED:-false}
+      
       # NOTA: O endereço do TypeDB é configurado TANTO no arquivo TOML quanto via
       # variável de ambiente. A variável de ambiente deve ter precedência.
       # Ex: Em oauth_enabled.test.toml, você terá:
