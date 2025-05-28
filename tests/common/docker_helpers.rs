@@ -546,9 +546,9 @@ services:
   alpine-dummy-service:
     image: alpine:latest
     container_name: ${{COMPOSE_PROJECT_NAME}}-alpine-dummy
-    command: ["sh", "-c", "echo 'Dummy service started. MCP_CONFIG_PATH_ENV_VAR=${{MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV}}' && apk add --no-cache netcat-openbsd && nc -lk -p 80 -e /bin/cat & sleep 30 && echo 'Dummy service stopping'"]
+    command: ["sh", "-c", "echo 'Dummy service started. MCP_CONFIG_PATH_ENV_VAR=${{MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV}}' && apk add --no-cache netcat-openbsd && while true; do nc -l -p 80; done & sleep 30 && echo 'Dummy service stopping'"]
     ports:
-      - "12345:80"
+      - "80:80"
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 80 || exit 1"]
       interval: 2s
@@ -594,7 +594,7 @@ services:
 
         let host_port = env.get_service_host_port("alpine-dummy-service", 80)
             .context("Falha ao obter porta mapeada para alpine-dummy-service")?;
-        assert_eq!(host_port, 12345, "Porta mapeada para alpine-dummy-service incorreta.");
+        assert_eq!(host_port, 80, "Porta mapeada para alpine-dummy-service incorreta.");
         info!("Porta do host para alpine-dummy-service:80 é {}", host_port);
         Ok(())
     }
