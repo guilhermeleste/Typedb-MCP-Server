@@ -55,7 +55,7 @@ services:
       # RUST_LOG:
       #   Controla o nível de log da aplicação Rust DENTRO do contêiner.
       #   Útil para depuração de testes.
-      - RUST_LOG=${RUST_LOG_MCP:-info,typedb_mcp_server_lib=trace,typedb_mcp_server=trace,typedb_mcp_server_lib::config=trace,typedb_driver=info,hyper=warn,h2=warn,tower=warn}
+      - RUST_LOG=${RUST_LOG_MCP:-info,typedb_mcp_server_lib=trace,typedb_mcp_server=trace,typedb_mcp_server_lib::config=trace,typedb_driver=info,hyper=warn,h2=warn,tower=warn,rustls=trace,tokio_rustls=trace}
       
       # TYPEDB_PASSWORD:
       #   Senha para o TypeDB. É um segredo e deve ser fornecido pelo ambiente.
@@ -86,11 +86,14 @@ services:
     entrypoint: []
     command: >
       sh -c "
+        set -e # Adicionado para que o script saia se qualquer comando falhar
         echo '[DEBUG_MCP_SERVER_CMD] Script de entrada do typedb-mcp-server-it iniciado.'
         echo '[DEBUG_MCP_SERVER_CMD] Variáveis de ambiente recebidas pelo contêiner:'
         echo '[DEBUG_MCP_SERVER_CMD]   MCP_CONFIG_PATH (caminho do TOML) = \"$$MCP_CONFIG_PATH\"'
         echo '[DEBUG_MCP_SERVER_CMD]   TYPEDB_PASSWORD (para o cliente TypeDB interno) = \"$$TYPEDB_PASSWORD\"'
         echo '[DEBUG_MCP_SERVER_CMD]   MCP_TYPEDB__ADDRESS = \"$$MCP_TYPEDB__ADDRESS\"'
+        echo '[DEBUG_MCP_SERVER_CMD]   RUST_LOG (para o servidor Rust) = \"$$RUST_LOG\"'
+        echo '[DEBUG_MCP_SERVER_CMD]   TLS_ENABLED (para healthcheck Dockerfile) = \"$$TLS_ENABLED\"'
         echo '[DEBUG_MCP_SERVER_CMD] Conteúdo do arquivo de configuração:'
         cat \"$$MCP_CONFIG_PATH\" | head -20
         echo '[DEBUG_MCP_SERVER_CMD] Todas as variáveis de ambiente que começam com MCP_:'
@@ -98,7 +101,6 @@ services:
         
         echo \"[DEBUG_MCP_SERVER_CMD] Aguardando ativamente pela porta TCP do TypeDB em 'typedb-server-it:1729'...\"
         
-        # Loop usando netcat para verificar disponibilidade do TypeDB
         timeout_duration=120 
         elapsed_time=0       
         
@@ -114,14 +116,15 @@ services:
         
         if [ $$elapsed_time -ge $$timeout_duration ]; then
           echo \"[ERROR_MCP_SERVER_CMD] Timeout de $${timeout_duration}s atingido ao aguardar TypeDB!\" >&2
-          exit 1
+          exit 1 # Sairá com erro devido ao set -e
         fi
         
         echo \"[DEBUG_MCP_SERVER_CMD] Adicionando delay extra de 7 segundos para garantir que o serviço gRPC interno do TypeDB esteja completamente inicializado...\"
         sleep 7 
         
         echo \"[DEBUG_MCP_SERVER_CMD] Iniciando o binário Typedb-MCP-Server ('/usr/local/bin/typedb_mcp_server')...\"
-        /usr/local/bin/typedb_mcp_server
+        # Se o comando abaixo falhar, o script sh sairá com o código de erro do comando
+        /usr/local/bin/typedb_mcp_server 
       "
     
     depends_on:
@@ -172,9 +175,10 @@ services:
       - "11730:1729" # Mapeia para uma porta de host diferente para evitar conflito com typedb-server-it.
     volumes:
       # Monta os certificados TLS gerados para o servidor TypeDB.
-      - ../tests/test_certs/typedb-server.crt:/opt/typedb/server/conf/typedb-server.crt:ro
-      - ../tests/test_certs/typedb-server.key:/opt/typedb/server/conf/typedb-server.key:ro
-      - ../tests/test_certs/rootCA.pem:/opt/typedb/server/conf/rootCA.pem:ro
+      # Caminhos relativos ao contexto do docker-compose.test.yml
+      - ./tests/test_certs/typedb-server.crt:/opt/typedb/server/conf/typedb-server.crt:ro
+      - ./tests/test_certs/typedb-server.key:/opt/typedb/server/conf/typedb-server.key:ro
+      - ./tests/test_certs/rootCA.pem:/opt/typedb/server/conf/rootCA.pem:ro
       - typedb_tls_data_it:/opt/typedb/server/data
     environment:
       # Configura o TypeDB para usar TLS e autenticação.
@@ -219,9 +223,12 @@ services:
 networks:
   typedb_mcp_test_network:
     driver: bridge
+    name: ${COMPOSE_PROJECT_NAME}_typedb_mcp_test_network # Nome explícito para a rede
 
 # Volumes nomeados para persistência de dados do TypeDB entre execuções de teste.
 # São limpos se `docker-compose down -v` for usado.
 volumes:
-  typedb_data_it: {} 
-  typedb_tls_data_it: {}
+  typedb_data_it: 
+    name: ${COMPOSE_PROJECT_NAME}_typedb_data_it # Nome explícito para o volume
+  typedb_tls_data_it: 
+    name: ${COMPOSE_PROJECT_NAME}_typedb_tls_data_it # Nome explícito para o volume
