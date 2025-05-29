@@ -34,7 +34,7 @@ use crate::error::typedb_error_to_mcp_error_data;
 
 const QUERY_TYPES_URI: &str = "info://typeql/query_types";
 const QUERY_TYPES_NAME: &str = "Guia Rápido: Tipos de Consulta TypeQL";
-const QUERY_TYPES_DESCRIPTION: &str = "Um resumo conciso dos principais tipos de consulta TypeQL disponíveis no TypeDB (Define, Undefine, Insert, Delete, Update, Match-Get, Match-Fetch, Match-Aggregate) e suas finalidades básicas.";
+const QUERY_TYPES_DESCRIPTION: &str = "Um resumo conciso dos principais Tipos de Consulta TypeQL disponíveis no TypeDB (Define, Undefine, Insert, Delete, Update, Match-Get, Match-Fetch, Match-Aggregate) e suas finalidades básicas.";
 const QUERY_TYPES_CONTENT: &str = r#"Guia Rápido dos Tipos de Consulta TypeQL:
 
 1.  CONSULTAS DE ESQUEMA (modificam a estrutura do banco de dados):
