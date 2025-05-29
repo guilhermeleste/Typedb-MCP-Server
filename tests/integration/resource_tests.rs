@@ -62,7 +62,7 @@ async fn test_list_static_resources_contains_expected_content() -> Result<()> {
         .description
         .as_ref()
         .expect("Descrição ausente para transactions_guide")
-        .contains("Transações TypeDB"));
+        .contains("transação no TypeDB"));
     assert!(
         transactions_guide_res.raw.size.unwrap_or(0) > 0,
         "Tamanho do recurso transactions_guide deveria ser > 0"
