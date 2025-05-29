@@ -35,6 +35,7 @@ use axum::{
 };
 use axum_server::{tls_rustls::RustlsConfig, Handle as AxumServerHandle};
 use tokio_util::sync::CancellationToken;
+
 // typedb_mcp_server_lib imports
 use typedb_mcp_server_lib::{
     auth::{oauth_middleware, ClientAuthContext, JwksCache},
@@ -45,11 +46,13 @@ use typedb_mcp_server_lib::{
     transport::WebSocketTransport,
     AuthErrorDetail, McpServerError,
 };
+
 // Crates de Observabilidade
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use reqwest::Client as ReqwestClient;
-use rmcp::service::ServiceExt as RmcpServiceExt;
-use tracing::{debug, error, info, warn, Instrument, Dispatch}; // Adicionado Dispatch e debug
+// rmcp imports
+use rmcp::service::{RoleServer, RunningService, ServerInitializeError, ServiceExt as RmcpServiceExt};
+use tracing::{debug, error, info, warn, Instrument, Dispatch};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
 use typedb_driver::TypeDBDriver;
 
@@ -329,7 +332,7 @@ async fn run_axum_server(
     if settings.server.tls_enabled {
         // Configuração para HTTPS/WSS
         let cert_path_str = settings.server.tls_cert_path.as_ref().ok_or_else(|| {
-            McpServerError::Auth(AuthErrorDetail::InvalidAuthConfig( // Reutilizando AuthErrorDetail para config de TLS
+            McpServerError::Auth(AuthErrorDetail::InvalidAuthConfig(
                 "server.tls_cert_path não configurado com TLS habilitado".to_string(),
             ))
         })?;
@@ -565,13 +568,29 @@ async fn readyz_handler(State(app_state): State<AppState>) -> impl IntoResponse 
     let mut overall_ready = true;
 
     // Verifica conexão com TypeDB
-    if !app_state.typedb_driver_ref.is_open() {
-        warn!("/readyz: Conexão com TypeDB não está aberta.");
-        ready_components.insert("typedb".to_string(), serde_json::json!("DOWN"));
-        overall_ready = false;
-    } else {
-        ready_components.insert("typedb".to_string(), serde_json::json!("UP"));
+    // Tenta uma operação leve para verificar a saúde real da conexão.
+    // `databases().all()` é uma boa candidata, pois não modifica dados e é simples.
+    match app_state.typedb_driver_ref.databases().all().await {
+        Ok(_) => {
+            // A query foi bem-sucedida, então o TypeDB está acessível.
+            // Podemos também verificar o `is_open()` do driver como uma checagem secundária,
+            // embora a query bem-sucedida seja um indicador mais forte.
+            if app_state.typedb_driver_ref.is_open() {
+                ready_components.insert("typedb".to_string(), serde_json::json!("UP"));
+            } else {
+                // Caso incomum: query bem-sucedida, mas o driver se reporta como não aberto.
+                warn!("/readyz: TypeDB respondeu à consulta 'all databases', mas o driver reporta-se como fechado.");
+                ready_components.insert("typedb".to_string(), serde_json::json!("DEGRADED"));
+                overall_ready = false;
+            }
+        }
+        Err(e) => {
+            warn!("/readyz: Falha ao verificar a saúde do TypeDB (ex: listando bancos): {}", e);
+            ready_components.insert("typedb".to_string(), serde_json::json!("DOWN"));
+            overall_ready = false;
+        }
     }
+
 
     // Verifica cache JWKS se OAuth2 estiver habilitado
     if app_state.settings.oauth.enabled {
@@ -621,9 +640,9 @@ async fn metrics_handler(State(prom_handle): State<PrometheusHandle>) -> AxumRes
 /// individual da conexão ou o cancelamento global via `global_shutdown_token`.
 #[tracing::instrument(
     name = "websocket_connection_upgrade",
-    skip_all, // Evita logar todos os argumentos automaticamente, faremos manualmente
+    skip_all, 
     fields(
-        client.addr = %addr, // Adiciona endereço do cliente ao span
+        client.addr = %addr,
         // client.user_id será adicionado abaixo se autenticado
     )
 )]
@@ -637,100 +656,89 @@ async fn websocket_handler(
         .as_ref()
         .map_or_else(|| "<não_autenticado>".to_string(), |Extension(ctx)| ctx.user_id.clone());
 
-    // Adiciona user_id ao span atual, se disponível.
     tracing::Span::current().record("client.user_id", &tracing::field::display(&user_id_for_log));
-    info!("Nova tentativa de conexão WebSocket MCP."); // Log inicial do span
+    info!("Nova tentativa de conexão WebSocket MCP."); 
 
-    // Se OAuth estiver habilitado, mas o contexto de autenticação não estiver presente
-    // (o que significa que o middleware OAuth não o inseriu, provavelmente por falha na validação),
-    // rejeita a tentativa de upgrade do WebSocket.
     if app_state.settings.oauth.enabled && maybe_auth_context.is_none() {
         warn!("OAuth habilitado, mas ClientAuthContext ausente (autenticação falhou ou token não fornecido). Rejeitando upgrade WebSocket.");
         return (StatusCode::UNAUTHORIZED, "Autenticação OAuth2 falhou ou está ausente.")
             .into_response();
     }
 
-    // Clona Arcs e tokens que serão movidos para a closure `on_upgrade`.
     let mcp_handler_clone = app_state.mcp_handler.clone();
     let global_shutdown_token_clone = app_state.global_shutdown_token.clone();
-    // `addr` (SocketAddr) é Copy.
-    // `user_id_for_log` (String) será movida para a closure on_upgrade.
 
     ws.on_upgrade(move |socket| {
-        // Esta closure `async move` é executada após o handshake WebSocket.
-        // `socket` é a `axum::extract::ws::WebSocket` estabelecida.
-        // `user_id_for_log` (String) foi movida para esta closure.
         async move {
-            // Cria um token de cancelamento específico para esta conexão, derivado do global.
             let connection_specific_shutdown_token = global_shutdown_token_clone.child_token();
-
-            info!("Conexão WebSocket MCP estabelecida."); // Log dentro do contexto da conexão
+            info!("Conexão WebSocket MCP estabelecida.");
             let adapter = WebSocketTransport::new(socket);
 
-            // Prepara o user_id para ser movido para a task interna de forma eficiente.
-            let user_id_for_inner_task_log = user_id_for_log; // Move a String
+            let user_id_for_inner_task_log = user_id_for_log; 
 
-            // Cria um span específico para a task que serve esta conexão.
             let connection_span = tracing::info_span!(
                 "mcp_connection_task",
-                client.user_id = %user_id_for_inner_task_log, // Usa a String movida
+                client.user_id = %user_id_for_inner_task_log, 
                 client.addr = %addr
             );
 
-            // Gera uma nova task Tokio para lidar com esta conexão MCP.
-            // A handle desta task é deliberadamente não `.await`ed aqui.
-            // Se a handle for dropada, a task é abortada. Para que ela continue
-            // independente, ou a handle é retornada/armazenada, ou `.detach()` é chamado.
-            // No Tokio, não existe `.detach()` diretamente. Simplesmente não guardar a handle
-            // e não a `await` faz com que ela rode em background.
-            let _mcp_connection_task_handle = tokio::spawn( // Atribuir a _ para indicar que o drop intencional não é para abortar
+            tokio::spawn(
                 async move {
                     let mcp_handler_instance = (*mcp_handler_clone).clone();
                     let token_for_serve = connection_specific_shutdown_token.clone();
 
                     info!(
-                        "Iniciando serve_with_ct. Token is_cancelled: {}",
+                        "Iniciando handshake e serviço MCP (serve_with_ct). Token is_cancelled: {}",
                         token_for_serve.is_cancelled()
                     );
+                    
+                    let running_service_result: Result<
+                        RunningService<RoleServer, McpServiceHandler>,
+                        ServerInitializeError<std::io::Error> 
+                    > = mcp_handler_instance
+                        .serve_with_ct(adapter, token_for_serve)
+                        .await;
 
-                    let service_result =
-                        mcp_handler_instance.serve_with_ct(adapter, token_for_serve).await;
-
-                    info!(
-                        "serve_with_ct finalizado. Token is_cancelled AGORA: {}",
-                        connection_specific_shutdown_token.is_cancelled() // Usar o token original aqui
-                    );
-
-                    if let Err(e) = service_result {
-                        let error_string = e.to_string();
-                        if error_string.contains("operação cancelada")
-                            || error_string.contains("Connection reset by peer")
-                            || error_string.contains("Broken pipe")
-                            || error_string.to_lowercase().contains("connection closed")
-                            || error_string.to_lowercase().contains("channel closed")
-                        {
+                    match running_service_result {
+                        Ok(running_service) => {
                             info!(
                                 client.user_id = %user_id_for_inner_task_log,
-                                "Serviço MCP para conexão WebSocket encerrado (cancelado ou desconectado): {}",
-                                e
+                                "Handshake MCP bem-sucedido. Aguardando conclusão do serviço MCP (running_service.waiting())."
                             );
-                        } else {
+                            match running_service.waiting().await {
+                                Ok(quit_reason) => {
+                                    info!(
+                                        client.user_id = %user_id_for_inner_task_log,
+                                        "Serviço MCP para conexão WebSocket encerrado: {:?}",
+                                        quit_reason
+                                    );
+                                }
+                                Err(join_error) => {
+                                    error!(
+                                        client.user_id = %user_id_for_inner_task_log,
+                                        error.message = %join_error,
+                                        "Task do serviço MCP falhou (JoinError)."
+                                    );
+                                }
+                            }
+                        }
+                        Err(init_err) => {
                             error!(
                                 client.user_id = %user_id_for_inner_task_log,
-                                error.message = %e,
-                                "Erro no serviço MCP para a conexão WebSocket."
+                                error.message = %init_err.to_string(), 
+                                "Falha na inicialização (handshake) do serviço MCP."
                             );
                         }
-                    } else {
-                        info!(
-                            client.user_id = %user_id_for_inner_task_log,
-                            "Serviço MCP para conexão WebSocket finalizado sem erro explícito do serve_with_ct."
-                        );
                     }
+                    
+                    info!(
+                        "Task de conexão MCP para user '{}' finalizada. Token de cancelamento da conexão is_cancelled: {}",
+                        user_id_for_inner_task_log,
+                        connection_specific_shutdown_token.is_cancelled()
+                    );
                 }
                 .instrument(connection_span),
             );
-            // A task agora está "desanexada" e continuará rodando.
         }
     })
 }
