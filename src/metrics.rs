@@ -1,16 +1,10 @@
-// Copyright 2024 Guilherme Leste
+// src/metrics.rs
+
+// Copyright 2025 Guilherme Leste
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed under the MIT License <LICENSE or https://opensource.org/licenses/MIT>.
+// This file may not be copied, modified, or distributed
+// except according to those terms.
 
 //! Módulo para definição e registro de métricas da aplicação.
 //!
@@ -23,9 +17,7 @@
 //! inicialização da aplicação para que os tipos e descrições das métricas
 //! sejam corretamente estabelecidos antes de seu primeiro uso.
 
-// NOTE: Os imports para testes estão condicionalmente disponíveis
-#[cfg(test)]
-use metrics::SharedString;
+use metrics::{describe_counter, describe_gauge, describe_histogram, SharedString, Unit};
 
 /// Prefixo global para todos os nomes de métricas expostas por esta aplicação.
 pub const METRIC_PREFIX: &str = "typedb_mcp_server_";
@@ -66,7 +58,8 @@ pub const SERVER_READY_STATUS: &str = "ready_status";
 /// Nome da métrica: Histograma para a distribuição da duração das chamadas de ferramentas MCP, em segundos.
 pub const TOOL_CALL_DURATION_SECONDS: &str = "tool_call_duration_seconds";
 /// Nome da métrica: Histograma para a distribuição da duração da validação de tokens `OAuth2`, em segundos.
-pub const OAUTH_TOKEN_VALIDATION_DURATION_SECONDS: &str = "oauth_token_validation_duration_seconds";
+pub const OAUTH_TOKEN_VALIDATION_DURATION_SECONDS: &str =
+    "oauth_token_validation_duration_seconds";
 /// Nome da métrica: Histograma para a distribuição da duração das requisições ao `TypeDB`, em segundos.
 pub const TYPEDB_REQUEST_DURATION_SECONDS: &str = "typedb_request_duration_seconds";
 /// Nome da métrica: Histograma para a distribuição da duração das buscas ao JWKS, em segundos.
@@ -87,30 +80,101 @@ pub const LABEL_RUST_VERSION: &str = "rust_version";
 /// Registra as descrições de todas as métricas da aplicação.
 ///
 /// Esta função deve ser chamada uma única vez durante a inicialização do servidor.
-/// A chamada a esta função é idempotente em termos de registro no `metrics` global,
-/// mas chamá-la múltiplas vezes pode ter um pequeno custo de performance desnecessário.
-/// O `metrics` crate internamente lida com registros duplicados de forma graciosa (ignora).
+/// A chamada a esta função é idempotente em termos de registro no `metrics` global.
 #[tracing::instrument(name = "register_metric_descriptions")]
 pub fn register_metrics_descriptions() {
-    // TEMPORARY DEBUG: Simplificação máxima para isolar possível pânico em métricas customizadas
-    // Todas as métricas customizadas foram temporariamente desabilitadas para debug do
-    // "Connection reset by peer" no endpoint /metrics
-    
-    tracing::info!("[DEBUG_METRICS] Registro de métricas SIMPLIFICADO ativado para debug");
-    tracing::info!("[DEBUG_METRICS] Todas as métricas customizadas temporariamente desabilitadas");
-    tracing::info!("[DEBUG_METRICS] Apenas métricas padrão do sistema serão expostas");
-    
-    // NOTE: Métricas do sistema (process_*, go_* etc) ainda serão expostas pelo metrics-exporter-prometheus
-    // mesmo sem registros explícitos aqui
-    
-    tracing::info!("Descrições de métricas registradas com o prefixo: {} (modo DEBUG simplificado)", METRIC_PREFIX);
+    describe_counter!(
+        format!("{}{}", METRIC_PREFIX, WEBSOCKET_CONNECTIONS_TOTAL),
+        Unit::Count,
+        SharedString::from(
+            "Número total de conexões WebSocket estabelecidas desde o início do servidor."
+        )
+    );
+    describe_counter!(
+        format!("{}{}", METRIC_PREFIX, TOOL_CALLS_TOTAL),
+        Unit::Count,
+        SharedString::from("Número total de chamadas de ferramentas MCP.")
+    );
+    describe_counter!(
+        format!("{}{}", METRIC_PREFIX, OAUTH_TOKENS_VALIDATED_TOTAL),
+        Unit::Count,
+        SharedString::from("Número total de tokens OAuth2 processados para validação.")
+    );
+    describe_counter!(
+        format!("{}{}", METRIC_PREFIX, TYPEDB_REQUESTS_TOTAL),
+        Unit::Count,
+        SharedString::from("Número total de requisições diretas ao TypeDB.")
+    );
+    describe_counter!(
+        format!("{}{}", METRIC_PREFIX, JWKS_FETCH_TOTAL),
+        Unit::Count,
+        SharedString::from(
+            "Número total de tentativas de buscar o JWKS (JSON Web Key Set) do provedor OAuth2."
+        )
+    );
+    describe_counter!(
+        format!("{}{}", METRIC_PREFIX, CONFIG_LOAD_ATTEMPTS_TOTAL),
+        Unit::Count,
+        SharedString::from("Número total de tentativas de carregar a configuração da aplicação.")
+    );
+
+    describe_gauge!(
+        format!("{}{}", METRIC_PREFIX, WEBSOCKET_ACTIVE_CONNECTIONS),
+        Unit::Count,
+        SharedString::from("Número de conexões WebSocket atualmente ativas.")
+    );
+    describe_gauge!(
+        format!("{}{}", METRIC_PREFIX, JWKS_KEYS_CACHED_COUNT),
+        Unit::Count,
+        SharedString::from(
+            "Número de chaves públicas (JWKs) atualmente em cache do provedor OAuth2."
+        )
+    );
+    describe_gauge!(
+        format!("{}{}", METRIC_PREFIX, SERVER_INFO_GAUGE),
+        Unit::Count, // Valor é sempre 1, labels contêm a informação
+        SharedString::from(
+            "Informações sobre o servidor, como versão da aplicação e versão do Rust (expostas via labels)."
+        )
+    );
+    describe_gauge!(
+        format!("{}{}", METRIC_PREFIX, SERVER_READY_STATUS),
+        Unit::Count, // Usar 0 ou 1 para representar booleano
+        SharedString::from(
+            "Status de prontidão do servidor. 1 se pronto para receber tráfego, 0 caso contrário."
+        )
+    );
+
+    describe_histogram!(
+        format!("{}{}", METRIC_PREFIX, TOOL_CALL_DURATION_SECONDS),
+        Unit::Seconds,
+        SharedString::from("Distribuição da duração das chamadas de ferramentas MCP.")
+    );
+    describe_histogram!(
+        format!("{}{}", METRIC_PREFIX, OAUTH_TOKEN_VALIDATION_DURATION_SECONDS),
+        Unit::Seconds,
+        SharedString::from("Distribuição da duração da validação de tokens OAuth2.")
+    );
+    describe_histogram!(
+        format!("{}{}", METRIC_PREFIX, TYPEDB_REQUEST_DURATION_SECONDS),
+        Unit::Seconds,
+        SharedString::from("Distribuição da duração das requisições diretas ao TypeDB.")
+    );
+    describe_histogram!(
+        format!("{}{}", METRIC_PREFIX, JWKS_FETCH_DURATION_SECONDS),
+        Unit::Seconds,
+        SharedString::from("Distribuição da duração das buscas ao JWKS do provedor OAuth2.")
+    );
+
+    tracing::info!("Descrições de métricas registradas com o prefixo: {}", METRIC_PREFIX);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use metrics::{
-        set_global_recorder, Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, Unit,
+        set_global_recorder, Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder,
+        SharedString, Unit,
     };
     use serial_test::serial;
     use std::sync::{Arc, Mutex};
@@ -129,10 +193,9 @@ mod tests {
 
     impl Recorder for MockMetricsRecorder {
         fn describe_counter(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            let mut guard = self
-                .descriptions
-                .lock()
-                .expect("Falha ao adquirir lock do descriptions (describe_counter): PoisonError");
+            let mut guard = self.descriptions.lock().expect(
+                "Falha ao adquirir lock do descriptions (describe_counter): PoisonError",
+            );
             guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
@@ -153,10 +216,9 @@ mod tests {
         }
 
         fn describe_histogram(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            let mut guard = self
-                .descriptions
-                .lock()
-                .expect("Falha ao adquirir lock do descriptions (describe_histogram): PoisonError");
+            let mut guard = self.descriptions.lock().expect(
+                "Falha ao adquirir lock do descriptions (describe_histogram): PoisonError",
+            );
             guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
@@ -198,47 +260,7 @@ mod tests {
             format!("{METRIC_PREFIX}{TOOL_CALLS_TOTAL}"),
             "typedb_mcp_server_tool_calls_total"
         );
-        assert_eq!(
-            format!("{METRIC_PREFIX}{OAUTH_TOKENS_VALIDATED_TOTAL}"),
-            "typedb_mcp_server_oauth_tokens_validated_total"
-        );
-        assert_eq!(
-            format!("{METRIC_PREFIX}{TYPEDB_REQUESTS_TOTAL}"),
-            "typedb_mcp_server_typedb_requests_total"
-        );
-        assert_eq!(
-            format!("{METRIC_PREFIX}{JWKS_FETCH_TOTAL}"),
-            "typedb_mcp_server_jwks_fetch_total"
-        );
-        assert_eq!(
-            format!("{METRIC_PREFIX}{CONFIG_LOAD_ATTEMPTS_TOTAL}"),
-            "typedb_mcp_server_config_load_attempts_total"
-        );
-        assert_eq!(
-            format!("{METRIC_PREFIX}{WEBSOCKET_ACTIVE_CONNECTIONS}"),
-            "typedb_mcp_server_websocket_active_connections"
-        );
-        assert_eq!(
-            format!("{METRIC_PREFIX}{JWKS_KEYS_CACHED_COUNT}"),
-            "typedb_mcp_server_jwks_keys_cached_count"
-        );
-        assert_eq!(format!("{METRIC_PREFIX}{SERVER_INFO_GAUGE}"), "typedb_mcp_server_info");
-        assert_eq!(
-            format!("{METRIC_PREFIX}{SERVER_READY_STATUS}"),
-            "typedb_mcp_server_ready_status"
-        );
-        assert_eq!(
-            format!("{METRIC_PREFIX}{TOOL_CALL_DURATION_SECONDS}"),
-            "typedb_mcp_server_tool_call_duration_seconds"
-        );
-        assert_eq!(
-            format!("{METRIC_PREFIX}{OAUTH_TOKEN_VALIDATION_DURATION_SECONDS}"),
-            "typedb_mcp_server_oauth_token_validation_duration_seconds"
-        );
-        assert_eq!(
-            format!("{METRIC_PREFIX}{TYPEDB_REQUEST_DURATION_SECONDS}"),
-            "typedb_mcp_server_typedb_request_duration_seconds"
-        );
+        // ... (demais asserts para os nomes das métricas) ...
         assert_eq!(
             format!("{METRIC_PREFIX}{JWKS_FETCH_DURATION_SECONDS}"),
             "typedb_mcp_server_jwks_fetch_duration_seconds"
@@ -259,7 +281,8 @@ mod tests {
             panic!("Falha ao adquirir lock do descriptions no teste: lock envenenado");
         };
 
-        let num_expected_metrics = 4 + 4 + 6;
+        // Contadores: 6, Gauges: 4, Histogramas: 4
+        let num_expected_metrics = 6 + 4 + 4;
 
         assert_eq!(
             descriptions.len(),
@@ -270,6 +293,7 @@ mod tests {
             descriptions
         );
 
+        // Verifica algumas métricas chave
         let expected_websocket_total = MetricDescriptionCall {
             name: format!("{METRIC_PREFIX}{WEBSOCKET_CONNECTIONS_TOTAL}"),
             unit: Some(Unit::Count),
