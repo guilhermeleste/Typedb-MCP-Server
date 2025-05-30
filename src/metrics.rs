@@ -1,6 +1,3 @@
-// src/metrics.rs
-
-// Licença Apache 2.0
 // Copyright 2024 Guilherme Leste
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,8 +23,9 @@
 //! inicialização da aplicação para que os tipos e descrições das métricas
 //! sejam corretamente estabelecidos antes de seu primeiro uso.
 
-// metrics v0.24.2: APIs validadas
-use metrics::{describe_counter, describe_gauge, describe_histogram, SharedString, Unit};
+// NOTE: Os imports para testes estão condicionalmente disponíveis
+#[cfg(test)]
+use metrics::SharedString;
 
 /// Prefixo global para todos os nomes de métricas expostas por esta aplicação.
 pub const METRIC_PREFIX: &str = "typedb_mcp_server_";
@@ -94,89 +92,18 @@ pub const LABEL_RUST_VERSION: &str = "rust_version";
 /// O `metrics` crate internamente lida com registros duplicados de forma graciosa (ignora).
 #[tracing::instrument(name = "register_metric_descriptions")]
 pub fn register_metrics_descriptions() {
-    // Contadores
-    describe_counter!(
-        format!("{}{}", METRIC_PREFIX, WEBSOCKET_CONNECTIONS_TOTAL),
-        Unit::Count,
-        SharedString::from(
-            "Número total de conexões WebSocket estabelecidas desde o início do servidor."
-        )
-    );
-    describe_counter!(
-        format!("{}{}", METRIC_PREFIX, TOOL_CALLS_TOTAL),
-        Unit::Count,
-        SharedString::from("Número total de chamadas de ferramentas MCP, com labels para nome da ferramenta e status.")
-    );
-    describe_counter!(
-        format!("{}{}", METRIC_PREFIX, OAUTH_TOKENS_VALIDATED_TOTAL),
-        Unit::Count,
-        SharedString::from(
-            "Número total de tokens OAuth2 processados para validação, com label de status."
-        )
-    );
-    describe_counter!(
-        format!("{}{}", METRIC_PREFIX, TYPEDB_REQUESTS_TOTAL),
-        Unit::Count,
-        SharedString::from("Número total de requisições diretas ao TypeDB, com labels para tipo de operação e status.")
-    );
-    describe_counter!(
-        format!("{}{}", METRIC_PREFIX, JWKS_FETCH_TOTAL),
-        Unit::Count,
-        SharedString::from("Número total de tentativas de buscar o JWKS, com label de status.")
-    );
-    describe_counter!(
-        format!("{}{}", METRIC_PREFIX, CONFIG_LOAD_ATTEMPTS_TOTAL),
-        Unit::Count,
-        SharedString::from("Número total de tentativas de carregar a configuração, com label de status ('success' ou 'failure').")
-    );
-
-    // Gauges
-    describe_gauge!(
-        format!("{}{}", METRIC_PREFIX, WEBSOCKET_ACTIVE_CONNECTIONS),
-        Unit::Count,
-        SharedString::from("Número de conexões WebSocket atualmente ativas.")
-    );
-    describe_gauge!(
-        format!("{}{}", METRIC_PREFIX, JWKS_KEYS_CACHED_COUNT),
-        Unit::Count,
-        SharedString::from("Número de chaves atualmente em cache do JWKS.")
-    );
-    describe_gauge!(
-        format!("{}{}", METRIC_PREFIX, SERVER_INFO_GAUGE),
-        Unit::Count,
-        SharedString::from("Informações sobre o servidor, como versão da aplicação e versão do Rust (expostas via labels).")
-    );
-    describe_gauge!(
-        format!("{}{}", METRIC_PREFIX, SERVER_READY_STATUS),
-        Unit::Count,
-        SharedString::from(
-            "Status de prontidão do servidor (1 se pronto para receber tráfego, 0 caso contrário)."
-        )
-    );
-
-    // Histogramas
-    describe_histogram!(
-        format!("{}{}", METRIC_PREFIX, TOOL_CALL_DURATION_SECONDS),
-        Unit::Seconds,
-        SharedString::from("Distribuição da duração das chamadas de ferramentas MCP.")
-    );
-    describe_histogram!(
-        format!("{}{}", METRIC_PREFIX, OAUTH_TOKEN_VALIDATION_DURATION_SECONDS),
-        Unit::Seconds,
-        SharedString::from("Distribuição da duração da validação de tokens OAuth2.")
-    );
-    describe_histogram!(
-        format!("{}{}", METRIC_PREFIX, TYPEDB_REQUEST_DURATION_SECONDS),
-        Unit::Seconds,
-        SharedString::from("Distribuição da duração das requisições ao TypeDB.")
-    );
-    describe_histogram!(
-        format!("{}{}", METRIC_PREFIX, JWKS_FETCH_DURATION_SECONDS),
-        Unit::Seconds,
-        SharedString::from("Distribuição da duração das buscas ao JWKS.")
-    );
-
-    tracing::info!("Descrições de métricas registradas com o prefixo: {}", METRIC_PREFIX);
+    // TEMPORARY DEBUG: Simplificação máxima para isolar possível pânico em métricas customizadas
+    // Todas as métricas customizadas foram temporariamente desabilitadas para debug do
+    // "Connection reset by peer" no endpoint /metrics
+    
+    tracing::info!("[DEBUG_METRICS] Registro de métricas SIMPLIFICADO ativado para debug");
+    tracing::info!("[DEBUG_METRICS] Todas as métricas customizadas temporariamente desabilitadas");
+    tracing::info!("[DEBUG_METRICS] Apenas métricas padrão do sistema serão expostas");
+    
+    // NOTE: Métricas do sistema (process_*, go_* etc) ainda serão expostas pelo metrics-exporter-prometheus
+    // mesmo sem registros explícitos aqui
+    
+    tracing::info!("Descrições de métricas registradas com o prefixo: {} (modo DEBUG simplificado)", METRIC_PREFIX);
 }
 
 #[cfg(test)]

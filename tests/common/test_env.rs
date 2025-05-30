@@ -380,7 +380,7 @@ impl TestEnvironment {
 
         let mcp_metrics_url = format!(
             "http://localhost:{}{}",
-            constants::MCP_SERVER_HOST_METRICS_PORT,
+            constants::MCP_SERVER_HOST_HTTP_PORT,
             constants::MCP_SERVER_DEFAULT_METRICS_PATH
         );
         let mock_oauth_http_url = format!("http://localhost:{}", constants::MOCK_OAUTH_HOST_PORT);

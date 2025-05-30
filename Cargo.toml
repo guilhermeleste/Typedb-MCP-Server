@@ -119,6 +119,11 @@ lto = "thin"
 name = "typedb_mcp_server"
 path = "src/main.rs"
 
+[[bin]]
+name = "test_metrics_server"
+path = "src/bin/test_metrics_server.rs"
+
+
 [lib]
 name = "typedb_mcp_server_lib"
 path = "src/lib.rs"

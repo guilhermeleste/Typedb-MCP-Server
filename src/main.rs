@@ -42,7 +42,8 @@ use typedb_mcp_server_lib::{
     config::{Server as AppServerConfig, Settings},
     db::connect as connect_to_typedb,
     mcp_service_handler::McpServiceHandler,
-    metrics, telemetry,
+    metrics,
+    telemetry,
     transport::WebSocketTransport,
     AuthErrorDetail, McpServerError,
 };
@@ -123,38 +124,33 @@ fn setup_global_logging_and_tracing(
     Ok(())
 }
 
-/// Configura e inicia o servidor de métricas Prometheus.
+/// Configura o exportador de métricas Prometheus.
 ///
-/// O servidor HTTP para métricas escuta no endereço especificado por
-/// `server_settings.metrics_bind_address`.
+/// Esta função retorna um `PrometheusHandle` que será usado pelo servidor Axum principal
+/// para expor métricas através do endpoint `/metrics`.
 ///
 /// # Returns
-/// `Ok(PrometheusHandle)` se bem-sucedido, ou um erro se o servidor de métricas
-/// não puder ser iniciado.
+/// `Ok(PrometheusHandle)` se bem-sucedido, ou um erro se não puder configurar o exportador.
 fn setup_metrics_server(
-    server_settings: &AppServerConfig,
+    _server_settings: &AppServerConfig,
 ) -> Result<PrometheusHandle, Box<dyn StdError + Send + Sync>> {
-    metrics::register_metrics_descriptions(); // Descreve as métricas customizadas
+    // Registra as descrições de métricas customizadas
+    metrics::register_metrics_descriptions();
+    info!("Descrições de métricas registradas.");
 
-    let metrics_bind_addr_str = server_settings
-        .metrics_bind_address
-        .clone()
-        .unwrap_or_else(|| "0.0.0.0:9090".to_string()); // Default se não configurado
-
-    let metrics_socket_addr: SocketAddr = metrics_bind_addr_str.parse().map_err(|e| {
-        format!("Endereço de bind inválido para métricas '{metrics_bind_addr_str}': {e}")
-    })?;
-
-    PrometheusBuilder::new()
-        .with_http_listener(metrics_socket_addr)
-        .install_recorder() // Instala o recorder e inicia o listener HTTP
+    let prometheus_handle = PrometheusBuilder::new()
+        .install_recorder()
         .map_err(|e| {
             let err_msg = format!(
-                "Não foi possível iniciar o servidor de métricas Prometheus em {metrics_socket_addr}: {e}"
+                "Não foi possível configurar o exportador de métricas Prometheus: {e}"
             );
-            error!("[METRICS_SETUP_ERROR] {}", err_msg); // Usar macro de log
+            error!("[METRICS_SETUP_ERROR] {}", err_msg);
             Box::new(std::io::Error::other(err_msg)) as Box<dyn StdError + Send + Sync>
-        })
+        })?;
+
+    info!("[DEBUG_METRICS] PrometheusHandle criado com sucesso");
+    
+    Ok(prometheus_handle)
 }
 
 /// Inicializa os serviços principais: conexão com TypeDB e cache JWKS (se OAuth habilitado).
@@ -497,6 +493,12 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
                 "Servidor de métricas Prometheus iniciado com sucesso em {}.",
                 settings.server.metrics_bind_address.as_deref().unwrap_or("0.0.0.0:9090")
             );
+            
+            // Adicionar métricas de diagnóstico para validar o sistema
+            ::metrics::counter!("server_startup_total").increment(1);
+            ::metrics::gauge!("server_info").set(1.0);
+            info!("Métricas de diagnóstico registradas com sucesso");
+            
             Some(handle)
         }
         Err(e) => {
@@ -627,9 +629,18 @@ async fn readyz_handler(State(app_state): State<AppState>) -> impl IntoResponse 
     (status_code, axum::Json(response_body)).into_response()
 }
 
-/// Handler para o endpoint de métricas (`/metrics`), servindo dados do `PrometheusHandle`.
-async fn metrics_handler(State(prom_handle): State<PrometheusHandle>) -> AxumResponse {
-    prom_handle.render().into_response()
+/// Handler para o endpoint de métricas (`/metrics`).
+async fn metrics_handler(State(prometheus_handle): State<PrometheusHandle>) -> AxumResponse {
+    info!("[METRICS_HANDLER] Recebida requisição para /metrics");
+    
+    let metrics_data = prometheus_handle.render();
+    info!("[METRICS_HANDLER] Métricas renderizadas com sucesso");
+    
+    (
+        StatusCode::OK,
+        [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
+        metrics_data
+    ).into_response()
 }
 
 /// Handler para conexões WebSocket MCP.

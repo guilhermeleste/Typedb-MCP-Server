@@ -1,5 +1,0 @@
-# Configurações do Clippy
-
-# Limites específicos de configuração
-too-many-arguments-threshold = 7
-cognitive-complexity-threshold = 25
