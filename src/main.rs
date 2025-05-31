@@ -8,7 +8,7 @@
 
 //! Ponto de entrada principal para o Typedb-MCP-Server.
 //!
-//! Este binário configura e inicia o servidor MCP, que escuta por conexões WebSocket,
+//! Configura e inicia o servidor MCP, que escuta por conexões WebSocket,
 //! lida com autenticação OAuth2 opcional, e despacha requisições de ferramentas
 //! para o `McpServiceHandler`. Também configura logging, métricas Prometheus
 //! (expostas via Axum) e tracing OpenTelemetry.
@@ -49,6 +49,9 @@ use rmcp::service::{RoleServer, RunningService, ServerInitializeError, ServiceEx
 use tracing::{debug, error, info, warn, Instrument, Dispatch};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
 use typedb_driver::TypeDBDriver;
+
+// Importa a crate para obter a versão do rustc em tempo de execução.
+use rustc_version_runtime;
 
 /// Estrutura para o estado da aplicação compartilhado com os handlers Axum.
 #[derive(Clone)]
@@ -120,7 +123,7 @@ fn setup_global_logging_and_tracing(
 /// # Returns
 /// `Ok(PrometheusHandle)` se bem-sucedido, ou um erro se não puder instalar o recorder.
 fn setup_metrics_recorder(
-    _server_settings: &AppServerConfig, // Mantido para assinatura, mas não usado para o bind address
+    _server_settings: &AppServerConfig, // Mantido para assinatura, mas não usado diretamente aqui
 ) -> Result<PrometheusHandle, Box<dyn StdError + Send + Sync>> {
     metrics::register_metrics_descriptions();
     info!("Descrições de métricas registradas.");
@@ -245,7 +248,7 @@ fn create_app_state(
 fn build_axum_router(
     app_state: AppState,
     settings: &Arc<Settings>,
-    metrics_handle_opt: Option<PrometheusHandle>, // Handle para renderizar métricas
+    metrics_handle_opt: Option<PrometheusHandle>,
 ) -> Router {
     let mcp_ws_path_str = settings
         .server
@@ -259,7 +262,6 @@ fn build_axum_router(
         .route("/livez", get(livez_handler))
         .route("/readyz", get(readyz_handler).with_state(app_state.clone()));
 
-    // Adiciona endpoint de métricas via Axum usando o PrometheusHandle
     if let Some(metrics_h) = metrics_handle_opt {
         info!("Configurando endpoint de métricas Axum em: {}", metrics_path_str);
         base_router =
@@ -427,15 +429,19 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
     let global_shutdown_token = CancellationToken::new();
     setup_signal_handler(global_shutdown_token.clone());
 
-    // Configura o recorder de métricas (sem iniciar um listener HTTP separado aqui)
     let metrics_handle_opt = match setup_metrics_recorder(&settings.server) {
         Ok(handle) => {
             info!("Exportador de métricas Prometheus configurado com sucesso (será servido via Axum).");
-            ::metrics::counter!(format!("{}{}", metrics::METRIC_PREFIX, "server_startup_total")).increment(1);
             let app_version = env!("CARGO_PKG_VERSION");
             let rust_version_val = rustc_version_runtime::version().to_string();
+            
+            // Usar format! para construir nomes de métricas dinamicamente
+            let startup_counter_name = format!("{}{}", metrics::METRIC_PREFIX, "server_startup_total");
+            let info_gauge_name = format!("{}{}", metrics::METRIC_PREFIX, metrics::SERVER_INFO_GAUGE);
+
+            ::metrics::counter!(startup_counter_name).increment(1);
             ::metrics::gauge!(
-                format!("{}{}", metrics::METRIC_PREFIX, metrics::SERVER_INFO_GAUGE),
+                info_gauge_name,
                 metrics::LABEL_VERSION => app_version.to_string(),
                 metrics::LABEL_RUST_VERSION => rust_version_val
             )
@@ -444,7 +450,10 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
             Some(handle)
         }
         Err(e) => {
-            error!("Falha ao configurar o exportador de métricas Prometheus: {}. As métricas podem não estar disponíveis.", e);
+            error!(
+                "Falha ao configurar o exportador de métricas Prometheus: {}. As métricas podem não estar disponíveis.",
+                e
+            );
             None
         }
     };
@@ -468,7 +477,7 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
         global_shutdown_token.clone(),
     );
 
-    let router = build_axum_router(app_state, &settings, metrics_handle_opt);
+    let router = build_axum_router(app_state.clone(), &settings, metrics_handle_opt); // Passar app_state.clone() para build_axum_router
 
     info!("Iniciando servidor Axum (MCP)...");
     if let Err(e) = run_axum_server(router, &settings, global_shutdown_token.clone()).await {
@@ -520,12 +529,12 @@ async fn readyz_handler(State(app_state): State<AppState>) -> impl IntoResponse 
 
     if app_state.settings.oauth.enabled {
         if let Some(cache) = &app_state.jwks_cache {
-            if !cache.is_cache_ever_populated().await {
-                warn!("/readyz: Cache JWKS ainda não populado (OAuth habilitado).");
+            if cache.check_health_for_readyz().await {
+                ready_components.insert("jwks".to_string(), serde_json::json!("UP"));
+            } else {
+                warn!("/readyz: Componente JWKS não está saudável.");
                 ready_components.insert("jwks".to_string(), serde_json::json!("DOWN"));
                 overall_ready = false;
-            } else {
-                ready_components.insert("jwks".to_string(), serde_json::json!("UP"));
             }
         } else {
             error!("/readyz: OAuth habilitado mas JwksCache ausente. Erro de config interna.");
