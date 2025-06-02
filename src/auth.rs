@@ -29,7 +29,7 @@ use axum_extra::typed_header::{TypedHeader, TypedHeaderRejection};
 use jsonwebtoken::{
     decode, decode_header,
     errors::ErrorKind as JwtErrorKind,
-    jwk::JwkSet, // Jwk é usado apenas nos testes para construir o mock JwkSet
+    jwk::JwkSet,
     Algorithm, DecodingKey, Header as JwtValidationHeader, // Alias para o Header do jsonwebtoken
     TokenData, Validation,
 };
@@ -179,7 +179,7 @@ impl JwksCache {
         kid: &str,
     ) -> Result<Option<DecodingKey>, AuthErrorDetail> {
         let needs_initial_fetch;
-        let needs_refresh_due_to_interval; // Removido 'mut' pois não é necessário
+        let needs_refresh_due_to_interval;
         {
             let last_successful_refresh_guard = self.last_successful_refresh.read().await;
             needs_initial_fetch = last_successful_refresh_guard.is_none();
@@ -191,9 +191,7 @@ impl JwksCache {
 
         if !attempt_refresh {
             if let Some(jwk_set) = self.keys.read().await.as_ref() {
-                if jwk_set.find(kid).is_some() {
-                    // Chave encontrada, não precisa de refresh imediato
-                } else {
+                if jwk_set.find(kid).is_none() {
                     trace!("Kid '{}' não encontrado no cache JWKS atual. Forçando refresh.", kid);
                     attempt_refresh = true;
                 }
@@ -251,7 +249,6 @@ impl JwksCache {
     pub async fn check_health_for_readyz(&self) -> bool {
         let now = Instant::now();
         let last_successful_opt = *self.last_successful_refresh.read().await;
-        // Removido `mut` de last_attempt_failed_before_check
         let last_attempt_failed_before_check = *self.last_refresh_attempt_failed.read().await;
 
         let health_check_active_refresh_threshold = self.refresh_interval.checked_div(10).unwrap_or_else(|| Duration::from_secs(30));
@@ -273,7 +270,6 @@ impl JwksCache {
             );
             if self.refresh_keys().await.is_err() {
                 warn!("JwksCache.check_health_for_readyz: Verificação ATIVA do JWKS URI falhou.");
-                // Se o refresh falhar aqui, o estado interno `last_refresh_attempt_failed` será true.
             }
         } else {
             trace!("JwksCache.check_health_for_readyz: Verificação ativa do JWKS URI não necessária neste momento.");
@@ -489,28 +485,20 @@ mod tests {
     use super::*;
     use crate::config;
     use axum::{extract::Extension, middleware, routing::get, Router};
-    // Imports específicos para os testes de jsonwebtoken
     use jsonwebtoken::{
         encode,
         jwk::{
             AlgorithmParameters as JwkAlgorithmParameters, CommonParameters as JwkCommonParameters,
-            Jwk, // Jwk é necessário para construir o mock JwkSet
-            JwkSet, KeyAlgorithm, PublicKeyUse as JwkPublicKeyUse,
-            // Para RSAKeyParameters e RSAKeyType, usamos os tipos corretos da crate.
-            // A documentação de jsonwebtoken 9.x usa nomes com "RSA" em maiúscula
-            RSAKeyType, // Enum: RSA
-            RSAKeyParameters, // Struct para os componentes da chave RSA (n, e, d, p, q, etc.)
+            Jwk, KeyAlgorithm, PublicKeyUse as JwkPublicKeyUse, RSAKeyParameters, RSAKeyType,
         },
-        Algorithm as JwtAlgorithm, // Alias para evitar conflito
-        EncodingKey,
-        Header as JwtTestHeader, // Renomeado para evitar conflito
+        Algorithm as JwtAlgorithm, EncodingKey, Header as JwtTestHeader,
     };
-
     use std::time::{SystemTime, UNIX_EPOCH};
-    use tower::ServiceExt;
+    use tower::ServiceExt; // Para app.oneshot(request).await
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    // Constantes de teste (chaves e identificadores)
     const TEST_UNIT_RSA_PRIVATE_KEY_PEM: &str = "-----BEGIN PRIVATE KEY-----\n\
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCyE54qG20VWunF\n\
 oGyXHNFUFp12eiqbNY1khT+g5CXHCxafIxCtG2ovb6RhO7SAGfMDdrM01/5vZxf2\n\
@@ -539,33 +527,31 @@ EKTcpJDL8HlaXU67dylm4bQNdc/wT63mjaFldYu7AoGBAOPGWvzO04eiOqt7Mv7l\n\
 qLLmcZuVCc5d+3NbgKFi6zUBcvoL/TxTDkA4XoyesQWK5sxvHMqPk9wdU6qMXjh7\n\
 ezJCKjG5c2dOsKn0rAhlBzZg\n\
 -----END PRIVATE KEY-----";
-
     const TEST_UNIT_RSA_PUBLIC_N_B64URL: &str = "shOeKhttFVrpxaBslxzRVBaddnoqmzWNZIU_oOQlxwsWnyMQrRtqL2-kYTu0gBnzA3azNNf-b2cX9sp8e_KVwzW5z3CDGm9veHYw0hCdzWZ3MTpziewpZOjBfe7DlzGz87gffu96wUu4Jo8nZ_PLYi09KIlfZttStrnC4wkWw6z5JAYNl6pTJ8vg6taB7cNbYeEPhUbP4ZQt1i9VdeE7HuRmSta6xIdd10yjgijMeOzboFVlt6idsu5z5-n_xub4E6Ae99-DtoLkuwiEPXv67Y9_oQ3kkh8EHw44BqgmZSHRuTAzpveRdu-qCiErLcVXsSeO5MKBkQ-F48aZ2k-6FQ";
     const TEST_UNIT_RSA_PUBLIC_E_B64URL: &str = "AQAB";
     const TEST_UNIT_KID_RS256: &str = "test-key-for-src-auth-unit-tests";
     const TEST_UNIT_ISSUER: &str = "test-issuer-for-src-auth";
     const TEST_UNIT_AUDIENCE: &str = "test-audience-for-src-auth";
 
+    // Função helper para criar uma JWK pública para os testes
     fn rsa_public_jwk_for_src_auth_test() -> Jwk {
         Jwk {
             common: JwkCommonParameters {
                 public_key_use: Some(JwkPublicKeyUse::Signature),
                 key_algorithm: Some(KeyAlgorithm::RS256),
                 key_id: Some(TEST_UNIT_KID_RS256.to_string()),
-                key_operations: None,
-                x509_url: None,
-                x509_chain: None,
-                x509_sha1_fingerprint: None,
-                x509_sha256_fingerprint: None,
+                ..Default::default() // Outros campos são None por padrão
             },
             algorithm: JwkAlgorithmParameters::RSA(RSAKeyParameters {
-                key_type: RSAKeyType::RSA,
+                key_type: RSAKeyType::RSA, // Define o tipo explicitamente
                 n: TEST_UNIT_RSA_PUBLIC_N_B64URL.to_string(),
                 e: TEST_UNIT_RSA_PUBLIC_E_B64URL.to_string(),
+                // Campos privados (d, p, q, etc.) não são incluídos na chave pública JWK
             }),
         }
     }
 
+    // Função helper para gerar um JWT de teste
     fn generate_test_jwt_for_src_auth(
         claims: &Claims,
         alg: JwtAlgorithm,
@@ -582,6 +568,7 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
         encode(&header, claims, &encoding_key).expect("Falha ao gerar JWT de teste.")
     }
 
+    // Função helper para criar config::OAuth de teste
     fn test_oauth_config_for_src_auth(jwks_uri: String, enabled: bool) -> config::OAuth {
         config::OAuth {
             enabled,
@@ -590,15 +577,17 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
             audience: Some(vec![TEST_UNIT_AUDIENCE.to_string()]),
             required_scopes: None,
             jwks_request_timeout_seconds: Some(5),
-            jwks_refresh_interval_raw: Some("300s".to_string()),
-            jwks_refresh_interval: Some(Duration::from_secs(300)),
+            jwks_refresh_interval_raw: Some("300s".to_string()), // Usado para parsear
+            jwks_refresh_interval: Some(Duration::from_secs(300)), // Resultado do parse
         }
     }
 
+    // Função helper para criar JwksCache de teste
     fn test_jwks_cache_for_src_auth(jwks_uri: String, http_client: reqwest::Client) -> JwksCache {
         JwksCache::new(jwks_uri, Duration::from_secs(300), http_client)
     }
 
+    // Função helper para obter timestamp atual
     fn current_timestamp_for_test() -> usize {
         SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as usize
     }
@@ -622,11 +611,13 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
         let http_client = reqwest::Client::new();
         let jwks_cache = Arc::new(test_jwks_cache_for_src_auth(jwks_uri, http_client));
 
+        // Força o refresh inicial para garantir que o cache está populado
         jwks_cache.refresh_keys().await.expect("Refresh inicial do JWKS falhou");
         assert!(
             jwks_cache.check_health_for_readyz().await,
             "Cache JWKS não saudável após refresh forçado."
         );
+
 
         let now = current_timestamp_for_test();
         let claims = Claims {
@@ -679,41 +670,59 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
         let mock_server = MockServer::start().await;
         let jwks_uri = format!("{}/.well-known/jwks.json", mock_server.uri());
-
-        let public_jwk_rs256 = rsa_public_jwk_for_src_auth_test();
-        let jwks = JwkSet { keys: vec![public_jwk_rs256.clone()] };
-
+    
+        let http_client = reqwest::Client::new();
+        let cache = test_jwks_cache_for_src_auth(jwks_uri.clone(), http_client.clone());
+    
+        // Etapa 1: Simular falha no primeiro refresh (que ocorre dentro de check_health_for_readyz)
         Mock::given(method("GET"))
             .and(path("/.well-known/jwks.json"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&jwks))
+            .respond_with(ResponseTemplate::new(500).set_delay(Duration::from_millis(50))) // Simula erro do servidor JWKS
             .mount(&mock_server)
             .await;
-
-        let http_client = reqwest::Client::new();
-        let cache = test_jwks_cache_for_src_auth(jwks_uri, http_client);
-
-        assert!(!cache.check_health_for_readyz().await, "Cache não deveria estar saudável antes do primeiro refresh.");
-
+    
+        // check_health_for_readyz tentará um refresh, que falhará devido ao mock acima.
+        assert!(
+            !cache.check_health_for_readyz().await,
+            "Cache não deveria estar saudável se o primeiro refresh (interno e mockado para falhar) falhar."
+        );
+        mock_server.reset().await; // Limpar o mock de falha
+    
+        // Etapa 2: Configurar mock para sucesso e fazer refresh explícito
+        let public_jwk_rs256 = rsa_public_jwk_for_src_auth_test();
+        let jwks_data = JwkSet { keys: vec![public_jwk_rs256.clone()] };
+        Mock::given(method("GET"))
+            .and(path("/.well-known/jwks.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&jwks_data).set_delay(Duration::from_millis(50)))
+            .mount(&mock_server)
+            .await;
+    
         let refresh_result = cache.refresh_keys().await;
         assert!(
             refresh_result.is_ok(),
-            "Falha ao atualizar chaves JWKS: {:?}",
+            "Falha ao atualizar chaves JWKS explicitamente após mock de sucesso: {:?}",
             refresh_result.err()
         );
-        assert!(cache.check_health_for_readyz().await, "Cache JWKS não saudável após refresh.");
-
+    
+        // Etapa 3: Agora check_health_for_readyz deve ser true
+        assert!(
+            cache.check_health_for_readyz().await,
+            "Cache JWKS não saudável após refresh explícito bem-sucedido."
+        );
+    
+        // Etapa 4: Testar get_decoding_key_for_kid
         let decoding_key_result = cache.get_decoding_key_for_kid(TEST_UNIT_KID_RS256).await;
         match decoding_key_result {
-            Ok(Some(_key)) => {} // Sucesso
-            Ok(None) => panic!("Chave não encontrada para kid '{}'", TEST_UNIT_KID_RS256),
+            Ok(Some(_key)) => {} // Sucesso, chave encontrada
+            Ok(None) => panic!("Chave não encontrada para kid '{}' após refresh bem-sucedido", TEST_UNIT_KID_RS256),
             Err(e) => panic!("Erro ao obter chave para kid '{}': {:?}", TEST_UNIT_KID_RS256, e),
         }
-
+    
         let decoding_key_result_unknown = cache.get_decoding_key_for_kid("unknown-kid").await;
         match decoding_key_result_unknown {
-            Ok(None) => {} // Sucesso, kid desconhecido não encontrado
-            Ok(Some(_)) => panic!("Chave encontrada para kid desconhecido, esperado None"),
-            Err(e) => panic!("Erro ao obter chave para KID desconhecido: {:?}", e),
+            Ok(None) => {} // Sucesso, kid desconhecido não encontrado como esperado
+            Ok(Some(_)) => panic!("Chave encontrada para kid desconhecido ('unknown-kid'), esperado None"),
+            Err(e) => panic!("Erro ao obter chave para KID desconhecido ('unknown-kid'): {:?}", e),
         }
     }
 

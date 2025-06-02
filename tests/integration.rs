@@ -1,20 +1,10 @@
 // tests/integration.rs
-// Ponto de entrada para o crate de testes de integração do Typedb-MCP-Server.
 
-// Licença Apache 2.0
 // Copyright 2025 Guilherme Leste
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed under the MIT License <LICENSE or https://opensource.org/licenses/MIT>.
+// This file may not be copied, modified, or distributed
+// except according to those terms.
 
 //! Raiz do crate de testes de integração para o Typedb-MCP-Server.
 //!
@@ -55,6 +45,11 @@ pub mod common;
 // relativo à raiz do crate de teste (a pasta `tests/` neste caso, pois
 // `integration.rs` está nela e o Cargo o trata como um ponto de entrada).
 
+/// Testes de robustez do cleanup automático do TestEnvironment.
+/// Verifica se o Drop trait funciona corretamente em cenários adversos.
+#[path = "integration/cleanup_tests.rs"]
+pub mod cleanup_tests;
+
 /// Testes focados na conexão WebSocket, handshake, TLS e cenários básicos de autenticação.
 #[path = "integration/connection_tests.rs"]
 pub mod connection_tests;
@@ -91,11 +86,6 @@ pub mod schema_ops_tool_tests;
 /// Testes específicos para cenários onde a conexão TLS com o TypeDB está habilitada.
 #[path = "integration/typedb_tls_tests.rs"]
 pub mod typedb_tls_tests;
-
-/// Testes de robustez do cleanup automático do TestEnvironment.
-/// Verifica se o Drop trait funciona corretamente em cenários adversos.
-#[path = "integration/cleanup_tests.rs"]
-pub mod cleanup_tests;
 
 // Se você adicionar novos arquivos de teste em `tests/integration/`,
 // adicione uma declaração de módulo similar para eles aqui.
