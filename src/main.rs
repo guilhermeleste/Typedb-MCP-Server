@@ -34,45 +34,38 @@ use typedb_mcp_server_lib::{
     config::{Server as AppServerConfig, Settings},
     db::connect as connect_to_typedb,
     mcp_service_handler::McpServiceHandler,
-    metrics, // Usado para registrar métricas de diagnóstico
+    metrics,
     telemetry,
     transport::WebSocketTransport,
-    AuthErrorDetail, // Importado para tratamento de erro específico
-    McpServerError,  // Importado para tratamento de erro específico
+    AuthErrorDetail,
+    McpServerError,
 };
 
 // Crates de Observabilidade
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use reqwest::Client as ReqwestClient; // Para o JwksCache
-// rmcp imports
-use rmcp::service::{RoleServer, RunningService, ServerInitializeError, ServiceExt as RmcpServiceExt};
-use tracing::{debug, error, info, warn, Instrument, Dispatch};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
+use rmcp::service::{
+    RoleServer, RunningService, ServerInitializeError, ServiceExt as RmcpServiceExt,
+};
+use tracing::{debug, error, info, warn, Instrument, Dispatch}; // Adicionado Dispatch
+use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry}; // Adicionado Registry
 use typedb_driver::TypeDBDriver;
 
 // Importa a crate para obter a versão do rustc em tempo de execução.
 use rustc_version_runtime;
+// Importa o CryptoProvider para inicialização.
+use rustls::crypto::CryptoProvider;
 
 /// Estrutura para o estado da aplicação compartilhado com os handlers Axum.
 #[derive(Clone)]
 struct AppState {
-    /// Handler principal para o serviço MCP.
     mcp_handler: Arc<McpServiceHandler>,
-    /// Configurações da aplicação.
     settings: Arc<Settings>,
-    /// Cache para chaves JWKS, se OAuth2 estiver habilitado.
     jwks_cache: Option<Arc<JwksCache>>,
-    /// Referência ao driver TypeDB para verificações de saúde.
     typedb_driver_ref: Arc<TypeDBDriver>,
-    /// Token global para sinalizar o desligamento gracioso.
     global_shutdown_token: CancellationToken,
 }
 
-/// Configura o logging estruturado global (JSON) e o tracing OpenTelemetry.
-///
-/// O nível de log é controlado pela configuração `logging.rust_log` ou pela
-/// variável de ambiente `RUST_LOG`. O tracing OpenTelemetry é habilitado
-/// e configurado se `tracing.enabled` for `true`.
 fn setup_global_logging_and_tracing(
     settings: &Settings,
 ) -> Result<(), Box<dyn StdError + Send + Sync>> {
@@ -117,13 +110,8 @@ fn setup_global_logging_and_tracing(
     Ok(())
 }
 
-/// Configura o exportador de métricas Prometheus, apenas instalando o recorder.
-/// O servidor HTTP para as métricas será gerenciado pelo Axum.
-///
-/// # Returns
-/// `Ok(PrometheusHandle)` se bem-sucedido, ou um erro se não puder instalar o recorder.
 fn setup_metrics_recorder(
-    _server_settings: &AppServerConfig, // Mantido para assinatura, mas não usado diretamente aqui
+    _server_settings: &AppServerConfig,
 ) -> Result<PrometheusHandle, Box<dyn StdError + Send + Sync>> {
     metrics::register_metrics_descriptions();
     info!("Descrições de métricas registradas.");
@@ -136,10 +124,6 @@ fn setup_metrics_recorder(
     })
 }
 
-/// Inicializa os serviços principais: conexão com TypeDB e cache JWKS (se OAuth habilitado).
-///
-/// Esta função é crítica para a inicialização do servidor. Uma falha aqui
-/// geralmente impede o servidor de iniciar.
 async fn initialize_core_services(
     settings: &Arc<Settings>,
 ) -> Result<(Arc<TypeDBDriver>, Option<Arc<JwksCache>>), Box<dyn StdError + Send + Sync>> {
@@ -227,7 +211,6 @@ async fn initialize_core_services(
     Ok((typedb_driver_instance, jwks_cache_option))
 }
 
-/// Cria o estado da aplicação (`AppState`) que será compartilhado com os handlers Axum.
 fn create_app_state(
     typedb_driver: Arc<TypeDBDriver>,
     settings: Arc<Settings>,
@@ -244,7 +227,6 @@ fn create_app_state(
     }
 }
 
-/// Constrói o roteador Axum principal, montando todos os endpoints e middlewares.
 fn build_axum_router(
     app_state: AppState,
     settings: &Arc<Settings>,
@@ -290,7 +272,6 @@ fn build_axum_router(
     base_router.merge(mcp_ws_router.with_state(app_state))
 }
 
-/// Inicia o servidor Axum, configurando TLS se habilitado.
 async fn run_axum_server(
     router: Router,
     settings: &Arc<Settings>,
@@ -347,7 +328,6 @@ async fn run_axum_server(
     Ok(())
 }
 
-/// Executa a limpeza de recursos durante o graceful shutdown.
 async fn cleanup_resources(
     typedb_driver: Arc<TypeDBDriver>,
     settings: &Arc<Settings>,
@@ -367,20 +347,43 @@ async fn cleanup_resources(
     Ok(())
 }
 
-/// Ponto de entrada principal da aplicação.
 fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
+    // --- INÍCIO DA INICIALIZAÇÃO DO CRYPTO PROVIDER ---
+    if CryptoProvider::get_default().is_none() {
+        match rustls::crypto::ring::default_provider().install_default() {
+            Ok(()) => {
+                println!("[CRYPTO_PROVIDER_SETUP] Provedor criptográfico Ring instalado como padrão para rustls.");
+            }
+            Err(e) => {
+                eprintln!("[CRYPTO_PROVIDER_FATAL] Falha crítica ao instalar o provedor criptográfico Ring: {:?}. O servidor não pode continuar se TLS for usado.", e);
+                // Considerar std::process::exit(1) aqui se a falha na instalação for inaceitável.
+                // Por exemplo, se o seu servidor *sempre* precisa de TLS para alguma funcionalidade crítica,
+                // ou se a falha aqui indica um problema de ambiente mais sério.
+                // Para este projeto, como TLS é opcional para TypeDB e MCP, logamos um erro fatal
+                // mas permitimos que a aplicação continue, assumindo que talvez TLS não seja usado.
+                // Se for usado e isto falhou, um pânico ocorrerá depois.
+            }
+        }
+    } else {
+        println!("[CRYPTO_PROVIDER_SETUP] Provedor criptográfico padrão para rustls já está instalado globalmente.");
+    }
+    // --- FIM DA INICIALIZAÇÃO DO CRYPTO PROVIDER ---
+
     if dotenvy::dotenv().is_err() {
         println!("[SETUP_INFO] Arquivo .env não encontrado ou falha ao carregar. Usando variáveis de ambiente do sistema se disponíveis.");
     }
 
+    // Bloco para garantir que _temp_guard seja dropado antes de configurar o runtime Tokio
     {
+        // Logger temporário para a fase de inicialização da configuração e do logger principal.
         let temp_env_filter =
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
         let temp_subscriber = fmt::Subscriber::builder()
             .with_env_filter(temp_env_filter)
-            .with_writer(std::io::stderr)
-            .json()
+            .with_writer(std::io::stderr) // Log para stderr durante setup
+            .json() // Mantém JSON para consistência, mesmo que temporário
             .finish();
+        // `set_default` retorna um `DefaultGuard`. Mantê-lo até que o logger principal seja configurado.
         let _temp_guard = tracing::dispatcher::set_default(&Dispatch::new(temp_subscriber));
 
         info!("Iniciando Typedb-MCP-Server versão {}...", env!("CARGO_PKG_VERSION"));
@@ -393,16 +396,24 @@ fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
                 if let Some(source) = config_err.source() {
                     error!("   Fonte do erro de configuração: {}", source);
                 }
+                // Considerar usar um erro específico em vez de panic para permitir um tratamento mais limpo
+                // se main retornasse Result. Por agora, panic é aceitável para falha de config.
                 panic!("Falha ao carregar configurações: {}", config_err);
             }
         };
 
+        // Agora que Settings está carregado, configura o logger/tracing global definitivo.
         if let Err(e) = setup_global_logging_and_tracing(&settings) {
+            // Se o logger global falhar, logamos para stderr e continuamos (observabilidade limitada).
             eprintln!(
-                "[SETUP_WARN] Falha ao configurar o sistema de logging/tracing global completo: {}. Observabilidade pode ser limitada.",
+                "[SETUP_FATAL] Falha crítica ao configurar o sistema de logging/tracing global: {}. Observabilidade severamente comprometida.",
                 e
             );
+            // Potencialmente, sair aqui se o logging for absolutamente crítico.
+            // std::process::exit(1);
         }
+        // O _temp_guard será dropado aqui, e o novo dispatcher global (configurado por setup_global_logging_and_tracing)
+        // tomará efeito.
 
         info!("Configurações carregadas e sistema de logging/tracing global inicializado.");
         debug!(config = ?settings, "Configurações da aplicação carregadas e prontas para uso.");
@@ -420,11 +431,11 @@ fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
             .thread_name("typedb-mcp-worker")
             .build()?;
 
+        // O `async_main` agora é o responsável por retornar o Result final.
         return rt.block_on(async_main(settings));
     }
 }
 
-/// Lógica principal assíncrona da aplicação.
 async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Send + Sync>> {
     let global_shutdown_token = CancellationToken::new();
     setup_signal_handler(global_shutdown_token.clone());
@@ -435,7 +446,6 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
             let app_version = env!("CARGO_PKG_VERSION");
             let rust_version_val = rustc_version_runtime::version().to_string();
             
-            // Usar format! para construir nomes de métricas dinamicamente
             let startup_counter_name = format!("{}{}", metrics::METRIC_PREFIX, "server_startup_total");
             let info_gauge_name = format!("{}{}", metrics::METRIC_PREFIX, metrics::SERVER_INFO_GAUGE);
 
@@ -466,6 +476,10 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
         }
         Err(e) => {
             error!("Falha na inicialização dos serviços principais (TypeDB ou JWKS): {}. O servidor será encerrado.", e);
+            // Se a inicialização falhar, cancelamos o token para que o signal_handler também termine.
+            if !global_shutdown_token.is_cancelled() {
+                 global_shutdown_token.cancel();
+            }
             return Err(e);
         }
     };
@@ -477,7 +491,7 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
         global_shutdown_token.clone(),
     );
 
-    let router = build_axum_router(app_state.clone(), &settings, metrics_handle_opt); // Passar app_state.clone() para build_axum_router
+    let router = build_axum_router(app_state.clone(), &settings, metrics_handle_opt);
 
     info!("Iniciando servidor Axum (MCP)...");
     if let Err(e) = run_axum_server(router, &settings, global_shutdown_token.clone()).await {
@@ -498,13 +512,11 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
     Ok(())
 }
 
-/// Handler para o endpoint de liveness (`/livez`).
 async fn livez_handler() -> StatusCode {
     tracing::trace!("Recebida requisição /livez");
     StatusCode::OK
 }
 
-/// Handler para o endpoint de readiness (`/readyz`).
 async fn readyz_handler(State(app_state): State<AppState>) -> impl IntoResponse {
     tracing::debug!("Verificando prontidão do servidor para /readyz...");
     let mut ready_components = serde_json::Map::new();
@@ -560,7 +572,6 @@ async fn readyz_handler(State(app_state): State<AppState>) -> impl IntoResponse 
     (status_code, axum::Json(response_body)).into_response()
 }
 
-/// Handler para o endpoint de métricas (`/metrics`) servido via Axum.
 async fn metrics_handler(State(prometheus_handle): State<PrometheusHandle>) -> AxumResponse {
     tracing::trace!("[METRICS_HANDLER_AXUM] Recebida requisição para /metrics");
     let metrics_data = prometheus_handle.render();
@@ -573,7 +584,6 @@ async fn metrics_handler(State(prometheus_handle): State<PrometheusHandle>) -> A
         .into_response()
 }
 
-/// Handler para conexões WebSocket MCP.
 #[tracing::instrument(
     name = "websocket_connection_upgrade",
     skip_all,
@@ -674,7 +684,6 @@ async fn websocket_handler(
     })
 }
 
-/// Configura os handlers de sinal do sistema operacional.
 fn setup_signal_handler(token: CancellationToken) {
     tokio::spawn(async move {
         #[cfg(unix)]

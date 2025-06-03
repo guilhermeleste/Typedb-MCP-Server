@@ -31,7 +31,7 @@ async fn test_mcp_server_connects_to_typedb_with_tls_successfully() -> Result<()
     // O TestEnvironment::setup já deve ter esperado pelo typedb-server-tls-it
     // e pelo mcp-server (que está configurado para conectar via TLS ao TypeDB).
     assert!(
-        test_env.is_typedb_tls_connection,
+        test_env.is_typedb_connection_tls,
         "Este teste esperava que a conexão TypeDB TLS estivesse habilitada na config."
     );
 

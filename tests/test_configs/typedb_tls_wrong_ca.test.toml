@@ -1,0 +1,40 @@
+# tests/test_configs/typedb_tls_wrong_ca.test.toml
+# Cenário: MCP Server tenta TLS para o TypeDB-TLS, mas com um CA errado.
+# Espera-se: Falha na conexão TLS, TypeDB component no /readyz deve ser DOWN.
+
+[server]
+bindAddress = "0.0.0.0:8787"
+metricsBindAddress = "0.0.0.0:9090"
+mcpWebsocketPath = "/mcp/ws"
+metricsPath = "/metrics"
+tlsEnabled = false # TLS do próprio MCP server está desabilitado
+
+[typedb]
+# O endereço real será sobrescrito por MCP_TYPEDB__ADDRESS para "typedb-server-tls-it:1729"
+# Mas é bom ter um placeholder.
+address = "typedb-server-tls-it:1729"
+username = "admin"
+# IMPORTANTE: MCP Server deve TENTAR usar TLS para o TypeDB
+tlsEnabled = true
+# IMPORTANTE: Fornece um CA que NÃO é o correto para typedb-server-tls-it.
+# Usamos o certificado do próprio mcp-server como um CA inválido aqui.
+tlsCaPath = "/app/test_certs/mcp-server.crt"
+
+[oauth]
+enabled = false
+
+[logging]
+# Logs bem verbosos para depurar problemas de TLS
+rustLog = "info,typedb_mcp_server_lib=trace,typedb_mcp_server=trace,typedb_driver=trace,rustls=trace,tokio_rustls=trace"
+
+[cors]
+allowedOrigins = ["*"]
+
+[rateLimit]
+enabled = true
+requestsPerSecond = 1000
+burstSize = 2000
+
+[tracing]
+enabled = false
+serviceName = "typedb-mcp-server-test-typedbtls-wrongca"

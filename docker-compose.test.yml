@@ -11,149 +11,132 @@ x-default-variables: &default-env
   # MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV:
   #   Variável definida no HOST que especifica o caminho para o arquivo de configuração TOML
   #   a ser usado pelo contêiner do MCP Server. O contêiner receberá uma variável
-  #   MCP_CONFIG_PATH com este valor. Default: /app/test_configs/default.test.toml.
-  MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV: ${MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV:-/app/test_configs/oauth_enabled.test.toml}
+  #   MCP_CONFIG_PATH com este valor.
+  MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV: ${MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV:-/app/test_configs/default.test.toml} # Default para um config genérico
   
-  # target_typedb_host_port, timeout_duration, target_typedb_service_name, sleep_interval, elapsed_time:
-  #   Variáveis usadas pelo script de comando dentro do contêiner typedb-mcp-server-it
-  #   para aguardar a prontidão do TypeDB. Elas NÃO influenciam diretamente a configuração
-  #   da aplicação Rust, que lê suas configurações do arquivo TOML.
-  target_typedb_host_port: ${target_typedb_host_port:-typedb-server-it:1729} 
+  # MCP_TYPEDB__ADDRESS:
+  #   Variável DENTRO do contêiner typedb-mcp-server-it, indicando a qual serviço TypeDB se conectar.
+  #   Será configurada dinamicamente pelo TestEnvironment.
+  MCP_TYPEDB__ADDRESS: ${MCP_TYPEDB__ADDRESS:-typedb-server-it:1729} # Default se não sobrescrito
+
+  # TYPEDB_PASSWORD_TEST: Senha para os serviços TypeDB neste compose.
+  TYPEDB_PASSWORD_TEST: ${TYPEDB_PASSWORD_TEST:-password}
+
+  # TLS_ENABLED: Para healthcheck do Dockerfile.
+  TLS_ENABLED: ${TLS_ENABLED:-false}
+  
+  # Variáveis para o script de comando de espera do typedb-mcp-server-it (podem ser simplificadas se o script usar MCP_TYPEDB__ADDRESS)
   timeout_duration: ${timeout_duration:-120} # Segundos
-  target_typedb_service_name: ${target_typedb_service_name:-typedb-server-it}
   sleep_interval: ${sleep_interval:-3} # Segundos
   elapsed_time: ${elapsed_time:-0} # Segundos
 
 services:
   # Serviço principal Typedb-MCP-Server para testes de integração.
   typedb-mcp-server-it:
-    # Perfis permitem ativar seletivamente este serviço e suas dependências.
     profiles: ["typedb_default", "typedb_tls", "oauth_mock"]
     build:
-      context: . # Diretório raiz do projeto como contexto de build.
-      dockerfile: Dockerfile # Usa o Dockerfile principal.
-    container_name: ${COMPOSE_PROJECT_NAME}-mcp-server # Nome do contêiner dinâmico baseado no projeto.
+      context: . 
+      dockerfile: Dockerfile 
+    container_name: ${COMPOSE_PROJECT_NAME}-mcp-server 
     ports:
-      # Mapeia portas do host para o contêiner. Os testes de cliente que rodam no host
-      # usarão estas portas do host. As portas do contêiner (ex: 8787) devem
-      # corresponder ao server.bindAddress e server.metricsBindAddress nos arquivos TOML de teste.
       - "8788:8787"   # MCP HTTP/WS (Host:Container)
       - "8444:8443"   # MCP HTTPS/WSS (Host:Container) - Usado se server.tlsEnabled=true no TOML
       - "9091:9090"   # Métricas Prometheus (Host:Container)
     volumes:
-      # Monta os arquivos de configuração de teste e certificados de teste no contêiner
-      # para que o servidor MCP possa acessá-los.
-      - ./tests/test_configs:/app/test_configs:ro # :ro = read-only
+      - ./tests/test_configs:/app/test_configs:ro 
       - ./tests/test_certs:/app/test_certs:ro
     environment:
-      # MCP_CONFIG_PATH:
-      #   Variável de ambiente DENTRO do contêiner. Seu valor é fornecido pela variável
-      #   MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV definida no host.
-      #   Indica ao servidor MCP qual arquivo TOML carregar.
+      # MCP_CONFIG_PATH: Caminho do arquivo TOML DENTRO do contêiner.
       - MCP_CONFIG_PATH=${MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV}
       
-      # RUST_LOG:
-      #   Controla o nível de log da aplicação Rust DENTRO do contêiner.
-      #   Útil para depuração de testes.
       - RUST_LOG=${RUST_LOG_MCP:-info,typedb_mcp_server_lib=trace,typedb_mcp_server=trace,typedb_mcp_server_lib::config=trace,typedb_driver=info,hyper=warn,h2=warn,tower=warn,rustls=trace,tokio_rustls=trace}
       
-      # TYPEDB_PASSWORD:
-      #   Senha para o TypeDB. É um segredo e deve ser fornecido pelo ambiente.
-      #   Os serviços TypeDB neste compose usam TYPEDB_PASSWORD_TEST.
-      - TYPEDB_PASSWORD=${TYPEDB_PASSWORD_TEST:-password}
+      # Senha para o TypeDB que o SERVIDOR MCP usará para se conectar.
+      - TYPEDB_PASSWORD=${TYPEDB_PASSWORD_TEST} # Usa a mesma senha definida para os serviços TypeDB
       
-      # MCP_TYPEDB__ADDRESS:
-      #   Override de endereço do TypeDB via variável de ambiente
-      #   Tem precedência sobre o valor no arquivo TOML
-      - MCP_TYPEDB__ADDRESS=${MCP_TYPEDB__ADDRESS:-typedb-server-it:1729}
+      # Endereço do TypeDB que o SERVIDOR MCP usará para se conectar.
+      # Este valor será dinamicamente definido pelo TestEnvironment para apontar
+      # para 'typedb-server-it:1729' ou 'typedb-server-tls-it:1729'.
+      - MCP_TYPEDB__ADDRESS=${MCP_TYPEDB__ADDRESS} 
       
-      # TLS_ENABLED:
-      #   Variável usada pelo HEALTHCHECK no Dockerfile para detectar se TLS está habilitado
-      #   Deve ser "true" quando server.tlsEnabled=true na configuração TOML
-      - TLS_ENABLED=${TLS_ENABLED:-false}
-      
-      # NOTA: O endereço do TypeDB é configurado TANTO no arquivo TOML quanto via
-      # variável de ambiente. A variável de ambiente deve ter precedência.
-      # Ex: Em oauth_enabled.test.toml, você terá:
-      #   [typedb]
-      #   address = "typedb-server-it:1729"
+      # Flag para o HEALTHCHECK no Dockerfile. Definido pelo TestEnvironment.
+      - TLS_ENABLED=${TLS_ENABLED}
     
-    # Comando executado quando o contêiner typedb-mcp-server-it inicia.
-    # Este script espera o TypeDB ficar acessível antes de iniciar o servidor MCP.
-    # Os `$$` são usados para escapar os `$` para que sejam interpretados pelo shell
-    # DENTRO do contêiner, e não pelo Docker Compose no host.
-    # IMPORTANTE: Sobrescreve ENTRYPOINT do Dockerfile para usar shell script personalizado
-    entrypoint: []
+    entrypoint: [] # Sobrescreve entrypoint do Dockerfile
     command: >
       sh -c "
-        set -e # Adicionado para que o script saia se qualquer comando falhar
+        set -e 
         echo '[DEBUG_MCP_SERVER_CMD] Script de entrada do typedb-mcp-server-it iniciado.'
-        echo '[DEBUG_MCP_SERVER_CMD] Variáveis de ambiente recebidas pelo contêiner:'
         echo '[DEBUG_MCP_SERVER_CMD]   MCP_CONFIG_PATH (caminho do TOML) = \"$$MCP_CONFIG_PATH\"'
         echo '[DEBUG_MCP_SERVER_CMD]   TYPEDB_PASSWORD (para o cliente TypeDB interno) = \"$$TYPEDB_PASSWORD\"'
-        echo '[DEBUG_MCP_SERVER_CMD]   MCP_TYPEDB__ADDRESS = \"$$MCP_TYPEDB__ADDRESS\"'
+        echo '[DEBUG_MCP_SERVER_CMD]   MCP_TYPEDB__ADDRESS (alvo do TypeDB para este MCP server) = \"$$MCP_TYPEDB__ADDRESS\"'
         echo '[DEBUG_MCP_SERVER_CMD]   RUST_LOG (para o servidor Rust) = \"$$RUST_LOG\"'
         echo '[DEBUG_MCP_SERVER_CMD]   TLS_ENABLED (para healthcheck Dockerfile) = \"$$TLS_ENABLED\"'
-        echo '[DEBUG_MCP_SERVER_CMD] Conteúdo do arquivo de configuração:'
-        cat \"$$MCP_CONFIG_PATH\" | head -20
-        echo '[DEBUG_MCP_SERVER_CMD] Todas as variáveis de ambiente que começam com MCP_:'
-        env | grep '^MCP_' || echo '[DEBUG_MCP_SERVER_CMD] Nenhuma variável MCP_ encontrada'
         
-        echo \"[DEBUG_MCP_SERVER_CMD] Aguardando ativamente pela porta TCP do TypeDB em 'typedb-server-it:1729'...\"
+        # Extrai HOST e PORTA do MCP_TYPEDB__ADDRESS
+        TARGET_TYPEDB_HOST=$$(echo \"$$MCP_TYPEDB__ADDRESS\" | cut -d: -f1)
+        TARGET_TYPEDB_PORT=$$(echo \"$$MCP_TYPEDB__ADDRESS\" | cut -d: -f2)
+
+        echo \"[DEBUG_MCP_SERVER_CMD] Aguardando ativamente pela porta TCP do TypeDB em '$$TARGET_TYPEDB_HOST:$$TARGET_TYPEDB_PORT'...\"
         
-        timeout_duration=120 
-        elapsed_time=0       
-        
-        while [ $$elapsed_time -lt $$timeout_duration ]; do
-          if nc -z -w 2 typedb-server-it 1729 2>/dev/null; then
-            echo \"[DEBUG_MCP_SERVER_CMD] Porta TCP do TypeDB está aberta.\"
+        timeout_duration_val=${timeout_duration:-120} # Usa default se não definido
+        elapsed_time_val=0       
+        sleep_interval_val=${sleep_interval:-3}
+
+        while [ $$elapsed_time_val -lt $$timeout_duration_val ]; do
+          if nc -z -w 2 \"$$TARGET_TYPEDB_HOST\" \"$$TARGET_TYPEDB_PORT\" 2>/dev/null; then
+            echo \"[DEBUG_MCP_SERVER_CMD] Porta TCP do TypeDB ('$$TARGET_TYPEDB_HOST:$$TARGET_TYPEDB_PORT') está aberta.\"
             break
           fi
-          echo \"[DEBUG_MCP_SERVER_CMD] TypeDB ainda não disponível. Aguardando 3s... ($$elapsed_time/$$timeout_duration s)\"
-          sleep 3
-          elapsed_time=$$((elapsed_time + 3))
+          echo \"[DEBUG_MCP_SERVER_CMD] TypeDB ('$$TARGET_TYPEDB_HOST:$$TARGET_TYPEDB_PORT') ainda não disponível. Aguardando $$sleep_interval_val s... ($$elapsed_time_val/$$timeout_duration_val s)\"
+          sleep $$sleep_interval_val
+          elapsed_time_val=$$((elapsed_time_val + sleep_interval_val))
         done
         
-        if [ $$elapsed_time -ge $$timeout_duration ]; then
-          echo \"[ERROR_MCP_SERVER_CMD] Timeout de $${timeout_duration}s atingido ao aguardar TypeDB!\" >&2
-          exit 1 # Sairá com erro devido ao set -e
+        if [ $$elapsed_time_val -ge $$timeout_duration_val ]; then
+          echo \"[ERROR_MCP_SERVER_CMD] Timeout de $${timeout_duration_val}s atingido ao aguardar TypeDB em '$$TARGET_TYPEDB_HOST:$$TARGET_TYPEDB_PORT'!\" >&2
+          exit 1 
         fi
         
-        echo \"[DEBUG_MCP_SERVER_CMD] Adicionando delay extra de 7 segundos para garantir que o serviço gRPC interno do TypeDB esteja completamente inicializado...\"
+        echo \"[DEBUG_MCP_SERVER_CMD] Adicionando delay extra de 7 segundos para garantir que o serviço gRPC interno do TypeDB ('$$TARGET_TYPEDB_HOST:$$TARGET_TYPEDB_PORT') esteja completamente inicializado...\"
         sleep 7 
         
         echo \"[DEBUG_MCP_SERVER_CMD] Iniciando o binário Typedb-MCP-Server ('/usr/local/bin/typedb_mcp_server')...\"
-        # Se o comando abaixo falhar, o script sh sairá com o código de erro do comando
         /usr/local/bin/typedb_mcp_server 
       "
     
+    # depends_on garante que o MCP server só inicie após o typedb-server-it
+    # (TypeDB padrão) estar saudável. Isso é importante para a maioria dos testes.
+    # Para testes com typedb-server-tls-it, o MCP_TYPEDB__ADDRESS e o script de comando
+    # acima direcionarão a conexão e a espera para o typedb-server-tls-it.
     depends_on:
-      # Garante que o serviço typedb-server-it (TypeDB padrão) esteja saudável
-      # antes de iniciar o typedb-mcp-server-it.
-      # Outras dependências como typedb-server-tls-it ou mock-oauth2-server são
-      # implicitamente gerenciadas pelos perfis e pela lógica de espera no TestEnvironment.
-      typedb-server-it:
+      typedb-server-it: # A dependência explícita é mantida
          condition: service_healthy
-      # Se um perfil específico ativa o mock-oauth2-server, o TestEnvironment também
-      # espera por sua saúde antes de considerar o ambiente pronto.
     networks:
       - typedb_mcp_test_network
-    # O Healthcheck definido no Dockerfile principal (verifica /livez) ainda se aplica a este serviço.
 
   # Instância do TypeDB Server para testes (sem TLS).
-  # Ativado pelos perfis "typedb_default" e "oauth_mock".
+  # Ativado pelos perfis "typedb_default", "oauth_mock" E AGORA TAMBÉM "typedb_tls".
   typedb-server-it:
-    profiles: ["typedb_default", "oauth_mock"]
+    profiles: ["typedb_default", "typedb_tls", "oauth_mock"] # <<< MODIFICADO AQUI
     image: typedb/typedb:3.2.0
-    container_name: ${COMPOSE_PROJECT_NAME}-typedb
+    container_name: ${COMPOSE_PROJECT_NAME}-typedb # O nome não deve conflitar com -typedb-tls
     ports:
-      - "1729:1729" # Porta gRPC padrão do TypeDB.
+      # Não mapeia a porta 1729 para o HOST para evitar conflito quando ambos
+      # typedb-server-it e typedb-server-tls-it estiverem rodando (no perfil typedb_tls).
+      # Os testes de cliente que precisam se conectar diretamente ao TypeDB
+      # usarão o mapeamento específico do serviço que está sendo testado.
+      # Se um teste precisar do TypeDB padrão no host, ele usará o mapeamento de porta 1729:1729.
+      # Quando o perfil typedb_tls estiver ativo, esta instância não será acessada do host,
+      # mas o MCP server pode precisar que ela esteja "healthy" para o depends_on.
+      # Se apenas UM serviço TypeDB for mapeado para a porta 1729 do host por vez, não há problema.
+      # Vamos assumir que apenas UM perfil que expõe TypeDB na porta 1729 do host está ativo por vez.
+      # Quando "typedb_tls" está ativo,typedb-server-tls-it usa 11730.
+      # Quando "typedb_default" está ativo, este usa 1729.
+      - "1729:1729" # Mapeado para a porta padrão do host.
     environment:
-      # Configurações do servidor TypeDB.
-      # Habilita autenticação e define a senha padrão.
-      - TYPEDB_SERVER_OPTS=--server.address=0.0.0.0:1729 --server.authentication.enable=true --server.credential.default.password=${TYPEDB_PASSWORD_TEST:-password}
+      - TYPEDB_SERVER_OPTS=--server.address=0.0.0.0:1729 --server.authentication.enable=true --server.credential.default.password=${TYPEDB_PASSWORD_TEST}
     healthcheck:
-      # Verifica se a porta TCP 1729 está aberta.
       test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/1729' || exit 1"]
       interval: 10s
       timeout: 5s
@@ -162,50 +145,42 @@ services:
     networks:
       - typedb_mcp_test_network
     volumes:
-      # Persiste os dados do TypeDB entre execuções de teste (se não usar `down -v`).
       - typedb_data_it:/opt/typedb/server/data
 
   # Instância do TypeDB Server para testes (COM TLS).
-  # Ativado pelo perfil "typedb_tls".
   typedb-server-tls-it:
-    profiles: ["typedb_tls"]
+    profiles: ["typedb_tls"] # Continua ativado apenas por este perfil
     image: typedb/typedb:3.2.0
     container_name: ${COMPOSE_PROJECT_NAME}-typedb-tls
     ports:
-      - "11730:1729" # Mapeia para uma porta de host diferente para evitar conflito com typedb-server-it.
+      - "11730:1729" # Mapeia a porta interna 1729 para a porta 11730 do HOST.
     volumes:
-      # Monta os certificados TLS gerados para o servidor TypeDB.
-      # Caminhos relativos ao contexto do docker-compose.test.yml
       - ./tests/test_certs/typedb-server.crt:/opt/typedb/server/conf/typedb-server.crt:ro
       - ./tests/test_certs/typedb-server.key:/opt/typedb/server/conf/typedb-server.key:ro
       - ./tests/test_certs/rootCA.pem:/opt/typedb/server/conf/rootCA.pem:ro
       - typedb_tls_data_it:/opt/typedb/server/data
     environment:
-      # Configura o TypeDB para usar TLS e autenticação.
-      - TYPEDB_SERVER_OPTS=--server.address=0.0.0.0:1729 --server.authentication.enable=true --server.credential.default.password=${TYPEDB_PASSWORD_TEST:-password} --server.encryption.enable=all --server.encryption.certificate.path=/opt/typedb/server/conf/typedb-server.crt --server.encryption.private_key.path=/opt/typedb/server/conf/typedb-server.key --server.encryption.ca.path=/opt/typedb/server/conf/rootCA.pem
+      - TYPEDB_SERVER_OPTS=--server.address=0.0.0.0:1729 --server.authentication.enable=true --server.credential.default.password=${TYPEDB_PASSWORD_TEST} --server.encryption.enable=all --server.encryption.certificate.path=/opt/typedb/server/conf/typedb-server.crt --server.encryption.private_key.path=/opt/typedb/server/conf/typedb-server.key --server.encryption.ca.path=/opt/typedb/server/conf/rootCA.pem
     healthcheck:
       test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/1729' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 35s # Um pouco mais de tempo para iniciar devido à configuração TLS.
+      start_period: 35s 
     networks:
       - typedb_mcp_test_network
 
   # Mock OAuth2/JWKS Server usando Nginx.
-  # Ativado pelo perfil "oauth_mock".
   mock-oauth2-server:
     profiles: ["oauth_mock"] 
     image: nginx:1.25.5-alpine
     container_name: ${COMPOSE_PROJECT_NAME}-mock-oauth
     ports:
-      - "8089:80" # Nginx escuta na porta 80 interna, mapeada para 8089 no host.
+      - "8089:80" 
     volumes:
-      # Monta o arquivo JWKS mock e a configuração Nginx.
       - ./tests/resources/mock_jwks.json:/usr/share/nginx/html/.well-known/jwks.json:ro
       - ./scripts/nginx-mock-oauth2.conf:/etc/nginx/conf.d/default.conf:ro
     healthcheck:
-      # Verifica o endpoint /livez definido em nginx-mock-oauth2.conf.
       test: ["CMD-SHELL", "curl -f -s http://localhost/livez > /dev/null || exit 1"]
       interval: 10s
       timeout: 5s
@@ -213,22 +188,19 @@ services:
       start_period: 5s 
     networks:
       - typedb_mcp_test_network
-    logging: # Configuração de logging para o contêiner Nginx.
+    logging: 
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
 
-# Rede customizada para isolar os serviços de teste.
 networks:
   typedb_mcp_test_network:
     driver: bridge
-    name: ${COMPOSE_PROJECT_NAME}_typedb_mcp_test_network # Nome explícito para a rede
+    name: ${COMPOSE_PROJECT_NAME}_typedb_mcp_test_network 
 
-# Volumes nomeados para persistência de dados do TypeDB entre execuções de teste.
-# São limpos se `docker-compose down -v` for usado.
 volumes:
   typedb_data_it: 
-    name: ${COMPOSE_PROJECT_NAME}_typedb_data_it # Nome explícito para o volume
+    name: ${COMPOSE_PROJECT_NAME}_typedb_data_it 
   typedb_tls_data_it: 
-    name: ${COMPOSE_PROJECT_NAME}_typedb_tls_data_it # Nome explícito para o volume
+    name: ${COMPOSE_PROJECT_NAME}_typedb_tls_data_it

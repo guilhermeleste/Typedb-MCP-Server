@@ -11,7 +11,7 @@
 //! - Lidar com a inicialização de provedores criptográficos para `rustls` quando necessário.
 
 use anyhow::{Context as AnyhowContext, Result};
-use rustls::crypto::CryptoProvider; // Adicionado para inicialização do provedor criptográfico
+use rustls::crypto::CryptoProvider;
 use std::time::Duration;
 use tracing::{error, info, warn};
 
@@ -20,23 +20,29 @@ use super::auth_helpers::{self, JwtAuthAlgorithm};
 use super::client::TestMcpClient;
 use super::constants;
 use super::docker_helpers::DockerComposeEnv;
-// Importar a função de espera do `test_utils`
 use super::test_utils::wait_for_mcp_server_ready_from_test_env;
 
 /// Perfis Docker disponíveis para testes de integração.
-/// Cada perfil ativa um conjunto específico de serviços no `docker-compose.test.yml`.
+///
+/// Cada perfil ativa um conjunto específico de serviços no arquivo `docker-compose.test.yml`,
+/// permitindo que os testes configurem apenas as dependências necessárias.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TestProfile {
-    /// Ativa o serviço TypeDB padrão (sem TLS). Perfil: "typedb_default".
+    /// Ativa o serviço TypeDB padrão (sem TLS) para os testes.
+    /// Corresponde ao perfil "typedb_default" no Docker Compose.
     TypeDbDefault,
-    /// Ativa o serviço TypeDB configurado com TLS. Perfil: "typedb_tls".
+    /// Ativa o serviço TypeDB configurado para usar TLS.
+    /// Corresponde ao perfil "typedb_tls" no Docker Compose.
     TypeDbTls,
-    /// Ativa o serviço Mock OAuth2 Server. Perfil: "oauth_mock".
+    /// Ativa o serviço Mock OAuth2 Server, que simula um provedor de identidade
+    /// servindo um JWKS estático.
+    /// Corresponde ao perfil "oauth_mock" no Docker Compose.
     OAuthMock,
 }
 
 impl TestProfile {
-    /// Converte o enum `TestProfile` para a string de perfil usada no Docker Compose.
+    /// Converte o enum `TestProfile` para a string de nome de perfil
+    /// usada nos arquivos Docker Compose.
     pub fn as_compose_profile(&self) -> &'static str {
         match self {
             TestProfile::TypeDbDefault => "typedb_default",
@@ -45,89 +51,110 @@ impl TestProfile {
         }
     }
 
-    /// Retorna o nome do serviço TypeDB correspondente ao perfil, se aplicável.
-    /// Usado para saber qual serviço TypeDB aguardar no `wait_for_service_healthy`.
+    /// Retorna o nome do serviço TypeDB principal associado a este perfil, se houver.
+    ///
+    /// Alguns perfis (como `OAuthMock`) podem não ter um serviço TypeDB diretamente
+    /// associado a eles, mas podem ser combinados com outros perfis que o tenham.
     pub fn typedb_service_name(&self) -> Option<&'static str> {
         match self {
             TestProfile::TypeDbDefault => Some(constants::TYPEDB_SERVICE_NAME),
             TestProfile::TypeDbTls => Some(constants::TYPEDB_TLS_SERVICE_NAME),
-            TestProfile::OAuthMock => {
-                // OAuthMock por si só não implica um serviço TypeDB específico,
-                // geralmente é combinado com TypeDbDefault.
-                None
-            }
+            TestProfile::OAuthMock => None, // OAuthMock por si só não define um serviço TypeDB.
         }
     }
 }
 
-/// Configuração para o setup do `TestEnvironment`.
+/// Configuração detalhada para o setup de um `TestEnvironment`.
 ///
-/// Permite especificar os perfis Docker a serem ativados, o arquivo de configuração
-/// TOML para o servidor MCP, e se o próprio servidor MCP deve usar TLS.
+/// Esta struct permite especificar quais perfis Docker devem ser ativados,
+/// qual arquivo de configuração TOML o servidor MCP deve usar, e
+/// configurações de TLS tanto para o servidor MCP quanto para sua conexão com o TypeDB.
 #[derive(Debug, Clone)]
 pub struct TestConfiguration {
-    /// Perfis Docker a serem ativados para este ambiente de teste.
+    /// Uma lista de perfis [`TestProfile`] a serem ativados no Docker Compose.
     pub profiles: Vec<TestProfile>,
-    /// Nome do arquivo de configuração TOML (localizado em `tests/test_configs/`)
-    /// a ser usado pelo servidor MCP.
+    /// O nome do arquivo de configuração TOML (ex: "default.test.toml")
+    /// que o servidor MCP usará. Espera-se que este arquivo esteja em `tests/test_configs/`.
     pub config_filename: String,
-    /// Indica se o servidor MCP deve ser configurado para usar TLS (HTTPS/WSS).
+    /// Indica se o servidor MCP em si deve usar TLS para seus endpoints (HTTPS/WSS).
     pub mcp_server_tls: bool,
+    /// Indica se a conexão do servidor MCP para o TypeDB (conforme definido no arquivo
+    /// de configuração TOML especificado por `config_filename`) deve usar TLS.
+    pub typedb_connection_uses_tls: bool,
 }
 
 impl TestConfiguration {
-    /// Cria uma configuração padrão: usa o perfil `TypeDbDefault`, o arquivo de configuração
-    /// especificado, e o servidor MCP não usa TLS.
+    /// Cria uma configuração padrão.
+    ///
+    /// - Ativa o perfil `TypeDbDefault`.
+    /// - Usa o `config_filename` fornecido.
+    /// - O servidor MCP não usa TLS.
+    /// - A conexão MCP -> TypeDB não usa TLS.
     pub fn default(config_filename: &str) -> Self {
         Self {
             profiles: vec![TestProfile::TypeDbDefault],
             config_filename: config_filename.to_string(),
             mcp_server_tls: false,
+            typedb_connection_uses_tls: false,
         }
     }
 
-    /// Cria uma configuração para testar com o TypeDB usando TLS.
-    /// Ativa o perfil `TypeDbTls`.
+    /// Cria uma configuração para testar cenários onde a conexão MCP -> TypeDB usa TLS.
+    ///
+    /// - Ativa o perfil `TypeDbTls` (que inicia o serviço `typedb-server-tls-it`).
+    /// - Indica que a conexão TypeDB deve ser TLS.
     pub fn with_typedb_tls(config_filename: &str) -> Self {
         Self {
             profiles: vec![TestProfile::TypeDbTls],
             config_filename: config_filename.to_string(),
             mcp_server_tls: false,
+            typedb_connection_uses_tls: true,
         }
     }
 
-    /// Cria uma configuração para testar com o Mock OAuth2 Server.
-    /// Ativa os perfis `TypeDbDefault` (assumindo que OAuth precisa de um TypeDB) e `OAuthMock`.
+    /// Cria uma configuração para testar com autenticação OAuth2 habilitada.
+    ///
+    /// - Ativa os perfis `TypeDbDefault` (assumindo que um TypeDB é necessário) e `OAuthMock`.
     pub fn with_oauth(config_filename: &str) -> Self {
         Self {
             profiles: vec![TestProfile::TypeDbDefault, TestProfile::OAuthMock],
             config_filename: config_filename.to_string(),
             mcp_server_tls: false,
+            typedb_connection_uses_tls: false,
         }
     }
 
-    /// Cria uma configuração para testar com o servidor MCP usando TLS.
-    /// Ativa o perfil `TypeDbDefault`.
+    /// Cria uma configuração para testar com o servidor MCP usando TLS para seus próprios endpoints.
+    ///
+    /// - Ativa o perfil `TypeDbDefault`.
+    /// - Define `mcp_server_tls` como `true`.
     pub fn with_mcp_server_tls(config_filename: &str) -> Self {
         Self {
             profiles: vec![TestProfile::TypeDbDefault],
             config_filename: config_filename.to_string(),
             mcp_server_tls: true,
+            typedb_connection_uses_tls: false,
         }
     }
 
-    /// Cria uma configuração totalmente personalizada.
-    #[allow(dead_code)] // Pode ser útil para combinações mais complexas
+    /// Cria uma configuração totalmente personalizada com todos os parâmetros explícitos.
+    #[allow(dead_code)]
     pub fn custom(
         profiles: Vec<TestProfile>,
         config_filename: &str,
         mcp_server_tls: bool,
+        typedb_connection_uses_tls: bool,
     ) -> Self {
-        Self { profiles, config_filename: config_filename.to_string(), mcp_server_tls }
+        Self {
+            profiles,
+            config_filename: config_filename.to_string(),
+            mcp_server_tls,
+            typedb_connection_uses_tls,
+        }
     }
 
-    /// Adiciona um perfil adicional à configuração existente, se ainda não estiver presente.
-    #[allow(dead_code)] // Útil para construir configurações programaticamente
+    /// Adiciona um perfil Docker adicional à configuração existente, se ainda não estiver presente.
+    #[allow(dead_code)]
     pub fn with_profile(mut self, profile: TestProfile) -> Self {
         if !self.profiles.contains(&profile) {
             self.profiles.push(profile);
@@ -135,117 +162,112 @@ impl TestConfiguration {
         self
     }
 
-    /// Define explicitamente se o servidor MCP deve usar TLS.
-    #[allow(dead_code)] // Útil para modificar uma config existente
+    /// Define explicitamente se o servidor MCP deve usar TLS para seus endpoints.
+    #[allow(dead_code)]
     pub fn with_mcp_tls(mut self, enable_tls: bool) -> Self {
         self.mcp_server_tls = enable_tls;
         self
     }
 
-    /// Verifica se o perfil `OAuthMock` está ativo, indicando que OAuth está habilitado.
+    /// Verifica se o perfil `OAuthMock` está ativo, indicando que a autenticação OAuth2
+    /// deve estar habilitada no servidor MCP para os testes.
     pub fn is_oauth_enabled(&self) -> bool {
         self.profiles.contains(&TestProfile::OAuthMock)
     }
 
-    /// Verifica se o perfil `TypeDbTls` está ativo.
-    pub fn is_typedb_tls_enabled(&self) -> bool {
-        self.profiles.contains(&TestProfile::TypeDbTls)
-    }
-
-    /// Determina o nome do serviço TypeDB a ser aguardado com base nos perfis ativos.
-    /// Prioriza o `TypeDbTls` se ambos `TypeDbDefault` e `TypeDbTls` estiverem (embora
-    /// essa combinação geralmente não seja usada).
-    pub fn typedb_service_to_wait_for(&self) -> &'static str {
-        if self.is_typedb_tls_enabled() {
+    /// Determina o nome do serviço TypeDB que o servidor MCP deve ser configurado para usar,
+    /// com base se a conexão TypeDB deve ou não usar TLS.
+    ///
+    /// Este nome é usado para construir a variável `MCP_TYPEDB__ADDRESS`.
+    pub fn mcp_target_typedb_service_name(&self) -> &'static str {
+        if self.typedb_connection_uses_tls {
             constants::TYPEDB_TLS_SERVICE_NAME
         } else {
-            // Assume TypeDbDefault se TypeDbTls não estiver presente.
-            // Se nenhum perfil TypeDB for especificado, pode levar a um erro
-            // se `wait_for_service_healthy` for chamado para um serviço TypeDB.
-            // A lógica de setup deve garantir que um perfil TypeDB esteja ativo se necessário.
             constants::TYPEDB_SERVICE_NAME
         }
     }
 
-    /// Converte os `TestProfile`s para as strings de nome de perfil usadas pelo Docker Compose.
+    /// Determina qual serviço TypeDB (o padrão ou o TLS) deve ter seu healthcheck aguardado
+    /// como a dependência TypeDB primária, com base nos perfis Docker que estão ativos.
+    pub fn primary_typedb_service_to_wait_for_health(&self) -> &'static str {
+        if self.profiles.contains(&TestProfile::TypeDbTls) {
+            constants::TYPEDB_TLS_SERVICE_NAME
+        } else if self.profiles.contains(&TestProfile::TypeDbDefault) {
+            constants::TYPEDB_SERVICE_NAME
+        } else {
+            // Se nenhum perfil TypeDB específico estiver ativo, mas talvez OAuthMock esteja,
+            // e a configuração do MCP ainda precise de um TypeDB,
+            // retornamos o alvo que o MCP usaria.
+            self.mcp_target_typedb_service_name()
+        }
+    }
+
+    /// Converte os enums [`TestProfile`] para as strings de nome de perfil
+    /// usadas nos comandos do Docker Compose.
     pub fn as_compose_profiles(&self) -> Vec<String> {
         self.profiles.iter().map(|p| p.as_compose_profile().to_string()).collect()
     }
 }
 
-/// Representa um ambiente de teste de integração totalmente configurado e pronto para uso.
+/// Representa um ambiente de teste de integração completo, incluindo serviços Docker
+/// e informações de conexão para o servidor MCP.
 ///
-/// Gerencia o `DockerComposeEnv`, as URLs dos serviços e flags de configuração
-/// para facilitar a escrita dos testes.
-/// Implementa `Drop` para garantir a limpeza dos recursos Docker ao final do teste.
+/// Esta struct gerencia o ciclo de vida do ambiente Docker através de `DockerComposeEnv`
+/// e fornece URLs e flags convenientes para os testes.
+/// Implementa `Drop` para garantir a limpeza dos recursos Docker.
 #[derive(Debug)]
 pub struct TestEnvironment {
-    /// Gerenciador do ambiente Docker Compose.
+    /// O gerenciador do ambiente Docker Compose para este teste.
     pub docker_env: DockerComposeEnv,
-    /// URL WebSocket completa para o servidor MCP (ex: "ws://localhost:8788/mcp/ws" ou "wss://...").
+    /// A URL WebSocket completa (incluindo esquema `ws://` ou `wss://`) para o servidor MCP.
     pub mcp_ws_url: String,
-    /// URL HTTP base para o servidor MCP (ex: "http://localhost:8788" ou "https://...").
+    /// A URL HTTP base (incluindo esquema `http://` ou `https://`) para o servidor MCP
+    /// (usada para endpoints como `/livez`, `/readyz`).
     pub mcp_http_base_url: String,
-    /// URL completa para o endpoint de métricas Prometheus do servidor MCP.
+    /// A URL HTTP completa para o endpoint de métricas Prometheus do servidor MCP.
     pub mcp_metrics_url: String,
-    /// URL HTTP base para o Mock OAuth2 Server (se ativo).
+    /// A URL HTTP base para o Mock OAuth2 Server (se estiver ativo no perfil).
     pub mock_oauth_http_url: String,
-    /// Indica se o servidor MCP está configurado para usar TLS.
+    /// Indica se o servidor MCP está configurado para usar TLS para seus próprios endpoints.
     pub is_mcp_server_tls: bool,
-    /// Indica se a autenticação OAuth2 está habilitada para o servidor MCP.
+    /// Indica se a autenticação OAuth2 está habilitada para o servidor MCP (baseado nos perfis).
     pub is_oauth_enabled: bool,
-    /// Indica se a conexão do servidor MCP com o TypeDB usa TLS.
-    pub is_typedb_tls_connection: bool,
+    /// Indica se a conexão do servidor MCP com o TypeDB está configurada para usar TLS.
+    pub is_typedb_connection_tls: bool,
 }
 
 impl TestEnvironment {
-    /// Configura e inicia um novo ambiente de teste de integração usando uma `TestConfiguration`.
+    /// Configura e inicia um novo ambiente de teste de integração usando uma [`TestConfiguration`].
+    ///
+    /// Este é o método principal para criar um `TestEnvironment`. Ele orquestra o Docker Compose,
+    /// espera os serviços ficarem prontos e configura as URLs de acesso.
     ///
     /// # Arguments
     /// * `test_name_suffix`: Um sufixo para o nome do projeto Docker Compose,
-    ///   para ajudar a identificar os recursos Docker associados a este teste.
-    /// * `config`: A `TestConfiguration` que define os perfis, arquivo de config MCP, e TLS do servidor MCP.
+    ///   usado para isolar recursos Docker entre execuções de teste.
+    /// * `config`: A [`TestConfiguration`] que define os perfis Docker, o arquivo de configuração
+    ///   TOML para o servidor MCP, e as configurações de TLS.
     ///
     /// # Returns
     /// `Result<Self>`: Uma instância de `TestEnvironment` pronta para uso, ou um erro se o setup falhar.
-    ///
-    /// # Panics
-    /// Pode entrar em pânico se houver falhas críticas na configuração do Docker ou
-    /// se a inicialização do provedor criptográfico falhar de forma irrecuperável.
     pub async fn setup_with_profiles(
         test_name_suffix: &str,
         config: TestConfiguration,
     ) -> Result<Self> {
-        // **INÍCIO DA CORREÇÃO PARA CryptoProvider**
-        // Instala o provedor criptográfico 'ring' como padrão para rustls, se nenhum
-        // já estiver instalado globalmente. Isso é crucial porque o typedb-driver
-        // (que pode ser ativado mesmo em testes que não usam TypeDB TLS devido à unificação
-        // de features do Cargo) pode puxar 'aws-lc-rs' como provedor, enquanto o
-        // tokio-tungstenite (usado pelo TestMcpClient) pode preferir 'ring'.
-        // Se múltiplas features de provedores são ativadas para rustls, um padrão deve
-        // ser explicitamente instalado para evitar pânicos.
         if CryptoProvider::get_default().is_none() {
-            match rustls::crypto::ring::default_provider().install_default() {
-                Ok(()) => {
-                    info!("Provedor criptográfico Ring instalado como padrão para rustls (contexto de teste).");
-                }
-                Err(e) => {
-                    // Se já estiver instalado por outro teste em paralelo (improvável com #[serial])
-                    // ou se houver um problema na instalação.
-                    warn!(
-                        "Tentativa de instalar o provedor criptográfico Ring falhou (pode ser benigno se outro já estiver globalmente ativo): {:?}. Problemas TLS podem ocorrer.",
-                        e
-                    );
-                }
+            if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
+                warn!(
+                    "[TEST_CRYPTO_PROVIDER] Falha ao instalar 'ring' como provedor criptográfico padrão: {:?}. Testes TLS podem ser instáveis.",
+                    e
+                );
+            } else {
+                info!("[TEST_CRYPTO_PROVIDER] Provedor 'ring' instalado como padrão para rustls nos testes.");
             }
-        } else {
-            info!("Provedor criptográfico padrão para rustls já está instalado globalmente.");
         }
-        // **FIM DA CORREÇÃO PARA CryptoProvider**
 
         info!(
-            "Configurando TestEnvironment para teste '{}' com config MCP: '{}' e perfis: {:?}",
-            test_name_suffix, config.config_filename, config.profiles
+            "Configurando TestEnvironment para teste '{}' com config MCP: '{}', perfis: {:?}, MCP Server TLS: {}, TypeDB Connection Uses TLS: {}",
+            test_name_suffix, config.config_filename, config.profiles, config.mcp_server_tls, config.typedb_connection_uses_tls
         );
 
         let docker_env = DockerComposeEnv::new(
@@ -253,65 +275,92 @@ impl TestEnvironment {
             &format!("mcp_{}", test_name_suffix),
         );
 
-        // Garantir limpeza prévia de ambientes com o mesmo nome de projeto, se existirem.
         docker_env.down(true).unwrap_or_else(|e| {
             warn!(
-                "Falha (ignorada) ao derrubar ambiente docker preexistente para o projeto '{}': {}. Isso pode ser normal se for a primeira execução ou se a limpeza anterior falhou.",
+                "Falha (ignorada) ao derrubar ambiente docker preexistente para o projeto '{}': {}.",
                 docker_env.project_name(),
                 e
             );
         });
 
-        let is_mcp_server_tls = config.mcp_server_tls;
-        let is_oauth_enabled = config.is_oauth_enabled();
-        let is_typedb_tls_connection = config.is_typedb_tls_enabled();
-
         let active_profiles = config.as_compose_profiles();
-        let typedb_service_to_wait_for = config.typedb_service_to_wait_for();
+        
+        let mcp_target_typedb_svc_name = config.mcp_target_typedb_service_name();
+        let typedb_address_for_mcp_container = format!(
+            "{}:{}",
+            mcp_target_typedb_svc_name,
+            constants::TYPEDB_INTERNAL_PORT
+        );
 
-        // O healthcheck HTTP padrão no Dockerfile pode falhar se o servidor MCP usar TLS.
-        // Portanto, desabilitamos o `--wait` do Docker Compose nesses casos e usamos
-        // nossa própria lógica de espera (`wait_for_mcp_server_ready_from_test_env`).
-        let should_wait_docker_compose_health = !is_mcp_server_tls;
+        let primary_typedb_to_await_health = config.primary_typedb_service_to_wait_for_health();
+        let should_wait_docker_compose_health = !config.mcp_server_tls;
 
         docker_env
             .up(
                 &config.config_filename,
                 Some(active_profiles.clone()),
                 should_wait_docker_compose_health,
-                is_mcp_server_tls, // Passa o flag TLS_ENABLED para o Dockerfile
+                config.mcp_server_tls,
+                typedb_address_for_mcp_container.clone(),
             )
             .with_context(|| {
                 format!(
-                    "Falha ao executar 'docker compose up' para projeto '{}' com config MCP '{}' e perfis {:?}",
+                    "Falha ao executar 'docker compose up' para projeto '{}' com config MCP '{}', perfis {:?}, e MCP server configurado para conectar a TypeDB em '{}'",
                     docker_env.project_name(),
                     config.config_filename,
-                    active_profiles
+                    active_profiles,
+                    typedb_address_for_mcp_container
                 )
             })?;
+            
+        // Se o typedb-server-it (padrão) for iniciado (devido ao depends_on ou perfis default/oauth/typedb_tls)
+        // E não for o alvo principal do MCP, esperamos por ele também.
+        // Isso garante que a condição `depends_on` do docker-compose.yml seja respeitada.
+        if primary_typedb_to_await_health != constants::TYPEDB_SERVICE_NAME && 
+           (config.profiles.contains(&TestProfile::TypeDbDefault) || 
+            config.profiles.contains(&TestProfile::OAuthMock) ||
+            config.profiles.contains(&TestProfile::TypeDbTls)) { 
+            info!(
+                "Aguardando serviço TypeDB padrão ('{}') ficar saudável (devido a depends_on/perfil) para projeto '{}'.",
+                constants::TYPEDB_SERVICE_NAME,
+                docker_env.project_name()
+            );
+            docker_env
+                .wait_for_service_healthy(
+                    constants::TYPEDB_SERVICE_NAME,
+                    constants::DEFAULT_TYPEDB_READY_TIMEOUT,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Serviço TypeDB padrão ('{}') não ficou saudável para projeto '{}'",
+                        constants::TYPEDB_SERVICE_NAME,
+                        docker_env.project_name()
+                    )
+                })?;
+        }
 
-        // Espera pelo TypeDB primeiro, pois o MCP server sempre depende dele
+        // Agora espera pelo serviço TypeDB que o MCP server *realmente* usará.
         info!(
-            "Aguardando serviço TypeDB ('{}') ficar saudável para projeto '{}'.",
-            typedb_service_to_wait_for,
+            "Aguardando serviço TypeDB alvo do MCP ('{}') ficar saudável para projeto '{}'.",
+            mcp_target_typedb_svc_name,
             docker_env.project_name()
         );
         docker_env
             .wait_for_service_healthy(
-                typedb_service_to_wait_for,
+                mcp_target_typedb_svc_name,
                 constants::DEFAULT_TYPEDB_READY_TIMEOUT,
             )
             .await
             .with_context(|| {
                 format!(
-                    "Serviço TypeDB ('{}') não ficou saudável para projeto '{}'",
-                    typedb_service_to_wait_for,
+                    "Serviço TypeDB alvo do MCP ('{}') não ficou saudável para projeto '{}'",
+                    mcp_target_typedb_svc_name,
                     docker_env.project_name()
                 )
             })?;
 
-        // Se OAuth estiver habilitado, espere pelo mock OAuth server
-        if is_oauth_enabled {
+        if config.is_oauth_enabled() {
             info!(
                 "Aguardando serviço Mock OAuth ('{}') ficar saudável para projeto '{}'.",
                 constants::MOCK_OAUTH_SERVICE_NAME,
@@ -330,15 +379,14 @@ impl TestEnvironment {
                         docker_env.project_name()
                     )
                 })?;
-
             info!(
-                "Mock OAuth Server ('{}') está 'healthy'. Adicionando pequeno delay de 2s para garantir que o Nginx sirva o JWKS.",
+                "Mock OAuth Server ('{}') está 'healthy'. Adicionando delay de 2s.",
                 constants::MOCK_OAUTH_SERVICE_NAME
             );
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
 
-        let (mcp_ws_url, mcp_http_base_url) = if is_mcp_server_tls {
+        let (mcp_ws_url, mcp_http_base_url) = if config.mcp_server_tls {
             (
                 format!(
                     "wss://localhost:{}{}",
@@ -358,37 +406,37 @@ impl TestEnvironment {
             )
         };
 
-        // Agora espera pelo MCP server, que pode depender do JWKS se OAuth estiver ativo.
-        // Esta função verifica o /readyz, incluindo o status do TypeDB e JWKS (se aplicável).
         wait_for_mcp_server_ready_from_test_env(
             &docker_env,
             &mcp_http_base_url,
-            is_mcp_server_tls,
-            is_oauth_enabled,
-            is_typedb_tls_connection,
+            config.mcp_server_tls,
+            config.is_oauth_enabled(),
+            config.typedb_connection_uses_tls, // Passa a flag correta
             constants::DEFAULT_MCP_SERVER_READY_TIMEOUT,
         )
         .await
         .with_context(|| {
             format!(
-                "Serviço Typedb-MCP-Server ('{}') não ficou totalmente pronto para projeto '{}' com config MCP '{}'. Verificar logs.",
+                "Serviço Typedb-MCP-Server ('{}') não ficou totalmente pronto para projeto '{}' com config MCP '{}'. MCP Server estava configurado para conectar a TypeDB em '{}'. Verificar logs do contêiner MCP.",
                 constants::MCP_SERVER_SERVICE_NAME,
                 docker_env.project_name(),
-                config.config_filename
+                config.config_filename,
+                typedb_address_for_mcp_container 
             )
         })?;
 
         let mcp_metrics_url = format!(
             "http://localhost:{}{}",
-            constants::MCP_SERVER_HOST_HTTP_PORT,
+            constants::MCP_SERVER_HOST_METRICS_PORT, // Usa a porta de métricas do host
             constants::MCP_SERVER_DEFAULT_METRICS_PATH
         );
         let mock_oauth_http_url = format!("http://localhost:{}", constants::MOCK_OAUTH_HOST_PORT);
 
         info!(
-            "TestEnvironment para projeto '{}' (config MCP: '{}', perfis ativos: {:?}) configurado com sucesso.\n  MCP WS URL: {}\n  MCP HTTP Base URL: {}\n  MCP Metrics URL: {}\n  Mock OAuth URL: {}",
+            "TestEnvironment para projeto '{}' (config MCP: '{}', perfis ativos: {:?}, MCP Server TLS: {}, TypeDB Connection Uses TLS: {}) configurado com sucesso.\n  MCP WS URL: {}\n  MCP HTTP Base URL: {}\n  MCP Metrics URL: {}\n  Mock OAuth URL: {}",
             docker_env.project_name(),
-            config.config_filename, active_profiles, mcp_ws_url, mcp_http_base_url, mcp_metrics_url, mock_oauth_http_url
+            config.config_filename, active_profiles, config.mcp_server_tls, config.typedb_connection_uses_tls,
+            mcp_ws_url, mcp_http_base_url, mcp_metrics_url, mock_oauth_http_url
         );
 
         Ok(TestEnvironment {
@@ -397,18 +445,18 @@ impl TestEnvironment {
             mcp_http_base_url,
             mcp_metrics_url,
             mock_oauth_http_url,
-            is_mcp_server_tls,
-            is_oauth_enabled,
-            is_typedb_tls_connection,
+            is_mcp_server_tls: config.mcp_server_tls,
+            is_oauth_enabled: config.is_oauth_enabled(),
+            is_typedb_connection_tls: config.typedb_connection_uses_tls,
         })
     }
 
     /// Configura e inicia um novo ambiente de teste de integração.
     ///
-    /// Este é um método de conveniência que deriva a `TestConfiguration` com base
-    /// no nome do arquivo de configuração fornecido, mantendo a compatibilidade
-    /// com testes mais antigos. Para controle explícito de perfis,
-    /// use `setup_with_profiles`.
+    /// Este é um método de conveniência que deriva a [`TestConfiguration`] com base
+    /// no nome do arquivo de configuração fornecido, para manter a compatibilidade
+    /// com testes mais antigos. Para controle explícito de perfis e configurações TLS,
+    /// use [`TestEnvironment::setup_with_profiles`].
     ///
     /// # Arguments
     /// * `test_name_suffix`: Um sufixo para o nome do projeto Docker Compose.
@@ -419,19 +467,35 @@ impl TestEnvironment {
         Self::setup_with_profiles(test_name_suffix, config).await
     }
 
-    /// Deriva uma `TestConfiguration` com base no nome do arquivo de configuração,
-    /// para manter a compatibilidade com a API de setup antiga.
+    /// Deriva uma [`TestConfiguration`] com base no nome do arquivo de configuração.
+    ///
+    /// Usado internamente por `setup` para determinar as flags de TLS e perfis
+    /// com base em convenções de nomenclatura de arquivos de configuração.
     fn derive_configuration_from_filename(config_filename: &str) -> TestConfiguration {
-        if config_filename == constants::SERVER_TLS_TEST_CONFIG_FILENAME {
-            TestConfiguration::with_mcp_server_tls(config_filename)
-        } else if config_filename == constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME {
-            TestConfiguration::with_oauth(config_filename)
-        } else if config_filename == constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME {
-            TestConfiguration::with_typedb_tls(config_filename)
-        } else {
-            // Assume default (TypeDB padrão, sem OAuth, sem TLS no servidor MCP)
-            // para outros nomes de arquivo ou para "default.test.toml".
-            TestConfiguration::default(config_filename)
+        match config_filename {
+            constants::SERVER_TLS_TEST_CONFIG_FILENAME => {
+                TestConfiguration::with_mcp_server_tls(config_filename)
+            }
+            constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME => {
+                TestConfiguration::with_oauth(config_filename)
+            }
+            constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME => {
+                TestConfiguration::with_typedb_tls(config_filename)
+            }
+            // Casos para os novos arquivos de teste que você mencionou
+            "typedb_tls_wrong_ca.test.toml" => TestConfiguration {
+                profiles: vec![TestProfile::TypeDbTls], // Precisa do TypeDB com TLS para tentar conectar
+                config_filename: config_filename.to_string(),
+                mcp_server_tls: false,
+                typedb_connection_uses_tls: true, // MCP tentará TLS
+            },
+            "typedb_expect_tls_got_plain.test.toml" => TestConfiguration {
+                profiles: vec![TestProfile::TypeDbDefault], // Precisa do TypeDB sem TLS
+                config_filename: config_filename.to_string(),
+                mcp_server_tls: false,
+                typedb_connection_uses_tls: true, // MCP tentará TLS (mas o TypeDB não terá)
+            },
+            _ => TestConfiguration::default(config_filename),
         }
     }
 
@@ -440,7 +504,7 @@ impl TestEnvironment {
     /// # Arguments
     /// * `scopes`: Opcional. String contendo escopos OAuth2 separados por espaço
     ///   a serem incluídos no token JWT. Se `None` ou vazio, e OAuth estiver habilitado,
-    ///   um token sem escopos específicos (além dos possivelmente padrão do provedor) será gerado.
+    ///   um token sem escopos específicos será gerado.
     ///   Se OAuth estiver desabilitado, este parâmetro é ignorado.
     ///
     /// # Returns
@@ -451,16 +515,12 @@ impl TestEnvironment {
             let now = auth_helpers::current_timestamp_secs();
             let claims = auth_helpers::TestClaims {
                 sub: "test-user-from-test-env".to_string(),
-                exp: now + 3600, // Token válido por 1 hora
+                exp: now + 3600,
                 iat: Some(now),
                 nbf: Some(now),
                 iss: Some(constants::TEST_JWT_ISSUER.to_string()),
                 aud: Some(serde_json::json!(constants::TEST_JWT_AUDIENCE)),
-                scope: if effective_scopes.is_empty() {
-                    None
-                } else {
-                    Some(effective_scopes.to_string())
-                },
+                scope: if effective_scopes.is_empty() { None } else { Some(effective_scopes.to_string()) },
                 custom_claim: None,
             };
             Some(auth_helpers::generate_test_jwt(claims, JwtAuthAlgorithm::RS256))
@@ -469,7 +529,7 @@ impl TestEnvironment {
                 warn!(
                     "TestEnvironment: Solicitado cliente com escopos ('{}'), mas OAuth não está habilitado para este ambiente (config: '{}'). Conectando sem token.",
                     scopes.unwrap_or("<nenhum>"),
-                    self.determine_config_filename_from_flags() // Helper para obter o nome da config
+                    self.determine_config_filename_from_flags()
                 );
             }
             None
@@ -486,7 +546,7 @@ impl TestEnvironment {
             client_info: client_impl,
         };
 
-        let client = TestMcpClient::connect_and_initialize(
+        TestMcpClient::connect_and_initialize(
             &self.mcp_ws_url,
             token_to_send,
             constants::DEFAULT_CONNECT_TIMEOUT,
@@ -499,28 +559,26 @@ impl TestEnvironment {
                 "Falha ao conectar e inicializar TestMcpClient para URL: {}. OAuth Habilitado: {}. Token com escopos ('{}') foi tentado: {}",
                 self.mcp_ws_url, self.is_oauth_enabled, scopes.unwrap_or("<nenhum>"), if scopes.is_some() && self.is_oauth_enabled {"Sim"} else {"Não"}
             )
-        })?;
-
-        info!(
-            "Cliente MCP conectado e inicializado para {}. Info do Servidor: {:?}",
-            self.mcp_ws_url,
-            client.get_server_info().map(|si| &si.server_info)
-        );
-        Ok(client)
+        })
     }
 
     /// Helper interno para determinar o nome do arquivo de configuração com base nas flags de `self`.
     /// Usado principalmente para logging e depuração.
     fn determine_config_filename_from_flags(&self) -> String {
-        if self.is_typedb_tls_connection {
+        // Esta lógica é uma heurística e pode não cobrir todas as combinações exatas
+        // se o config_filename for passado diretamente de forma customizada.
+        // O ideal seria armazenar o config_filename em self.
+        if self.is_typedb_connection_tls {
+            // Se a conexão TypeDB é TLS, provavelmente é TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME
+            // ou um dos arquivos de falha TLS do TypeDB.
+            // Precisamos de mais contexto ou de armazenar o config_filename em TestEnvironment.
+            // Por agora, vamos assumir o mais comum para esta flag.
             constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME.to_string()
         } else if self.is_oauth_enabled {
-            // Assumindo que OAUTH_ENABLED_TEST_CONFIG_FILENAME é o representativo
             constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME.to_string()
         } else if self.is_mcp_server_tls {
             constants::SERVER_TLS_TEST_CONFIG_FILENAME.to_string()
         } else {
-            // Default para casos onde nenhuma flag específica de TLS/OAuth está ativa
             constants::DEFAULT_TEST_CONFIG_FILENAME.to_string()
         }
     }
@@ -533,8 +591,7 @@ impl Drop for TestEnvironment {
             "Limpando TestEnvironment para projeto: '{}' (via Drop).",
             self.docker_env.project_name()
         );
-        if let Err(e) = self.docker_env.down(true) {
-            // `remove_volumes = true` para limpar completamente
+        if let Err(e) = self.docker_env.down(true) { // remove_volumes = true
             error!(
                 "Falha ao derrubar ambiente Docker Compose no drop para '{}': {}. Limpeza manual pode ser necessária.",
                 self.docker_env.project_name(),
@@ -553,162 +610,95 @@ impl Drop for TestEnvironment {
 mod tests {
     use super::*;
     use serial_test::serial;
-    // constants já está no escopo via `super::*`
-    // Duration já está no escopo via `std::time::Duration`
 
     #[tokio::test]
     #[serial]
-    #[ignore] // Ignorar por padrão, pois são testes de setup de ambiente, podem ser lentos
+    #[ignore] // Testes de setup podem ser lentos, ignorar por padrão.
     async fn test_test_environment_setup_default_config() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-        info!("Iniciando teste: test_test_environment_setup_default_config");
-        let test_env =
-            TestEnvironment::setup("setup_default", constants::DEFAULT_TEST_CONFIG_FILENAME)
-                .await?;
-
-        assert!(!test_env.is_mcp_server_tls);
-        assert!(!test_env.is_oauth_enabled);
-        assert!(!test_env.is_typedb_tls_connection);
-        assert!(test_env.mcp_ws_url.starts_with("ws://localhost:8788"));
-
-        info!(
-            "TestEnvironment (default config) configurado com sucesso. WS URL: {}",
-            test_env.mcp_ws_url
-        );
+        let config = TestConfiguration::default(constants::DEFAULT_TEST_CONFIG_FILENAME);
+        let test_env = TestEnvironment::setup_with_profiles("setup_default_prof", config).await?;
+        assert!(!test_env.is_mcp_server_tls && !test_env.is_oauth_enabled && !test_env.is_typedb_connection_tls);
+        assert_eq!(test_env.determine_config_filename_from_flags(), constants::DEFAULT_TEST_CONFIG_FILENAME);
         Ok(())
     }
 
     #[tokio::test]
     #[serial]
-    #[ignore] // Ignorar por padrão
+    #[ignore]
     async fn test_test_environment_setup_oauth_config() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-        info!("Iniciando teste: test_test_environment_setup_oauth_config");
-        let test_env =
-            TestEnvironment::setup("setup_oauth", constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME)
-                .await?;
-
-        assert!(!test_env.is_mcp_server_tls);
-        assert!(test_env.is_oauth_enabled);
-        assert!(!test_env.is_typedb_tls_connection);
-        assert!(test_env.mcp_ws_url.starts_with("ws://localhost:8788"));
-
-        info!(
-            "TestEnvironment (OAuth config) configurado com sucesso. OAuth habilitado: {}",
-            test_env.is_oauth_enabled
-        );
+        let config = TestConfiguration::with_oauth(constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME);
+        let test_env = TestEnvironment::setup_with_profiles("setup_oauth_prof", config).await?;
+        assert!(!test_env.is_mcp_server_tls && test_env.is_oauth_enabled && !test_env.is_typedb_connection_tls);
+        assert_eq!(test_env.determine_config_filename_from_flags(), constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME);
         Ok(())
     }
 
     #[tokio::test]
     #[serial]
-    #[ignore] // Ignorar por padrão
+    #[ignore]
     async fn test_test_environment_setup_server_tls_config() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-        info!("Iniciando teste: test_test_environment_setup_server_tls_config");
-        let test_env =
-            TestEnvironment::setup("setup_servertls", constants::SERVER_TLS_TEST_CONFIG_FILENAME)
-                .await?;
-
-        assert!(test_env.is_mcp_server_tls);
-        assert!(!test_env.is_oauth_enabled);
-        assert!(!test_env.is_typedb_tls_connection);
-        assert!(test_env.mcp_ws_url.starts_with("wss://localhost:8444"));
-
-        info!(
-            "TestEnvironment (Server TLS config) configurado com sucesso. MCP Server TLS: {}",
-            test_env.is_mcp_server_tls
-        );
+        let config = TestConfiguration::with_mcp_server_tls(constants::SERVER_TLS_TEST_CONFIG_FILENAME);
+        let test_env = TestEnvironment::setup_with_profiles("setup_servertls_prof", config).await?;
+        assert!(test_env.is_mcp_server_tls && !test_env.is_oauth_enabled && !test_env.is_typedb_connection_tls);
+        assert_eq!(test_env.determine_config_filename_from_flags(), constants::SERVER_TLS_TEST_CONFIG_FILENAME);
         Ok(())
     }
 
     #[tokio::test]
     #[serial]
-    #[ignore] // Ignorar por padrão
+    #[ignore]
     async fn test_test_environment_setup_typedb_tls_config() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-        info!("Iniciando teste: test_test_environment_setup_typedb_tls_config");
-        let test_env = TestEnvironment::setup(
-            "setup_typedbtls",
-            constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME,
-        )
-        .await?;
-
-        assert!(!test_env.is_mcp_server_tls);
-        assert!(!test_env.is_oauth_enabled);
-        assert!(test_env.is_typedb_tls_connection);
-        assert!(test_env.mcp_ws_url.starts_with("ws://localhost:8788"));
-
-        info!(
-            "TestEnvironment (TypeDB TLS config) configurado com sucesso. TypeDB TLS Connection: {}",
-            test_env.is_typedb_tls_connection
-        );
-        Ok(())
-    }
-
-    // === Testes da nova API de perfis (usando setup_with_profiles) ===
-
-    #[tokio::test]
-    #[serial]
-    #[ignore] // Ignorar por padrão
-    async fn test_setup_with_custom_profiles_default() -> Result<()> {
-        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-        info!("🧪 Iniciando teste: test_setup_with_custom_profiles_default");
-
-        let config = TestConfiguration::default(constants::DEFAULT_TEST_CONFIG_FILENAME);
-        let test_env =
-            TestEnvironment::setup_with_profiles("profiles_default", config.clone()).await?; // Clonar config
-
-        assert!(!test_env.is_mcp_server_tls);
-        assert!(!test_env.is_oauth_enabled);
-        assert!(!test_env.is_typedb_tls_connection);
-        assert!(test_env.mcp_ws_url.starts_with("ws://localhost:8788"));
-        assert_eq!(config.config_filename, constants::DEFAULT_TEST_CONFIG_FILENAME);
-
-        info!("✅ TestEnvironment com perfil padrão configurado com sucesso");
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[serial]
-    #[ignore] // Ignorar por padrão
-    async fn test_setup_with_custom_profiles_oauth() -> Result<()> {
-        let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-        info!("🧪 Iniciando teste: test_setup_with_custom_profiles_oauth");
-
-        let config = TestConfiguration::with_oauth(constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME);
-        let test_env =
-            TestEnvironment::setup_with_profiles("profiles_oauth", config.clone()).await?; // Clonar config
-
-        assert!(!test_env.is_mcp_server_tls);
-        assert!(test_env.is_oauth_enabled);
-        assert!(!test_env.is_typedb_tls_connection);
-        assert!(test_env.mcp_ws_url.starts_with("ws://localhost:8788"));
-        assert_eq!(config.config_filename, constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME);
-
-        info!("✅ TestEnvironment com OAuth Mock configurado com sucesso");
+        let config = TestConfiguration::with_typedb_tls(constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME);
+        let test_env = TestEnvironment::setup_with_profiles("setup_typedbtls_prof", config).await?;
+        assert!(!test_env.is_mcp_server_tls && !test_env.is_oauth_enabled && test_env.is_typedb_connection_tls);
+        assert_eq!(test_env.determine_config_filename_from_flags(), constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME);
         Ok(())
     }
 
     #[test]
-    fn test_profile_conversions_and_configuration_helpers() {
-        // Testes síncronos para TestProfile e TestConfiguration helpers
-        assert_eq!(TestProfile::TypeDbDefault.as_compose_profile(), "typedb_default");
-        assert_eq!(
-            TestProfile::TypeDbDefault.typedb_service_name(),
-            Some(constants::TYPEDB_SERVICE_NAME)
-        );
+    fn test_test_configuration_logic() {
+        let default_cfg = TestConfiguration::default("default.toml");
+        assert_eq!(default_cfg.mcp_target_typedb_service_name(), constants::TYPEDB_SERVICE_NAME);
+        assert_eq!(default_cfg.primary_typedb_service_to_wait_for_health(), constants::TYPEDB_SERVICE_NAME);
 
-        let default_config = TestConfiguration::default("test.toml");
-        assert_eq!(default_config.profiles, vec![TestProfile::TypeDbDefault]);
-        assert!(!default_config.is_oauth_enabled());
+        let typedb_tls_cfg = TestConfiguration::with_typedb_tls("typedb_tls.toml");
+        assert_eq!(typedb_tls_cfg.mcp_target_typedb_service_name(), constants::TYPEDB_TLS_SERVICE_NAME);
+        assert_eq!(typedb_tls_cfg.primary_typedb_service_to_wait_for_health(), constants::TYPEDB_TLS_SERVICE_NAME);
 
-        let oauth_config = TestConfiguration::with_oauth("oauth.toml")
-            .with_profile(TestProfile::TypeDbTls) // Adicionar outro perfil
-            .with_mcp_tls(true);
-        assert!(oauth_config.is_oauth_enabled());
-        assert!(oauth_config.is_typedb_tls_enabled());
-        assert!(oauth_config.mcp_server_tls);
-        assert_eq!(oauth_config.profiles.len(), 3); // TypeDbDefault, OAuthMock, TypeDbTls
+        let oauth_cfg = TestConfiguration::with_oauth("oauth.toml");
+        assert_eq!(oauth_cfg.mcp_target_typedb_service_name(), constants::TYPEDB_SERVICE_NAME);
+        assert_eq!(oauth_cfg.primary_typedb_service_to_wait_for_health(), constants::TYPEDB_SERVICE_NAME);
+
+        let oauth_and_typedb_tls_cfg = TestConfiguration {
+            profiles: vec![TestProfile::OAuthMock, TestProfile::TypeDbTls],
+            config_filename: "custom.toml".to_string(),
+            mcp_server_tls: false,
+            typedb_connection_uses_tls: true,
+        };
+        assert_eq!(oauth_and_typedb_tls_cfg.mcp_target_typedb_service_name(), constants::TYPEDB_TLS_SERVICE_NAME);
+        assert_eq!(oauth_and_typedb_tls_cfg.primary_typedb_service_to_wait_for_health(), constants::TYPEDB_TLS_SERVICE_NAME);
+    }
+
+    #[test]
+    fn test_derive_configuration_from_filename_logic() {
+        let cfg_default = TestEnvironment::derive_configuration_from_filename(constants::DEFAULT_TEST_CONFIG_FILENAME);
+        assert!(!cfg_default.typedb_connection_uses_tls && !cfg_default.mcp_server_tls && !cfg_default.is_oauth_enabled());
+        assert_eq!(cfg_default.profiles, vec![TestProfile::TypeDbDefault]);
+
+        let cfg_typedb_tls = TestEnvironment::derive_configuration_from_filename(constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME);
+        assert!(cfg_typedb_tls.typedb_connection_uses_tls && !cfg_typedb_tls.mcp_server_tls && !cfg_typedb_tls.is_oauth_enabled());
+        assert_eq!(cfg_typedb_tls.profiles, vec![TestProfile::TypeDbTls]);
+        
+        let cfg_wrong_ca = TestEnvironment::derive_configuration_from_filename("typedb_tls_wrong_ca.test.toml");
+        assert!(cfg_wrong_ca.typedb_connection_uses_tls);
+        assert_eq!(cfg_wrong_ca.profiles, vec![TestProfile::TypeDbTls]);
+
+        let cfg_expect_tls_plain = TestEnvironment::derive_configuration_from_filename("typedb_expect_tls_got_plain.test.toml");
+        assert!(cfg_expect_tls_plain.typedb_connection_uses_tls); // MCP Server *espera* TLS para TypeDB
+        assert_eq!(cfg_expect_tls_plain.profiles, vec![TestProfile::TypeDbDefault]); // Mas o TypeDB ativado é o SEM TLS
     }
 }

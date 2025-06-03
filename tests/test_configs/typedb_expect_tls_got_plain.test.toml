@@ -1,0 +1,39 @@
+# tests/test_configs/typedb_expect_tls_got_plain.test.toml
+# Cenário: MCP Server tenta TLS para o TypeDB padrão (que não tem TLS).
+# Espera-se: Falha no handshake TLS, TypeDB component no /readyz deve ser DOWN.
+
+[server]
+bindAddress = "0.0.0.0:8787"
+metricsBindAddress = "0.0.0.0:9090"
+mcpWebsocketPath = "/mcp/ws"
+metricsPath = "/metrics"
+tlsEnabled = false
+
+[typedb]
+# O endereço real será sobrescrito por MCP_TYPEDB__ADDRESS para "typedb-server-it:1729"
+address = "typedb-server-it:1729"
+username = "admin"
+# IMPORTANTE: MCP Server deve TENTAR usar TLS para o TypeDB
+tlsEnabled = true
+# O CA path é necessário se tlsEnabled=true. Mesmo que o servidor não use TLS,
+# o cliente TypeDB tentará carregar um CA se este for fornecido.
+# Usamos o rootCA.pem correto, mas a conexão falhará porque o servidor não está falando TLS.
+tlsCaPath = "/app/test_certs/rootCA.pem"
+
+[oauth]
+enabled = false
+
+[logging]
+rustLog = "info,typedb_mcp_server_lib=trace,typedb_mcp_server=trace,typedb_driver=trace,rustls=trace,tokio_rustls=trace"
+
+[cors]
+allowedOrigins = ["*"]
+
+[rateLimit]
+enabled = true
+requestsPerSecond = 1000
+burstSize = 2000
+
+[tracing]
+enabled = false
+serviceName = "typedb-mcp-server-test-typedbtls-expecttls"
