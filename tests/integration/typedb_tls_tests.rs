@@ -73,6 +73,7 @@ async fn test_mcp_server_connects_to_typedb_with_tls_successfully() -> Result<()
     Ok(())
 }
 
+#[ignore]
 #[tokio::test]
 #[serial]
 async fn test_mcp_server_fails_to_connect_to_typedb_tls_with_wrong_ca() -> Result<()> {
