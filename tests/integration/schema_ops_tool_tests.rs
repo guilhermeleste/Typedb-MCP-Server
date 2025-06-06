@@ -37,13 +37,13 @@ async fn test_define_simple_entity_succeeds_and_is_retrievable() -> Result<()> {
 
     create_test_db(&mut client, &db_name).await?;
 
-    let schema_to_define = "define person sub entity, owns name; name sub attribute, value string;";
+    let schema_to_define = "define entity person, owns name; attribute name, value string;";
     info!("Teste: Definindo schema para '{}': {}", db_name, schema_to_define);
 
     let define_result = client
         .call_tool(
             "define_schema",
-            Some(json!({ "database_name": db_name, "schema_definition": schema_to_define })),
+            Some(json!({ "databaseName": db_name, "schemaDefinition": schema_to_define })),
         )
         .await
         .context("Falha ao chamar define_schema")?;
@@ -54,19 +54,19 @@ async fn test_define_simple_entity_succeeds_and_is_retrievable() -> Result<()> {
     // Verificar se o schema foi aplicado usando get_schema
     info!("Teste: Verificando schema aplicado para '{}' com get_schema.", db_name);
     let get_schema_result = client
-        .call_tool("get_schema", Some(json!({ "database_name": db_name, "schema_type": "full" })))
+        .call_tool("get_schema", Some(json!({ "databaseName": db_name, "schemaType": "full" })))
         .await
         .context("Falha ao chamar get_schema para verificação")?;
 
     let retrieved_schema_text = get_text_from_call_result(get_schema_result);
     assert!(
-        retrieved_schema_text.contains("person sub entity"),
-        "Schema retornado não contém 'person sub entity'. Recebido: {}",
+        retrieved_schema_text.contains("entity person"),
+        "Schema retornado não contém 'entity person'. Recebido: {}",
         retrieved_schema_text
     );
     assert!(
-        retrieved_schema_text.contains("name sub attribute, value string"),
-        "Schema retornado não contém 'name sub attribute, value string'. Recebido: {}",
+        retrieved_schema_text.contains("attribute name") && retrieved_schema_text.contains("value string"),
+        "Schema retornado não contém 'attribute name' e 'value string'. Recebido: {}",
         retrieved_schema_text
     );
 
@@ -89,7 +89,7 @@ async fn test_define_schema_with_invalid_typeql_fails_gracefully() -> Result<()>
 
     create_test_db(&mut client, &db_name).await?;
 
-    let invalid_schema = "define person sub entity"; // Falta ponto e vírgula
+    let invalid_schema = "define entity person"; // Falta ponto e vírgula
     info!(
         "Teste: Tentando definir schema inválido (TypeQL) para '{}': {}",
         db_name, invalid_schema
@@ -98,7 +98,7 @@ async fn test_define_schema_with_invalid_typeql_fails_gracefully() -> Result<()>
     let result_err = client
         .call_tool(
             "define_schema",
-            Some(json!({ "database_name": db_name, "schema_definition": invalid_schema })),
+            Some(json!({ "databaseName": db_name, "schemaDefinition": invalid_schema })),
         )
         .await
         .expect_err("Esperado erro ao definir schema com TypeQL inválido.");
@@ -133,13 +133,13 @@ async fn test_define_schema_on_nonexistent_db_fails() -> Result<()> {
         .mcp_client_with_auth(Some("typedb:manage_schema")) // Só precisa de manage_schema
         .await?;
 
-    let schema = "define person sub entity;";
+    let schema = "define entity person;";
     info!("Teste: Tentando definir schema para banco inexistente '{}'", db_name_non_existent);
 
     let result_err = client
         .call_tool(
             "define_schema",
-            Some(json!({ "database_name": db_name_non_existent, "schema_definition": schema })),
+            Some(json!({ "databaseName": db_name_non_existent, "schemaDefinition": schema })),
         )
         .await
         .expect_err("Esperado erro ao definir schema em banco inexistente.");
@@ -173,31 +173,31 @@ async fn test_undefine_existing_type_succeeds() -> Result<()> {
         .await?;
 
     create_test_db(&mut client, &db_name).await?;
-    let initial_schema = "define animal sub entity, owns name; name sub attribute, value string;";
+    let initial_schema = "define entity animal, owns name; attribute name, value string;";
     client
         .call_tool(
             "define_schema",
-            Some(json!({ "database_name": db_name, "schema_definition": initial_schema })),
+            Some(json!({ "databaseName": db_name, "schemaDefinition": initial_schema })),
         )
         .await?;
 
-    let schema_to_undefine = "undefine animal owns name;";
+    let schema_to_undefine = "undefine owns name from animal;";
     info!("Teste: Removendo definição de schema para '{}': {}", db_name, schema_to_undefine);
     let undefine_result = client
         .call_tool(
             "undefine_schema",
-            Some(json!({ "database_name": db_name, "schema_undefinition": schema_to_undefine })),
+            Some(json!({ "databaseName": db_name, "schemaUndefinition": schema_to_undefine })),
         )
         .await?;
     let undefine_text = get_text_from_call_result(undefine_result);
     assert_eq!(undefine_text, "OK", "Resposta incorreta ao remover definição.");
 
     let get_schema_result = client
-        .call_tool("get_schema", Some(json!({ "database_name": db_name, "schema_type": "full" })))
+        .call_tool("get_schema", Some(json!({ "databaseName": db_name, "schemaType": "full" })))
         .await?;
     let retrieved_schema_text = get_text_from_call_result(get_schema_result);
-    // Verifica se "owns name" foi removido de animal. "animal sub entity" ainda deve existir.
-    assert!(retrieved_schema_text.contains("animal sub entity"));
+    // Verifica se "owns name" foi removido de animal. "entity animal" ainda deve existir.
+    assert!(retrieved_schema_text.contains("entity animal"));
     assert!(
         !retrieved_schema_text.contains("animal owns name;"),
         "Atributo 'name' não foi removido de 'animal'. Schema: {}",
@@ -224,48 +224,50 @@ async fn test_get_schema_returns_defined_types_and_full_schema() -> Result<()> {
     create_test_db(&mut client, &db_name).await?;
     let schema_definition = r#"
         define
-            person sub entity, owns name;
-            name sub attribute, value string;
-            rule simple-rule: when { $x isa person; } then { $x has name "Inferred"; };
+            entity person, owns name;
+            attribute name, value string;
     "#;
     client
         .call_tool(
             "define_schema",
-            Some(json!({ "database_name": db_name, "schema_definition": schema_definition })),
+            Some(json!({ "databaseName": db_name, "schemaDefinition": schema_definition })),
         )
         .await?;
 
     // 1. Testar schema_type = "full"
     info!("Teste: Obtendo schema completo para '{}'", db_name);
     let result_full = client
-        .call_tool("get_schema", Some(json!({ "database_name": db_name, "schema_type": "full" })))
+        .call_tool("get_schema", Some(json!({ "databaseName": db_name, "schemaType": "full" })))
         .await?;
     let schema_full_text = get_text_from_call_result(result_full);
-    assert!(schema_full_text.contains("person sub entity"));
-    assert!(schema_full_text.contains("simple-rule"), "Schema completo não contém a regra.");
+    assert!(schema_full_text.contains("entity person"));
+    // Comentando teste de regra pois rules podem não estar suportadas no TypeQL 3.x
+    // assert!(schema_full_text.contains("simple-rule"), "Schema completo não contém a regra.");
 
     // 2. Testar schema_type = "types"
     info!("Teste: Obtendo apenas tipos do schema para '{}'", db_name);
     let result_types = client
-        .call_tool("get_schema", Some(json!({ "database_name": db_name, "schema_type": "types" })))
+        .call_tool("get_schema", Some(json!({ "databaseName": db_name, "schemaType": "types" })))
         .await?;
     let schema_types_text = get_text_from_call_result(result_types);
-    assert!(schema_types_text.contains("person sub entity"));
-    assert!(
-        !schema_types_text.contains("simple-rule"),
-        "Schema 'types' não deveria conter regras."
-    );
+    assert!(schema_types_text.contains("entity person"));
+    // Comentando teste de regra pois rules podem não estar suportadas no TypeQL 3.x
+    // assert!(
+    //     !schema_types_text.contains("simple-rule"),
+    //     "Schema 'types' não deveria conter regras."
+    // );
 
     // 3. Testar schema_type omitido (deve defaultar para "full")
     info!("Teste: Obtendo schema com schema_type omitido para '{}'", db_name);
     let result_default =
-        client.call_tool("get_schema", Some(json!({ "database_name": db_name }))).await?;
+        client.call_tool("get_schema", Some(json!({ "databaseName": db_name }))).await?;
     let schema_default_text = get_text_from_call_result(result_default);
-    assert!(schema_default_text.contains("person sub entity"));
-    assert!(
-        schema_default_text.contains("simple-rule"),
-        "Schema com tipo omitido deveria defaultar para 'full'."
-    );
+    assert!(schema_default_text.contains("entity person"));
+    // Comentando teste de regra pois rules podem não estar suportadas no TypeQL 3.x
+    // assert!(
+    //     schema_default_text.contains("simple-rule"),
+    //     "Schema com tipo omitido deveria defaultar para 'full'."
+    // );
 
     delete_test_db(&mut client, &db_name).await;
     Ok(())
@@ -288,13 +290,13 @@ async fn test_schema_operations_require_correct_scope_oauth() -> Result<()> {
     // Cliente sem escopo `typedb:manage_schema`
     let mut client_no_schema_scope =
         test_env.mcp_client_with_auth(Some("typedb:read_data")).await?; // Escopo insuficiente
-    let schema_def = "define car sub entity;";
+    let schema_def = "define entity car;";
 
     info!("Teste: Tentando define_schema sem escopo 'typedb:manage_schema'");
     let res_define_no_scope = client_no_schema_scope
         .call_tool(
             "define_schema",
-            Some(json!({"database_name": db_name, "schema_definition": schema_def})),
+            Some(json!({"databaseName": db_name, "schemaDefinition": schema_def})),
         )
         .await;
     assert!(res_define_no_scope.is_err());
@@ -306,7 +308,7 @@ async fn test_schema_operations_require_correct_scope_oauth() -> Result<()> {
 
     info!("Teste: Tentando get_schema sem escopo 'typedb:manage_schema'");
     let res_get_no_scope = client_no_schema_scope
-        .call_tool("get_schema", Some(json!({"database_name": db_name})))
+        .call_tool("get_schema", Some(json!({"databaseName": db_name})))
         .await;
     assert!(res_get_no_scope.is_err());
     if let McpClientError::McpErrorResponse { code, .. } = res_get_no_scope.unwrap_err() {

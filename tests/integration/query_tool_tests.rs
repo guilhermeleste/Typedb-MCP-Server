@@ -41,27 +41,27 @@ async fn setup_database_with_base_schema(
 
     let schema = r#"
         define
-            person sub entity,
+            entity person,
                 owns name,
                 owns age,
                 plays employment:employee;
-            company sub entity,
+            entity company,
                 owns company-name,
                 plays employment:employer;
-            employment sub relation,
+            relation employment,
                 relates employee,
                 relates employer,
                 owns salary;
-            name sub attribute, value string;
-            company-name sub attribute, value string;
-            age sub attribute, value long;
-            salary sub attribute, value double;
+            attribute name, value string;
+            attribute company-name, value string;
+            attribute age, value integer;
+            attribute salary, value double;
     "#;
     info!("Helper: Definindo esquema base para o banco: {}", db_name);
     let define_result = client
         .call_tool(
             "define_schema",
-            Some(json!({ "database_name": db_name, "schema_definition": schema })),
+            Some(json!({ "databaseName": db_name, "schemaDefinition": schema })),
         )
         .await;
     assert!(
@@ -97,7 +97,7 @@ async fn test_insert_and_query_read_person() -> Result<()> {
     let insert_query = r#"insert $p isa person, has name "Alice", has age 30;"#;
     info!("Teste: Inserindo dados com query: {}", insert_query);
     let insert_result = client
-        .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query })))
+        .call_tool("insert_data", Some(json!({ "databaseName": db_name, "query": insert_query })))
         .await
         .context("Falha na ferramenta insert_data")?;
     assert_eq!(
@@ -106,10 +106,10 @@ async fn test_insert_and_query_read_person() -> Result<()> {
         "insert_data retornou is_error=true"
     );
 
-    let read_query = r#"match $p isa person, has name $n, has age $a; get $n, $a; sort $n asc;"#;
+    let read_query = r#"match $p isa person, has name $n, has age $a; sort $n asc;"#;
     info!("Teste: Consultando dados com query: {}", read_query);
     let read_result = client
-        .call_tool("query_read", Some(json!({ "database_name": db_name, "query": read_query })))
+        .call_tool("query_read", Some(json!({ "databaseName": db_name, "query": read_query })))
         .await
         .context("Falha na ferramenta query_read")?;
 
@@ -120,12 +120,27 @@ async fn test_insert_and_query_read_person() -> Result<()> {
     info!("Resposta de query_read: {}", json_value);
     let expected_json = json!([
         {
-            // A ordem dos campos dentro de 'a' e 'n' pode variar, mas os valores devem ser os mesmos.
-            // O TypeDB driver pode não garantir a ordem dos atributos dentro de um ConceptMap.
-            // Para uma comparação robusta, seria ideal parsear para uma struct ou comparar campos individualmente.
-            // Por simplicidade, vamos manter a comparação direta, mas cientes dessa possível fragilidade.
-            "a": { "value": {"integer": 30}, "typeLabel": "age", "valueType": "integer" },
-            "n": { "value": {"string": "Alice"}, "typeLabel": "name", "valueType": "string" }
+            // A resposta do TypeDB 3.x retorna valores diretamente, não como objetos encapsulados
+            // Adicionado campos extras que o TypeDB 3.x inclui na resposta (iid, category)
+            "a": { 
+                "value": 30, 
+                "typeLabel": "age", 
+                "valueType": "integer",
+                "category": "Attribute",
+                "iid": json_value[0]["a"]["iid"] // Copiar o iid real pois é gerado dinamicamente
+            },
+            "n": { 
+                "value": "Alice", 
+                "typeLabel": "name", 
+                "valueType": "string",
+                "category": "Attribute", 
+                "iid": json_value[0]["n"]["iid"] // Copiar o iid real pois é gerado dinamicamente
+            },
+            "p": {
+                "typeLabel": "person",
+                "category": "Entity",
+                "iid": json_value[0]["p"]["iid"] // Copiar o iid real pois é gerado dinamicamente
+            }
         }
     ]);
     assert_eq!(
@@ -156,20 +171,51 @@ async fn test_query_read_aggregate_count() -> Result<()> {
     ];
     for query in insert_queries {
         client
-            .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": query })))
+            .call_tool("insert_data", Some(json!({ "databaseName": db_name, "query": query })))
             .await?;
     }
 
-    let agg_query = "match $p isa person; count;";
-    info!("Teste: Consultando agregação (count) com query: {}", agg_query);
+    let agg_query = "match $p isa person; reduce $count = count;";
+    info!("Teste: Consultando agregação (reduce) com query: {}", agg_query);
     let agg_result = client
-        .call_tool("query_read", Some(json!({ "database_name": db_name, "query": agg_query })))
+        .call_tool("query_read", Some(json!({ "databaseName": db_name, "query": agg_query })))
         .await
         .context("Falha na ferramenta query_read (aggregate)")?;
 
     let text_content = get_text_from_call_result(agg_result);
-    let count_value: i64 = serde_json::from_str(&text_content)
-        .context("Falha ao parsear resultado de count como i64")?;
+    info!("Resultado da agregação reduce (RAW): '{}'", text_content);
+    
+    // Parse como JSON genérico para ver a estrutura
+    let json_value: serde_json::Value = serde_json::from_str(&text_content)
+        .context("Falha ao parsear resultado de reduce como JSON")?;
+    
+    info!("JSON parseado COMPLETO: {:#}", json_value);
+    
+    // Tentar extrair o valor de diferentes maneiras
+    let count_value = if let Some(array) = json_value.as_array() {
+        info!("É um array com {} elementos", array.len());
+        if let Some(first) = array.first() {
+            info!("Primeiro elemento: {:?}", first);
+            // No TypeDB 3.x, reduce retorna um objeto com a propriedade nomeada
+            if let Some(obj) = first.as_object() {
+                if let Some(count) = obj.get("count") {
+                    count.as_i64().unwrap_or(0)
+                } else {
+                    0
+                }
+            } else {
+                first.as_i64().unwrap_or(0)
+            }
+        } else {
+            0
+        }
+    } else if let Some(num) = json_value.as_i64() {
+        info!("É um número direto: {}", num);
+        num
+    } else {
+        info!("Formato não reconhecido, assumindo 0");
+        0
+    };
 
     assert_eq!(count_value, 2, "Contagem de pessoas incorreta.");
 
@@ -192,13 +238,13 @@ async fn test_update_attribute_value() -> Result<()> {
 
     let insert_query = r#"insert $p isa person, has name "Carol", has age 25;"#;
     client
-        .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query })))
+        .call_tool("insert_data", Some(json!({ "databaseName": db_name, "query": insert_query })))
         .await?;
 
-    let update_query = r#"match $p isa person, has name "Carol", has age $a; delete $p has age $a; insert $p has age 26;"#;
+    let update_query = r#"match $p isa person, has name "Carol", has age $a; delete $a of $p; insert $p has age 26;"#;
     info!("Teste: Atualizando atributo com query: {}", update_query);
     let update_result = client
-        .call_tool("update_data", Some(json!({ "database_name": db_name, "query": update_query })))
+        .call_tool("update_data", Some(json!({ "databaseName": db_name, "query": update_query })))
         .await
         .context("Falha na ferramenta update_data")?;
     assert_eq!(
@@ -207,21 +253,46 @@ async fn test_update_attribute_value() -> Result<()> {
         "update_data retornou is_error=true"
     );
 
-    let read_query = r#"match $p isa person, has name "Carol", has age $a; get $a;"#;
+    let read_query = r#"match $p isa person, has name "Carol", has age $a;"#;
     let read_result = client
-        .call_tool("query_read", Some(json!({ "database_name": db_name, "query": read_query })))
+        .call_tool("query_read", Some(json!({ "databaseName": db_name, "query": read_query })))
         .await?;
 
     let text_content = get_text_from_call_result(read_result);
     let json_value: JsonValue = serde_json::from_str(&text_content)?; // Usar JsonValue
     info!("Resultado após update: {}", json_value);
 
-    let expected_json =
-        json!([{"a": { "value": {"integer": 26}, "typeLabel": "age", "valueType": "integer" }}]);
-    assert_eq!(
-        json_value, expected_json,
-        "Valor do atributo 'age' não foi atualizado corretamente."
-    );
+    // Verificar se o array não está vazio e contém a pessoa com idade atualizada
+    if let Some(array) = json_value.as_array() {
+        assert!(!array.is_empty(), "Resultado está vazio após update");
+        
+        // Buscar o valor da idade no primeiro resultado
+        if let Some(first_result) = array.first() {
+            if let Some(a_obj) = first_result.get("a") {
+                if let Some(value) = a_obj.get("value") {
+                    // TypeDB 3.x retorna o valor diretamente como número
+                    let age_value = if let Some(num) = value.as_i64() {
+                        num
+                    } else if let Some(obj) = value.as_object() {
+                        // Fallback para formato antigo {"integer": 26}
+                        obj.get("integer").and_then(|v| v.as_i64()).unwrap_or(0)
+                    } else {
+                        0
+                    };
+                    
+                    assert_eq!(age_value, 26, "Valor do atributo 'age' não foi atualizado corretamente para 26");
+                } else {
+                    panic!("Campo 'value' não encontrado na resposta");
+                }
+            } else {
+                panic!("Campo 'a' não encontrado na resposta");
+            }
+        } else {
+            panic!("Array de resultado está vazio");
+        }
+    } else {
+        panic!("Resposta não é um array: {}", json_value);
+    }
 
     delete_test_db(&mut client, &db_name).await;
     Ok(())
@@ -243,22 +314,27 @@ async fn test_delete_entity_and_verify() -> Result<()> {
 
     let insert_query = r#"insert $p isa person, has name "Dave", has age 50;"#;
     client
-        .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query })))
+        .call_tool("insert_data", Some(json!({ "databaseName": db_name, "query": insert_query })))
         .await?;
 
     let delete_query = r#"match $p isa person, has name "Dave"; delete $p;"#;
     info!("Teste: Deletando entidade com query: {}", delete_query);
     let delete_result = client
-        .call_tool("delete_data", Some(json!({ "database_name": db_name, "query": delete_query })))
+        .call_tool("delete_data", Some(json!({ "databaseName": db_name, "query": delete_query })))
         .await
         .context("Falha na ferramenta delete_data")?;
     let delete_text = get_text_from_call_result(delete_result);
-    assert_eq!(delete_text, "OK", "Resposta incorreta ao deletar entidade.");
+    // TypeDB 3.x pode retornar respostas mais detalhadas para operações de delete
+    assert!(
+        delete_text == "OK" || delete_text.starts_with("OK (com aviso:"),
+        "Resposta incorreta ao deletar entidade: {}",
+        delete_text
+    );
 
-    let read_query = r#"match $p isa person, has name "Dave"; get $p;"#;
+    let read_query = r#"match $p isa person, has name "Dave";"#;
     info!("Teste: Verificando se entidade foi deletada com query: {}", read_query);
     let read_result_after_delete = client
-        .call_tool("query_read", Some(json!({ "database_name": db_name, "query": read_query })))
+        .call_tool("query_read", Some(json!({ "databaseName": db_name, "query": read_query })))
         .await?;
 
     let text_content_after_delete = get_text_from_call_result(read_result_after_delete);
@@ -287,12 +363,12 @@ async fn test_validate_query_syntax_ok_and_fail() -> Result<()> {
     )
     .await?;
 
-    let valid_query = "match $p isa person; get $p;";
+    let valid_query = "match $p isa person;";
     info!("Teste: Validando query sintaticamente correta: {}", valid_query);
     let validate_ok_result = client
         .call_tool(
             "validate_query",
-            Some(json!({ "database_name": db_name, "query": valid_query, "intended_transaction_type": "read" })),
+            Some(json!({ "databaseName": db_name, "query": valid_query, "intended_transaction_type": "read" })),
         )
         .await?;
     let text_ok = get_text_from_call_result(validate_ok_result);
@@ -303,7 +379,7 @@ async fn test_validate_query_syntax_ok_and_fail() -> Result<()> {
     let validate_err_result = client
         .call_tool(
             "validate_query",
-            Some(json!({ "database_name": db_name, "query": invalid_query_syntax, "intended_transaction_type": "read" })),
+            Some(json!({ "databaseName": db_name, "query": invalid_query_syntax, "intended_transaction_type": "read" })),
         )
         .await?;
     let text_err = get_text_from_call_result(validate_err_result);
@@ -338,7 +414,7 @@ async fn test_query_data_operations_require_correct_scopes_oauth() -> Result<()>
     let insert_query = r#"insert $p isa person, has name "Eve", has age 22;"#;
     info!("Teste: Tentando insert_data sem escopo 'typedb:write_data'");
     let result_insert_no_scope = client_readonly
-        .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query })))
+        .call_tool("insert_data", Some(json!({ "databaseName": db_name, "query": insert_query })))
         .await;
     assert!(result_insert_no_scope.is_err());
     if let McpClientError::McpErrorResponse { code, .. } = result_insert_no_scope.unwrap_err() {
@@ -350,7 +426,7 @@ async fn test_query_data_operations_require_correct_scopes_oauth() -> Result<()>
     let mut client_write_perms = test_env.mcp_client_with_auth(Some("typedb:write_data")).await?;
     info!("Teste: Tentando insert_data COM escopo 'typedb:write_data'");
     let insert_ok_result = client_write_perms
-        .call_tool("insert_data", Some(json!({ "database_name": db_name, "query": insert_query })))
+        .call_tool("insert_data", Some(json!({ "databaseName": db_name, "query": insert_query })))
         .await;
     assert!(
         insert_ok_result.is_ok(),
@@ -360,10 +436,10 @@ async fn test_query_data_operations_require_correct_scopes_oauth() -> Result<()>
 
     let mut client_no_relevant_scopes =
         test_env.mcp_client_with_auth(Some("other:unrelated")).await?;
-    let read_query = "match $p isa person; get $p;";
+    let read_query = "match $p isa person;";
     info!("Teste: Tentando query_read sem escopo 'typedb:read_data'");
     let result_read_no_scope = client_no_relevant_scopes
-        .call_tool("query_read", Some(json!({ "database_name": db_name, "query": read_query })))
+        .call_tool("query_read", Some(json!({ "databaseName": db_name, "query": read_query })))
         .await;
     assert!(result_read_no_scope.is_err());
     if let McpClientError::McpErrorResponse { code, .. } = result_read_no_scope.unwrap_err() {

@@ -87,29 +87,29 @@ pub async fn delete_test_db(client: &mut TestMcpClient, db_name: &str) {
 pub async fn define_test_db_schema(client: &mut TestMcpClient, db_name: &str) -> Result<()> {
     let schema = r#"
         define
-            person sub entity,
+            entity person,
                 owns name,
                 owns age,
                 plays employment:employee;
-            company sub entity,
+            entity company,
                 owns company-name,
                 plays employment:employer;
-            employment sub relation,
+            relation employment,
                 relates employee,
                 relates employer,
                 owns salary;
-            name sub attribute, value string;
-            company-name sub attribute, value string;
-            age sub attribute, value long;
-            salary sub attribute, value double;
-            note sub attribute, value string;
-            timestamp sub attribute, value datetime;
+            attribute name, value string;
+            attribute company-name, value string;
+            attribute age, value integer;
+            attribute salary, value double;
+            attribute note, value string;
+            attribute timestamp, value datetime;
     "#;
     info!("Helper Comum: Definindo esquema base para o banco: '{}'", db_name);
     let define_result = client
         .call_tool(
             "define_schema",
-            Some(json!({ "database_name": db_name, "schema_definition": schema })),
+            Some(json!({ "databaseName": db_name, "schemaDefinition": schema })),
         )
         .await
         .with_context(|| {

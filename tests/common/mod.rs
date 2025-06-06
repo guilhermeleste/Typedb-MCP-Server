@@ -11,6 +11,8 @@ pub mod client;
 pub mod constants;
 pub mod docker_helpers;
 /// Utilitários específicos para interações e manipulações relacionadas ao protocolo MCP.
+pub mod infrastructure_helpers;
+/// Utilitários para manipulação de protocolos MCP e estruturas de dados relacionadas.
 pub mod mcp_utils;
 pub mod test_env;
 pub mod test_utils;
@@ -22,6 +24,10 @@ pub use auth_helpers::{
 };
 pub use client::{McpClientError, TestMcpClient};
 pub use docker_helpers::DockerComposeEnv;
+pub use infrastructure_helpers::{
+    cleanup_orphaned_test_containers, ensure_clean_test_environment, 
+    is_port_available, robust_cleanup_and_verify, verify_critical_ports_available
+};
 pub use mcp_utils::get_text_from_call_result;
 pub use test_env::TestEnvironment;
 pub use test_utils::{
