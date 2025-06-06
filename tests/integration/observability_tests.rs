@@ -1,28 +1,32 @@
 // tests/integration/observability_tests.rs
-// Testes de integração para endpoints de observabilidade do Typedb-MCP-Server.
-// Valida /livez, /readyz e /metrics sob diferentes condições.
+
 // Copyright 2025 Guilherme Leste
-// Licença Apache 2.0
+//
+// Licensed under the MIT License <LICENSE or https://opensource.org/licenses/MIT>.
+// This file may not be copied, modified, or distributed
+// except according to those terms.
 
 //! Testes de integração para os endpoints de observabilidade (`/livez`, `/readyz`, `/metrics`)
 //! do Typedb-MCP-Server.
+//!
+//! Esta suíte de testes verifica se:
+//! - O endpoint `/livez` responde corretamente.
+//! - O endpoint `/readyz` reflete com precisão o estado do servidor e de suas dependências
+//!   (TypeDB, JWKS) em vários cenários (saudável, com falha).
+//! - O endpoint `/metrics` é acessível e expõe métricas no formato Prometheus.
 
-use crate::common::{
-    constants,
-    // docker_helpers::DockerComposeEnv, // Removido se TestEnvironment já o expõe via test_env.docker_env
-    // No entanto, mantê-lo não prejudica se for para clareza de tipo.
-    // O erro de unused deve sumir se o código compilar após stop_service ser adicionado.
-    test_env::TestEnvironment,
-};
-use anyhow::Result;
+use crate::common::{constants, helper_wait_for_metrics_endpoint, test_env::TestEnvironment};
+use anyhow::{Context as AnyhowContext, Result};
 use reqwest::StatusCode;
 use serde_json::Value as JsonValue;
 use serial_test::serial;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
-/// Helper para aguardar o status específico do /readyz.
-/// Retorna o corpo JSON se o status esperado for alcançado.
+// IMPORTS CORRIGIDOS: Importar constantes diretamente da biblioteca principal
+use typedb_mcp_server_lib::metrics::{METRIC_PREFIX, SERVER_INFO_GAUGE};
+
+/// Helper para aguardar por um status específico do `/readyz` e retornar o corpo JSON.
 async fn wait_for_readyz_status(
     readyz_url: &str,
     expected_overall_status: &str,
@@ -46,30 +50,53 @@ async fn wait_for_readyz_status(
         match client.get(readyz_url).send().await {
             Ok(resp) => {
                 let status_code = resp.status();
-                match resp.json::<JsonValue>().await {
-                    Ok(json_body) => {
-                        debug!("/readyz: Status {}, Corpo: {}", status_code, json_body);
-                        if json_body
-                            .get("status")
-                            .and_then(|s| s.as_str())
-                            .map_or(false, |s| s.eq_ignore_ascii_case(expected_overall_status))
-                        {
-                            // Verificar também o status HTTP correspondente
-                            if (expected_overall_status.eq_ignore_ascii_case("UP")
-                                && status_code == StatusCode::OK)
-                                || (expected_overall_status.eq_ignore_ascii_case("DOWN")
-                                    && status_code == StatusCode::SERVICE_UNAVAILABLE)
+                let body_bytes_result = resp.bytes().await;
+                
+                let body_text_for_log = match &body_bytes_result {
+                    Ok(b) => String::from_utf8_lossy(b).to_string(),
+                    Err(e) => format!("<corpo não pôde ser lido: {}>", e),
+                };
+
+                let expected_status_code = if expected_overall_status.eq_ignore_ascii_case("UP") {
+                    StatusCode::OK
+                } else {
+                    StatusCode::SERVICE_UNAVAILABLE
+                };
+
+                if status_code != expected_status_code {
+                    info!(
+                        "/readyz em '{}': Status HTTP {} (esperado {}). Corpo: '{}'. Aguardando...",
+                        readyz_url, status_code, expected_status_code, body_text_for_log
+                    );
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
+
+                match body_bytes_result {
+                    Ok(b) => match serde_json::from_slice::<JsonValue>(&b) {
+                        Ok(json_body) => {
+                            debug!("/readyz: Status {}, Corpo JSON: {:?}", status_code, json_body);
+                            if json_body
+                                .get("status")
+                                .and_then(|s| s.as_str())
+                                .map_or(false, |s| s.eq_ignore_ascii_case(expected_overall_status))
                             {
+                                info!("Estado esperado '{}' alcançado para /readyz.", expected_overall_status);
                                 return Ok(Some(json_body));
                             }
-                            debug!("/readyz: Status do corpo é '{}', mas HTTP status é {}. Continuando espera.", expected_overall_status, status_code);
                         }
-                    }
+                        Err(e) => {
+                            warn!(
+                                "/readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Corpo: '{}'. Aguardando...",
+                                readyz_url, status_code, e, body_text_for_log
+                            );
+                        }
+                    },
                     Err(e) => {
-                        debug!("/readyz: Falha ao parsear corpo JSON (Status {}): {}. Tentando ler como texto...", status_code, e);
-                        if let Ok(resp_text) = client.get(readyz_url).send().await?.text().await {
-                            debug!("/readyz corpo como texto: {}", resp_text);
-                        }
+                         warn!(
+                            "/readyz para '{}' retornou status {} mas falhou ao ler o corpo de bytes: {}. Aguardando...",
+                            readyz_url, status_code, e
+                        );
                     }
                 }
             }
@@ -78,7 +105,7 @@ async fn wait_for_readyz_status(
                 readyz_url, e
             ),
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
     warn!(
         "/readyz: Timeout esperando por status '{}' em '{}'",
@@ -90,6 +117,7 @@ async fn wait_for_readyz_status(
 #[tokio::test]
 #[serial]
 async fn test_liveness_probe_returns_ok_default_config() -> Result<()> {
+    info!("Iniciando teste: test_liveness_probe_returns_ok_default_config");
     let test_env =
         TestEnvironment::setup("obs_live_ok_def", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
     let livez_url =
@@ -105,10 +133,11 @@ async fn test_liveness_probe_returns_ok_default_config() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_liveness_probe_returns_ok_server_tls_config() -> Result<()> {
+    info!("Iniciando teste: test_liveness_probe_returns_ok_server_tls_config");
     let test_env =
         TestEnvironment::setup("obs_live_ok_tls", constants::SERVER_TLS_TEST_CONFIG_FILENAME)
             .await?;
-    assert!(test_env.is_mcp_server_tls);
+    assert!(test_env.is_mcp_server_tls, "TLS do servidor deveria estar habilitado.");
     let livez_url =
         format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_LIVEZ_PATH);
 
@@ -123,27 +152,17 @@ async fn test_liveness_probe_returns_ok_server_tls_config() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_readiness_probe_all_healthy_default_config() -> Result<()> {
+    info!("Iniciando teste: test_readiness_probe_all_healthy_default_config");
     let test_env =
         TestEnvironment::setup("obs_ready_ok_def", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
-    let readyz_url =
-        format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
+    
+    let readyz_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
+    let client = reqwest::Client::new();
+    let resp = client.get(&readyz_url).send().await?.json::<JsonValue>().await?;
 
-    info!(
-        "Teste: Verificando /readyz com todas as dependências saudáveis (config default). URL: {}",
-        readyz_url
-    );
-    let json_response = wait_for_readyz_status(
-        &readyz_url,
-        "UP",
-        test_env.is_mcp_server_tls,
-        Duration::from_secs(30),
-    )
-    .await?
-    .expect("/readyz não atingiu o estado UP esperado a tempo.");
-
-    assert_eq!(json_response.get("status").and_then(|s| s.as_str()), Some("UP"));
-    let components =
-        json_response.get("components").expect("Campo 'components' ausente no /readyz.");
+    info!("Verificando corpo da resposta de /readyz: {:?}", resp);
+    assert_eq!(resp.get("status").and_then(|s| s.as_str()), Some("UP"));
+    let components = resp.get("components").expect("Campo 'components' ausente.");
     assert_eq!(components.get("typedb").and_then(|s| s.as_str()), Some("UP"));
     assert_eq!(components.get("jwks").and_then(|s| s.as_str()), Some("NOT_CONFIGURED"));
     info!("/readyz com config default está UP e componentes OK.");
@@ -153,28 +172,19 @@ async fn test_readiness_probe_all_healthy_default_config() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_readiness_probe_all_healthy_oauth_enabled() -> Result<()> {
+    info!("Iniciando teste: test_readiness_probe_all_healthy_oauth_enabled");
     let test_env =
         TestEnvironment::setup("obs_ready_ok_oauth", constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME)
             .await?;
-    assert!(test_env.is_oauth_enabled);
-    let readyz_url =
-        format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
+    assert!(test_env.is_oauth_enabled, "OAuth deveria estar habilitado.");
 
-    info!(
-        "Teste: Verificando /readyz com OAuth habilitado e dependências saudáveis. URL: {}",
-        readyz_url
-    );
-    let json_response = wait_for_readyz_status(
-        &readyz_url,
-        "UP",
-        test_env.is_mcp_server_tls,
-        Duration::from_secs(45),
-    )
-    .await?
-    .expect("/readyz não atingiu o estado UP esperado com OAuth a tempo.");
+    let readyz_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
+    let client = reqwest::Client::new();
+    let resp = client.get(&readyz_url).send().await?.json::<JsonValue>().await?;
 
-    assert_eq!(json_response.get("status").and_then(|s| s.as_str()), Some("UP"));
-    let components = json_response.get("components").expect("Campo 'components' ausente.");
+    info!("Verificando corpo da resposta de /readyz com OAuth: {:?}", resp);
+    assert_eq!(resp.get("status").and_then(|s| s.as_str()), Some("UP"));
+    let components = resp.get("components").expect("Campo 'components' ausente.");
     assert_eq!(components.get("typedb").and_then(|s| s.as_str()), Some("UP"));
     assert_eq!(components.get("jwks").and_then(|s| s.as_str()), Some("UP"));
     info!("/readyz com OAuth habilitado está UP e componentes OK.");
@@ -184,6 +194,7 @@ async fn test_readiness_probe_all_healthy_oauth_enabled() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_readiness_probe_typedb_down() -> Result<()> {
+    info!("Iniciando teste: test_readiness_probe_typedb_down");
     let test_env =
         TestEnvironment::setup("obs_ready_typedb_down", constants::DEFAULT_TEST_CONFIG_FILENAME)
             .await?;
@@ -194,10 +205,8 @@ async fn test_readiness_probe_typedb_down() -> Result<()> {
         "Teste: Parando serviço TypeDB ('{}') para testar /readyz.",
         constants::TYPEDB_SERVICE_NAME
     );
-    test_env.docker_env.stop_service(constants::TYPEDB_SERVICE_NAME)?; // ASSUME que stop_service existe
-    tokio::time::sleep(Duration::from_secs(10)).await;
-
-    info!("Teste: Verificando /readyz após TypeDB ser parado. URL: {}", readyz_url);
+    test_env.docker_env.stop_service(constants::TYPEDB_SERVICE_NAME)?;
+    
     let json_response = wait_for_readyz_status(
         &readyz_url,
         "DOWN",
@@ -217,12 +226,13 @@ async fn test_readiness_probe_typedb_down() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_readiness_probe_jwks_down_when_oauth_enabled() -> Result<()> {
+    info!("Iniciando teste: test_readiness_probe_jwks_down_when_oauth_enabled");
     let test_env = TestEnvironment::setup(
         "obs_ready_jwks_down",
         constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME,
     )
     .await?;
-    assert!(test_env.is_oauth_enabled);
+    assert!(test_env.is_oauth_enabled, "OAuth deveria estar habilitado.");
     let readyz_url =
         format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
 
@@ -233,7 +243,7 @@ async fn test_readiness_probe_jwks_down_when_oauth_enabled() -> Result<()> {
         Duration::from_secs(30),
     )
     .await?
-    .expect("Readyz não ficou UP inicialmente");
+    .expect("Readyz não ficou UP inicialmente (esperado para verificar transição para DOWN).");
     assert_eq!(
         json_up.get("components").and_then(|c| c.get("jwks")).and_then(|s| s.as_str()),
         Some("UP")
@@ -243,10 +253,8 @@ async fn test_readiness_probe_jwks_down_when_oauth_enabled() -> Result<()> {
         "Teste: Parando serviço Mock OAuth ('{}') para testar /readyz com OAuth.",
         constants::MOCK_OAUTH_SERVICE_NAME
     );
-    test_env.docker_env.stop_service(constants::MOCK_OAUTH_SERVICE_NAME)?; // ASSUME que stop_service existe
-    tokio::time::sleep(Duration::from_secs(10)).await;
-
-    info!("Teste: Verificando /readyz após Mock OAuth ser parado. URL: {}", readyz_url);
+    test_env.docker_env.stop_service(constants::MOCK_OAUTH_SERVICE_NAME)?;
+    
     let json_response_down = wait_for_readyz_status(
         &readyz_url,
         "DOWN",
@@ -267,11 +275,20 @@ async fn test_readiness_probe_jwks_down_when_oauth_enabled() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_metrics_endpoint_returns_prometheus_format() -> Result<()> {
+    info!("Iniciando teste: test_metrics_endpoint_returns_prometheus_format");
     let test_env =
         TestEnvironment::setup("obs_metrics_fmt", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
 
     info!("Teste: Verificando /metrics em {}", test_env.mcp_metrics_url);
-    let resp = reqwest::get(&test_env.mcp_metrics_url).await?;
+    
+    // Aguarda que o endpoint de métricas esteja disponível
+    helper_wait_for_metrics_endpoint(&test_env.mcp_metrics_url, 10)
+        .await
+        .context("Endpoint de métricas não ficou disponível no tempo esperado")?;
+
+    let resp = reqwest::get(&test_env.mcp_metrics_url)
+        .await
+        .context("Falha na requisição GET para o endpoint /metrics")?;
 
     assert_eq!(resp.status(), StatusCode::OK, "/metrics deveria retornar 200 OK");
     let content_type = resp
@@ -288,18 +305,18 @@ async fn test_metrics_endpoint_returns_prometheus_format() -> Result<()> {
     let body = resp.text().await?;
     debug!("/metrics body (primeiras 500 chars): {:.500}", body);
 
-    // TEMPORARY DEBUG: Métricas customizadas desabilitadas para isolar possível pânico
-    // Testando apenas métricas padrão do sistema que devem estar presentes
+    let expected_info_metric = format!(
+        "{}{}",
+        METRIC_PREFIX,
+        SERVER_INFO_GAUGE
+    );
     assert!(
-        body.contains("process_cpu_seconds_total") || body.len() > 0,
-        "Endpoint /metrics deve retornar métricas padrão do sistema ou pelo menos algum conteúdo. Body length: {}", body.len()
+        body.contains(&expected_info_metric),
+        "A métrica de informação ('{}') não foi encontrada no corpo da resposta /metrics. Corpo recebido:\n{}",
+        expected_info_metric,
+        body
     );
     
-    info!("DEBUG: /metrics retornou {} bytes de conteúdo", body.len());
-    if body.len() < 1000 {
-        info!("DEBUG: Conteúdo completo do /metrics:\n{}", body);
-    }
-    
-    info!("/metrics endpoint acessível (modo DEBUG - métricas customizadas desabilitadas).");
+    info!("Endpoint /metrics acessível e contém métricas esperadas.");
     Ok(())
 }

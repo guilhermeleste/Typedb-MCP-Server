@@ -306,3 +306,50 @@ mod tests {
         };
     }
 }
+
+/// Aguarda que o endpoint de métricas esteja disponível e respondendo.
+/// 
+/// Realiza polling ativo tentando conectar ao endpoint até que esteja disponível
+/// ou até o timeout ser atingido.
+///
+/// # Arguments
+/// * `url`: URL completa do endpoint de métricas (ex: "http://localhost:9091/metrics")
+/// * `timeout_secs`: Timeout em segundos para aguardar o endpoint
+///
+/// # Returns
+/// * `Ok(())` se o endpoint estiver disponível
+/// * `Err` se timeout ou falha na conexão
+///
+/// # Example
+/// ```rust
+/// helper_wait_for_metrics_endpoint("http://localhost:9091/metrics", 10).await?;
+/// ```
+pub async fn helper_wait_for_metrics_endpoint(url: &str, timeout_secs: u64) -> Result<()> {
+    let timeout_duration = Duration::from_secs(timeout_secs);
+    let start_time = Instant::now();
+    let retry_interval = Duration::from_millis(100);
+
+    info!("Aguardando endpoint de métricas estar disponível: {}", url);
+
+    loop {
+        if start_time.elapsed() >= timeout_duration {
+            bail!("Timeout aguardando endpoint de métricas {} ({}s)", url, timeout_secs);
+        }
+
+        match reqwest::get(url).await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    info!("Endpoint de métricas disponível: {} ({})", url, response.status());
+                    return Ok(());
+                } else {
+                    debug!("Endpoint retornou status não-sucesso: {}", response.status());
+                }
+            }
+            Err(err) => {
+                trace!("Tentativa de conexão falhou: {}", err);
+            }
+        }
+
+        tokio::time::sleep(retry_interval).await;
+    }
+}

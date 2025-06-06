@@ -25,8 +25,8 @@ pub use docker_helpers::DockerComposeEnv;
 pub use mcp_utils::get_text_from_call_result;
 pub use test_env::TestEnvironment;
 pub use test_utils::{
-    create_test_db, define_test_db_schema, delete_test_db, unique_db_name,
-    wait_for_mcp_server_ready_from_test_env,
+    create_test_db, define_test_db_schema, delete_test_db, helper_wait_for_metrics_endpoint,
+    unique_db_name, wait_for_mcp_server_ready_from_test_env,
 };
 
 #[cfg(test)]

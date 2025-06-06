@@ -19,7 +19,7 @@ full-tests = []
 
 [dependencies]
 
-axum-server = { version = "0.6", features = ["tls-rustls"] }
+axum-server = { version = "0.7.2", features = ["tls-rustls"] }
 async-trait = "0.1.88"
 axum = { version = "0.8.4", features = ["ws", "macros", "json"] }
 axum-extra = { version = "0.10.1", features = ["typed-header"] }
@@ -33,7 +33,7 @@ hyper-util = { version = "0.1.11", features = ["server", "tokio", "server-auto",
 jsonwebtoken = { version = "9.3.1", features = ["use_pem"] }
 matchit = "0.8.4"
 metrics = "0.24.2"
-metrics-exporter-prometheus = { version = "0.17.0", features = ["http-listener"] }
+metrics-exporter-prometheus = { version = "0.17.0" }
 num_cpus = "1.16.0"
 oauth2 = "5.0.0"
 opentelemetry = { version = "0.29.1", features = ["trace", "tracing"] }

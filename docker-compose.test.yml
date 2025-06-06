@@ -5,8 +5,6 @@
 # para permitir testes de integração automatizados.
 
 # Define um bloco de variáveis de ambiente padrão que pode ser reutilizado.
-# Estas variáveis são usadas principalmente para evitar warnings do Docker Compose
-# se não forem definidas no ambiente do host ou em um arquivo .env.
 x-default-variables: &default-env
   # MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV:
   #   Variável definida no HOST que especifica o caminho para o arquivo de configuração TOML
@@ -49,14 +47,13 @@ services:
       # MCP_CONFIG_PATH: Caminho do arquivo TOML DENTRO do contêiner.
       - MCP_CONFIG_PATH=${MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV}
       
-      - RUST_LOG=${RUST_LOG_MCP:-info,typedb_mcp_server_lib=trace,typedb_mcp_server=trace,typedb_mcp_server_lib::config=trace,typedb_driver=info,hyper=warn,h2=warn,tower=warn,rustls=trace,tokio_rustls=trace}
+      # --- LINHA MODIFICADA PARA LOGS DETALHADOS ---
+      - RUST_LOG=${RUST_LOG_MCP:-trace,typedb_mcp_server=trace,axum=trace,hyper=trace,h2=trace,tower=trace,rustls=trace,tokio_rustls=trace}
       
       # Senha para o TypeDB que o SERVIDOR MCP usará para se conectar.
       - TYPEDB_PASSWORD=${TYPEDB_PASSWORD_TEST} # Usa a mesma senha definida para os serviços TypeDB
       
       # Endereço do TypeDB que o SERVIDOR MCP usará para se conectar.
-      # Este valor será dinamicamente definido pelo TestEnvironment para apontar
-      # para 'typedb-server-it:1729' ou 'typedb-server-tls-it:1729'.
       - MCP_TYPEDB__ADDRESS=${MCP_TYPEDB__ADDRESS} 
       
       # Flag para o HEALTHCHECK no Dockerfile. Definido pelo TestEnvironment.
@@ -105,35 +102,19 @@ services:
         /usr/local/bin/typedb_mcp_server 
       "
     
-    # depends_on garante que o MCP server só inicie após o typedb-server-it
-    # (TypeDB padrão) estar saudável. Isso é importante para a maioria dos testes.
-    # Para testes com typedb-server-tls-it, o MCP_TYPEDB__ADDRESS e o script de comando
-    # acima direcionarão a conexão e a espera para o typedb-server-tls-it.
     depends_on:
-      typedb-server-it: # A dependência explícita é mantida
+      typedb-server-it:
          condition: service_healthy
     networks:
       - typedb_mcp_test_network
 
   # Instância do TypeDB Server para testes (sem TLS).
-  # Ativado pelos perfis "typedb_default", "oauth_mock" E AGORA TAMBÉM "typedb_tls".
   typedb-server-it:
-    profiles: ["typedb_default", "typedb_tls", "oauth_mock"] # <<< MODIFICADO AQUI
+    profiles: ["typedb_default", "typedb_tls", "oauth_mock"]
     image: typedb/typedb:3.2.0
-    container_name: ${COMPOSE_PROJECT_NAME}-typedb # O nome não deve conflitar com -typedb-tls
+    container_name: ${COMPOSE_PROJECT_NAME}-typedb
     ports:
-      # Não mapeia a porta 1729 para o HOST para evitar conflito quando ambos
-      # typedb-server-it e typedb-server-tls-it estiverem rodando (no perfil typedb_tls).
-      # Os testes de cliente que precisam se conectar diretamente ao TypeDB
-      # usarão o mapeamento específico do serviço que está sendo testado.
-      # Se um teste precisar do TypeDB padrão no host, ele usará o mapeamento de porta 1729:1729.
-      # Quando o perfil typedb_tls estiver ativo, esta instância não será acessada do host,
-      # mas o MCP server pode precisar que ela esteja "healthy" para o depends_on.
-      # Se apenas UM serviço TypeDB for mapeado para a porta 1729 do host por vez, não há problema.
-      # Vamos assumir que apenas UM perfil que expõe TypeDB na porta 1729 do host está ativo por vez.
-      # Quando "typedb_tls" está ativo,typedb-server-tls-it usa 11730.
-      # Quando "typedb_default" está ativo, este usa 1729.
-      - "1729:1729" # Mapeado para a porta padrão do host.
+      - "1729:1729"
     environment:
       - TYPEDB_SERVER_OPTS=--server.address=0.0.0.0:1729 --server.authentication.enable=true --server.credential.default.password=${TYPEDB_PASSWORD_TEST}
     healthcheck:
@@ -149,11 +130,11 @@ services:
 
   # Instância do TypeDB Server para testes (COM TLS).
   typedb-server-tls-it:
-    profiles: ["typedb_tls"] # Continua ativado apenas por este perfil
+    profiles: ["typedb_tls"]
     image: typedb/typedb:3.2.0
     container_name: ${COMPOSE_PROJECT_NAME}-typedb-tls
     ports:
-      - "11730:1729" # Mapeia a porta interna 1729 para a porta 11730 do HOST.
+      - "11730:1729"
     volumes:
       - ./tests/test_certs/typedb-server.crt:/opt/typedb/server/conf/typedb-server.crt:ro
       - ./tests/test_certs/typedb-server.key:/opt/typedb/server/conf/typedb-server.key:ro
