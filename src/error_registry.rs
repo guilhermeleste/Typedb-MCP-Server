@@ -27,8 +27,8 @@ use chrono::{DateTime, Utc};
 ///     "Connection timeout during transaction".to_string()
 /// );
 /// 
-/// registry.register_error(error)?;
-/// let patterns = registry.analyze_patterns()?;
+/// registry.register_error(error).expect("Failed to register error");
+/// let patterns = registry.analyze_patterns().expect("Failed to analyze patterns");
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorRegistry {
@@ -303,6 +303,8 @@ impl ErrorRegistry {
     /// # Exemplo
     /// 
     /// ```rust
+    /// use typedb_mcp_server_lib::error_registry::ErrorRegistry;
+    /// 
     /// let registry = ErrorRegistry::new();
     /// ```
     pub fn new() -> Self {
@@ -335,6 +337,9 @@ impl ErrorRegistry {
     /// # Exemplo
     /// 
     /// ```rust
+    /// use typedb_mcp_server_lib::error_registry::{ErrorRegistry, ErrorEntry, ErrorCategory};
+    /// 
+    /// let mut registry = ErrorRegistry::new();
     /// let error = ErrorEntry::new(
     ///     ErrorCategory::TypeDB,
     ///     "High".to_string(),
@@ -342,7 +347,7 @@ impl ErrorRegistry {
     ///     "Connection timeout".to_string()
     /// );
     /// 
-    /// let error_id = registry.register_error(error)?;
+    /// let error_id = registry.register_error(error).expect("Failed to register error");
     /// ```
     pub fn register_error(&mut self, mut error: ErrorEntry) -> Result<String, Box<dyn std::error::Error>> {
         // Gera ID único se não fornecido
