@@ -683,15 +683,15 @@ mod tests {
     fn create_minimal_compose_file_for_helper_tests() -> std::io::Result<tempfile::NamedTempFile> {
         use std::io::Write;
         let mut file = tempfile::NamedTempFile::new()?;
-        // O comando do alpine-dummy-service foi ajustado para logar as variáveis de ambiente
-        // e usar `nc -lk -p 80 -e echo Pong` para manter a porta 80 aberta e responder a healthchecks.
+        // O comando do alpine-dummy-service usa ferramentas nativas do Alpine (busybox nc)
+        // para manter um servidor simples na porta 80 que responde aos healthchecks.
         writeln!(file, r#"
 version: '3.8'
 services:
   alpine-dummy-service:
     image: alpine:latest
     container_name: ${{COMPOSE_PROJECT_NAME}}-alpine-dummy
-    command: ["sh", "-c", "echo 'Dummy service started. MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV=${{MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV}} MCP_TYPEDB__ADDRESS=${{MCP_TYPEDB__ADDRESS}} TYPEDB_PASSWORD_TEST=${{TYPEDB_PASSWORD_TEST}}' && apk add --no-cache netcat-openbsd && nc -lk -p 80 -e echo Pong && echo 'Dummy service stopping'"]
+    command: ["sh", "-c", "echo 'Dummy service started. MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV=${{MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV}} MCP_TYPEDB__ADDRESS=${{MCP_TYPEDB__ADDRESS}} TYPEDB_PASSWORD_TEST=${{TYPEDB_PASSWORD_TEST}}' && while true; do echo 'HTTP/1.1 200 OK\\r\\n\\r\\nPong' | nc -l -p 80; sleep 0.1; done"]
     ports:
       - "80" # Docker mapeará para uma porta aleatória do host, que `get_service_host_port` pode obter.
     healthcheck:
