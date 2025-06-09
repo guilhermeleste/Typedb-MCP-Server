@@ -54,6 +54,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
 use typedb_driver::TypeDBDriver;
 use rustc_version_runtime;
 use rustls::crypto::CryptoProvider;
+use anyhow::Context;
 
 /// Estrutura para o estado da aplicação compartilhado com os handlers Axum.
 #[derive(Clone)]
@@ -125,16 +126,23 @@ fn setup_metrics_recorder(
 async fn initialize_core_services(
     settings: &Arc<Settings>,
 ) -> Result<(Arc<TypeDBDriver>, Option<Arc<JwksCache>>), Box<dyn StdError + Send + Sync>> {
+    info!("Buscando senha do TypeDB do caminho de arquivo especificado...");
+
+    let password_file_path = std::env::var("TYPEDB_PASSWORD_FILE")
+        .context("A variável de ambiente TYPEDB_PASSWORD_FILE não foi definida. O entrypoint script deve configurá-la.")?;
+
+    let typedb_password_from_vault = std::fs::read_to_string(&password_file_path)
+        .with_context(|| format!("Não foi possível ler o arquivo de senha do TypeDB em '{}'", password_file_path))?;
+
     info!(
         "Tentando conectar ao TypeDB. Configurado em: {} (TLS: {})",
         settings.typedb.address, settings.typedb.tls_enabled
     );
-    let typedb_password_from_env = std::env::var("TYPEDB_PASSWORD").ok();
 
     let typedb_driver_instance = match connect_to_typedb(
         Some(settings.typedb.address.clone()),
         settings.typedb.username.clone(),
-        typedb_password_from_env,
+        Some(typedb_password_from_vault.trim().to_string()),
         settings.typedb.tls_enabled,
         settings.typedb.tls_ca_path.clone(),
     )
