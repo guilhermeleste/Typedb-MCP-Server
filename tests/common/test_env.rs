@@ -629,9 +629,11 @@ impl TestEnvironment {
                 ])?;
             }
 
-            std::fs::create_dir_all("test-secrets")?;
-            std::fs::write("test-secrets/role_id.txt", role_id)?;
-            std::fs::write("test-secrets/secret_id.txt", secret_id)?;
+            let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let secrets_dir = project_root.join("test-secrets");
+            std::fs::create_dir_all(&secrets_dir)?;
+            std::fs::write(secrets_dir.join("role_id.txt"), role_id)?;
+            std::fs::write(secrets_dir.join("secret_id.txt"), secret_id)?;
         }
 
         docker_env.stop_service(constants::MCP_SERVER_SERVICE_NAME).ok();
