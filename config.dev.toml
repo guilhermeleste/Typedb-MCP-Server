@@ -1,9 +1,10 @@
 # Configurações para o ambiente de DESENVOLVIMENTO.
 # Estes valores são tipicamente usados com `docker-compose.yml` (não o de teste).
 # 
-# Para segredos como TYPEDB_PASSWORD, use o arquivo .env na raiz do projeto.
-# Consulte .env.example para as variáveis disponíveis.
-# TYPEDB_PASSWORD definida no .env (ou como variável de ambiente) será usada.
+# Para segredos de desenvolvimento utilize o arquivo `.env` ou um Docker Secret
+# lido via `TYPEDB_PASSWORD_FILE`. Consulte `.env.example` para as variáveis
+# disponíveis. A senha do TypeDB é lida do caminho indicado em
+# `TYPEDB_PASSWORD_FILE`.
 # 
 # Variáveis de ambiente podem sobrescrever qualquer valor definido aqui.
 # Ex: MCP_TYPEDB__ADDRESS="outro.host.dev:1729"
