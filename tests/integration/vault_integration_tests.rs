@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use tokio::time::sleep;
 use vaultrs::{client::{VaultClient, VaultClientSettingsBuilder}, kv2, sys::mount};
 
+
 #[tokio::test]
 async fn test_vault_dev_server_interaction() -> Result<()> {
     // Inicia servidor Vault em modo dev
@@ -30,6 +31,7 @@ async fn test_vault_dev_server_interaction() -> Result<()> {
     // Habilita o engine KV v2
     mount::enable(&client, "kv", "kv", None).await?;
 
+
     // Escreve um segredo
     let mut data = std::collections::HashMap::new();
     data.insert("typedb_password".to_string(), "testpw".to_string());
@@ -42,6 +44,7 @@ async fn test_vault_dev_server_interaction() -> Result<()> {
         .get("typedb_password")
         .context("password key missing")?
         .as_str();
+
 
     assert_eq!(pass, "testpw");
 
