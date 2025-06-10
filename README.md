@@ -243,7 +243,8 @@ Principais seções:
 
 ## Testes de Integração
 
-Os testes de integração utilizam `docker compose` para subir instâncias do TypeDB e do servidor com configurações de exemplo. Para executá-los é necessário ter o **Docker** instalado.
+Os testes de integração utilizam `docker compose` para subir instâncias do TypeDB e do servidor com configurações de exemplo. Para executá-los é necessário ter o **Docker** instalado **e o daemon em execução**.
+
 
 Arquivos de exemplo contendo credenciais do Vault são fornecidos em `test-secrets/`. Eles são montados nos containers durante os testes e podem ser sobrescritos conforme necessário.
 
