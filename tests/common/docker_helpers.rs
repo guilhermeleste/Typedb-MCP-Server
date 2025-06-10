@@ -32,6 +32,7 @@
 
 use anyhow::{bail, Context as AnyhowContext, Result};
 use std::io::{BufRead, BufReader, ErrorKind as IoErrorKind};
+use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{
     atomic::{AtomicUsize, Ordering as AtomicOrdering},
@@ -75,6 +76,10 @@ impl DockerComposeEnv {
     /// * `project_name_prefix`: Um prefixo descritivo para o nome do projeto Docker Compose.
     ///   O nome final será algo como `prefixo_uuidcurto_contador`.
     pub fn new(compose_file_path: &str, project_name_prefix: &str) -> Self {
+        let compose_file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(compose_file_path)
+            .to_string_lossy()
+            .into_owned();
         let unique_id_num = PROJECT_COUNTER.fetch_add(1, AtomicOrdering::SeqCst);
         // Pega os primeiros 8 caracteres do UUID para manter o nome do projeto razoavelmente curto.
         let unique_id_uuid_short = uuid::Uuid::new_v4().as_simple().to_string()[..8].to_string();
@@ -99,7 +104,7 @@ impl DockerComposeEnv {
             "Criando DockerComposeEnv para projeto: '{}' usando arquivo: '{}'",
             project_name, compose_file_path
         );
-        DockerComposeEnv { compose_file_path: compose_file_path.to_string(), project_name }
+        DockerComposeEnv { compose_file_path, project_name }
     }
 
     /// Retorna o nome do projeto Docker Compose associado a esta instância.
