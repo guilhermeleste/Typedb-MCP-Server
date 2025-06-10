@@ -4,29 +4,6 @@
 # Este arquivo orquestra o Typedb-MCP-Server e suas dependências (TypeDB, Mock OAuth2 Server)
 # para permitir testes de integração automatizados.
 
-# Define um bloco de variáveis de ambiente padrão que pode ser reutilizado.
-x-default-variables: &default-env
-  # MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV:
-  #   Variável definida no HOST que especifica o caminho para o arquivo de configuração TOML
-  #   a ser usado pelo contêiner do MCP Server. O contêiner receberá uma variável
-  #   MCP_CONFIG_PATH com este valor.
-  MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV: ${MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV:-/app/test_configs/default.test.toml} # Default para um config genérico
-  
-  # MCP_TYPEDB__ADDRESS:
-  #   Variável DENTRO do contêiner typedb-mcp-server-it, indicando a qual serviço TypeDB se conectar.
-  #   Será configurada dinamicamente pelo TestEnvironment.
-  MCP_TYPEDB__ADDRESS: ${MCP_TYPEDB__ADDRESS:-typedb-server-it:1729} # Default se não sobrescrito
-
-  # TYPEDB_PASSWORD_TEST: Senha para os serviços TypeDB neste compose.
-  TYPEDB_PASSWORD_TEST: ${TYPEDB_PASSWORD_TEST:-password}
-
-  # TLS_ENABLED: Para healthcheck do Dockerfile.
-  TLS_ENABLED: ${TLS_ENABLED:-false}
-  
-  # Variáveis para o script de comando de espera do typedb-mcp-server-it (podem ser simplificadas se o script usar MCP_TYPEDB__ADDRESS)
-  timeout_duration: ${timeout_duration:-120} # Segundos
-  sleep_interval: ${sleep_interval:-3} # Segundos
-  elapsed_time: ${elapsed_time:-0} # Segundos
 
 services:
   # Serviço principal Typedb-MCP-Server para testes de integração.
@@ -44,20 +21,11 @@ services:
       - ./tests/test_configs:/app/test_configs:ro
       - ./tests/test_certs:/app/test_certs:ro
     environment:
-      # MCP_CONFIG_PATH: Caminho do arquivo TOML DENTRO do contêiner.
-      - MCP_CONFIG_PATH=${MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV}
-      
-      # --- LINHA MODIFICADA PARA LOGS DETALHADOS ---
-      - RUST_LOG=${RUST_LOG_MCP:-trace,typedb_mcp_server=trace,axum=trace,hyper=trace,h2=trace,tower=trace,rustls=trace,tokio_rustls=trace}
-      
-      # Senha para o TypeDB que o SERVIDOR MCP usará para se conectar.
-      - TYPEDB_PASSWORD=${TYPEDB_PASSWORD_TEST} # Usa a mesma senha definida para os serviços TypeDB
-      
-      # Endereço do TypeDB que o SERVIDOR MCP usará para se conectar.
-      - MCP_TYPEDB__ADDRESS=${MCP_TYPEDB__ADDRESS} 
-      
-      # Flag para o HEALTHCHECK no Dockerfile. Definido pelo TestEnvironment.
-      - TLS_ENABLED=${TLS_ENABLED}
+      - MCP_CONFIG_PATH=${MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV:-/app/test_configs/default.test.toml}
+      - TYPEDB_PASSWORD_FILE=/run/secrets/typedb_password_test
+      - MCP_TYPEDB__ADDRESS=${MCP_TYPEDB__ADDRESS:-typedb-server-it:1729}
+      - RUST_LOG=${RUST_LOG_MCP:-trace,typedb_mcp_server=trace}
+      - TLS_ENABLED=${TLS_ENABLED:-false}
     secrets:
       - source: mcp_approle_role_id
         target: /run/secrets/mcp_approle_role_id
@@ -65,49 +33,10 @@ services:
       - source: mcp_approle_secret_id
         target: /run/secrets/mcp_approle_secret_id
         mode: 0400
+      - source: typedb_password_test_secret
+        target: typedb_password_test
+        mode: 0400
     
-    entrypoint: [] # Sobrescreve entrypoint do Dockerfile
-    command: >
-      sh -c "
-        set -e 
-        echo '[DEBUG_MCP_SERVER_CMD] Script de entrada do typedb-mcp-server-it iniciado.'
-        echo '[DEBUG_MCP_SERVER_CMD]   MCP_CONFIG_PATH (caminho do TOML) = \"$$MCP_CONFIG_PATH\"'
-        echo '[DEBUG_MCP_SERVER_CMD]   TYPEDB_PASSWORD (para o cliente TypeDB interno) = \"$$TYPEDB_PASSWORD\"'
-        echo '[DEBUG_MCP_SERVER_CMD]   MCP_TYPEDB__ADDRESS (alvo do TypeDB para este MCP server) = \"$$MCP_TYPEDB__ADDRESS\"'
-        echo '[DEBUG_MCP_SERVER_CMD]   RUST_LOG (para o servidor Rust) = \"$$RUST_LOG\"'
-        echo '[DEBUG_MCP_SERVER_CMD]   TLS_ENABLED (para healthcheck Dockerfile) = \"$$TLS_ENABLED\"'
-        
-        # Extrai HOST e PORTA do MCP_TYPEDB__ADDRESS
-        TARGET_TYPEDB_HOST=$$(echo \"$$MCP_TYPEDB__ADDRESS\" | cut -d: -f1)
-        TARGET_TYPEDB_PORT=$$(echo \"$$MCP_TYPEDB__ADDRESS\" | cut -d: -f2)
-
-        echo \"[DEBUG_MCP_SERVER_CMD] Aguardando ativamente pela porta TCP do TypeDB em '$$TARGET_TYPEDB_HOST:$$TARGET_TYPEDB_PORT'...\"
-        
-        timeout_duration_val=${timeout_duration:-120} # Usa default se não definido
-        elapsed_time_val=0       
-        sleep_interval_val=${sleep_interval:-3}
-
-        while [ $$elapsed_time_val -lt $$timeout_duration_val ]; do
-          if nc -z -w 2 \"$$TARGET_TYPEDB_HOST\" \"$$TARGET_TYPEDB_PORT\" 2>/dev/null; then
-            echo \"[DEBUG_MCP_SERVER_CMD] Porta TCP do TypeDB ('$$TARGET_TYPEDB_HOST:$$TARGET_TYPEDB_PORT') está aberta.\"
-            break
-          fi
-          echo \"[DEBUG_MCP_SERVER_CMD] TypeDB ('$$TARGET_TYPEDB_HOST:$$TARGET_TYPEDB_PORT') ainda não disponível. Aguardando $$sleep_interval_val s... ($$elapsed_time_val/$$timeout_duration_val s)\"
-          sleep $$sleep_interval_val
-          elapsed_time_val=$$((elapsed_time_val + sleep_interval_val))
-        done
-        
-        if [ $$elapsed_time_val -ge $$timeout_duration_val ]; then
-          echo \"[ERROR_MCP_SERVER_CMD] Timeout de $${timeout_duration_val}s atingido ao aguardar TypeDB em '$$TARGET_TYPEDB_HOST:$$TARGET_TYPEDB_PORT'!\" >&2
-          exit 1 
-        fi
-        
-        echo \"[DEBUG_MCP_SERVER_CMD] Adicionando delay extra de 7 segundos para garantir que o serviço gRPC interno do TypeDB ('$$TARGET_TYPEDB_HOST:$$TARGET_TYPEDB_PORT') esteja completamente inicializado...\"
-        sleep 7 
-        
-        echo \"[DEBUG_MCP_SERVER_CMD] Iniciando o binário Typedb-MCP-Server ('/usr/local/bin/typedb_mcp_server')...\"
-        /usr/local/bin/typedb_mcp_server 
-      "
     
     depends_on:
       typedb-server-it:
@@ -215,3 +144,5 @@ secrets:
     file: ./test-secrets/role_id.txt
   mcp_approle_secret_id:
     file: ./test-secrets/secret_id.txt
+  typedb_password_test_secret:
+    file: ./test-secrets/typedb_password.txt
