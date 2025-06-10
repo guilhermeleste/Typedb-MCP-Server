@@ -569,7 +569,7 @@ impl TestEnvironment {
 
             let vault_container =
                 format!("{}-{}", docker_env.project_name(), constants::VAULT_SERVICE_NAME);
-            let mut exec_cmd = |args: &[&str]| -> Result<String> {
+            let exec_cmd = |args: &[&str]| -> Result<String> {
                 let output = Command::new("docker")
                     .arg("exec")
                     .arg(&vault_container)

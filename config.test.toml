@@ -14,7 +14,8 @@
 # Convenções:
 #   - Todas as chaves de configuração estão em `camelCase` para alinhar com
 #     `#[serde(rename_all = "camelCase")]` nas structs de `src/config.rs`.
-#   - Para dados sensíveis como TYPEDB_PASSWORD, SEMPRE use variáveis de ambiente.
+#   - Para dados sensíveis, utilize variáveis de ambiente ou Docker Secrets
+#     lidos por `TYPEDB_PASSWORD_FILE`. Evite armazenar senhas diretamente.
 #
 # Precedência:
 #   Lembre-se que as variáveis de ambiente (prefixo MCP_) sempre sobrescreverão
@@ -74,7 +75,7 @@ address = "localhost:1729" # Ajustar conforme o ambiente de teste
 
 # Nome de usuário para autenticação com TypeDB.
 username = "admin"
-# A SENHA DO TYPEDB (`TYPEDB_PASSWORD`) DEVE ser fornecida via variável de ambiente.
+# A senha do TypeDB deve ser lida do arquivo apontado por `TYPEDB_PASSWORD_FILE`.
 
 # Habilita (true) ou desabilita (false) TLS para a conexão com o servidor TypeDB.
 tlsEnabled = false
