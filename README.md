@@ -16,7 +16,8 @@ Este projeto visa fornecer uma ponte robusta e eficiente entre clientes que util
   - [Começando](#começando)
     - [Pré-requisitos](#pré-requisitos)
     - [Instalação](#instalação)
-      - [Usando Docker (Recomendado para Início Rápido)](#usando-docker-recomendado-para-início-rápido)
+      - [Usando Docker (Produção)](#usando-docker-produo)
+      - [Desenvolvimento Local](#desenvolvimento-local)
       - [A partir do Código-Fonte](#a-partir-do-código-fonte)
     - [Configuração Essencial](#configuração-essencial)
     - [Execução](#execução)
@@ -71,9 +72,9 @@ Construído em Rust, o servidor foi desenvolvido com foco em performance (utiliz
 
 ### Instalação
 
-#### Usando Docker (Recomendado para Início Rápido)
+#### Usando Docker (Produção)
 
-O fluxo de implantação padrão utiliza o HashiCorp Vault para fornecer a senha do TypeDB por meio do Vault Agent. Após configurar o Vault com o AppRole e o segredo `kv/typedb-mcp-server/config`, coloque os arquivos `role_id.txt` e `secret_id.txt` no diretório `production-secrets/` e execute:
+O fluxo recomendado de produção utiliza o HashiCorp Vault para fornecer a senha do TypeDB através do Vault Agent. Configure um AppRole no Vault, armazene o segredo em `kv/typedb-mcp-server/config` e coloque os arquivos `role_id.txt` e `secret_id.txt` em `production-secrets/`. Em seguida execute:
 
 ```bash
 docker compose -f docker-compose.production.yml up -d --build
@@ -83,16 +84,16 @@ Esse compose inicia um Vault, o TypeDB e o servidor MCP. O Vault Agent roda no e
 
 Para detalhes sobre configuração do Vault e uso em produção, consulte [`README.docker.md`](./README.docker.md) e a seção [Instalação com Docker](/docs/user_guide/03_installation.md#2-usando-docker).
 
-##### Desenvolvimento Local
+#### Desenvolvimento Local
 
-Para um fluxo simplificado sem Vault, use `docker-compose.yml`. Crie `local-dev-secrets/password.txt` contendo a senha e execute:
+Para desenvolvimento local sem a complexidade do Vault, utilize `docker-compose.yml`. Crie o arquivo `local-dev-secrets/password.txt` com a senha desejada e execute:
 
 ```bash
 docker compose up -d --build
 ```
 
 
-O arquivo é montado como Docker Secret e a aplicação o lê via `TYPEDB_PASSWORD_FILE=/run/secrets/db_password`.
+O compose monta esse arquivo como um Docker Secret dentro do contêiner e a aplicação o lê através da variável `TYPEDB_PASSWORD_FILE=/run/secrets/db_password`.
 
 #### A partir do Código-Fonte
 
