@@ -26,6 +26,7 @@ services:
       - MCP_TYPEDB__ADDRESS=${MCP_TYPEDB__ADDRESS:-typedb-server-it:1729}
       - RUST_LOG=${RUST_LOG_MCP:-trace,typedb_mcp_server=trace}
       - TLS_ENABLED=${TLS_ENABLED:-false}
+
     secrets:
       - source: mcp_approle_role_id
         target: /run/secrets/mcp_approle_role_id
@@ -37,6 +38,7 @@ services:
         target: typedb_password_test
         mode: 0400
     
+
     
     depends_on:
       typedb-server-it:
