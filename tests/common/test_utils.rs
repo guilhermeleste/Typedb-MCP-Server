@@ -316,6 +316,7 @@ mod tests {
             )
                 -> futures_util::future::BoxFuture<'a, Result<serde_json::Value>>; // Removido Box dyn error
 
+
         let _fn_ptr: WaitFnSig =
             |env, url, tls_mcp, oauth_up, typedb_tls_conn, timeout_duration| {
                 Box::pin(async move {

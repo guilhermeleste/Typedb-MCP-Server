@@ -196,6 +196,7 @@ impl DockerComposeEnv {
         command.arg("-p").arg(self.project_name());
 
         command.args(global_args); // Ex: --profile <nome>
+
         command.args(subcommand_args); // Ex: up -d --wait
 
         if let Some(vars) = env_vars_for_command_process {
@@ -385,6 +386,7 @@ impl DockerComposeEnv {
         let env_vars_refs: Vec<(&str, String)> =
             env_vars_for_compose_process.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
 
+
         let mut subcommand_args = vec!["down", "--remove-orphans"];
         if remove_volumes {
             subcommand_args.push("-v"); // Flag para remover volumes
@@ -424,6 +426,7 @@ impl DockerComposeEnv {
             self.project_name()
         );
 
+
         let list_output = Command::new("docker")
             .arg("ps")
             .arg("-a") // Lista todos os contêineres (rodando e parados)
@@ -457,6 +460,7 @@ impl DockerComposeEnv {
                 self.project_name(),
                 container_ids
             );
+
 
             let mut remove_cmd = Command::new("docker");
             remove_cmd.arg("rm").arg("-f"); // Força a remoção
@@ -522,6 +526,7 @@ impl DockerComposeEnv {
             debug!("Nenhuma rede órfã encontrada para projeto '{}'", self.project_name());
             return Ok(());
         }
+      
         info!(
             "Removendo {} redes órfãs para projeto '{}': {:?}",
             network_ids.len(),
@@ -537,6 +542,7 @@ impl DockerComposeEnv {
                 self.project_name()
             )
         })?;
+
 
         if !remove_output.status.success() {
             let stderr = String::from_utf8_lossy(&remove_output.stderr);
@@ -941,6 +947,7 @@ services:
         .with_context(|| {
             format!("Serviço '{}' não ficou saudável", constants::TYPEDB_SERVICE_NAME)
         })?;
+
 
         // Obtém a porta do host para o serviço TypeDB padrão.
         let typedb_host_port = env

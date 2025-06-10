@@ -133,6 +133,7 @@ async fn initialize_core_services(
             format!("Não foi possível ler o arquivo de senha do TypeDB em '{}'", password_file_path)
         })?;
 
+
     info!(
         "Tentando conectar ao TypeDB. Configurado em: {} (TLS: {})",
         settings.typedb.address, settings.typedb.tls_enabled

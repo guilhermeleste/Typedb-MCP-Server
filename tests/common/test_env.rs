@@ -343,6 +343,7 @@ impl TestEnvironment {
                 || config.profiles.contains(&TestProfile::OAuthMock)
                 || config.profiles.contains(&TestProfile::TypeDbTls))
         {
+
             info!(
                 "Aguardando serviço TypeDB padrão ('{}') ficar saudável (devido a depends_on/perfil) para projeto '{}'.",
                 constants::TYPEDB_SERVICE_NAME,
@@ -933,6 +934,7 @@ mod tests {
 
         let cfg_wrong_ca =
             TestEnvironment::derive_configuration_from_filename("typedb_tls_wrong_ca.test.toml");
+
         assert!(cfg_wrong_ca.typedb_connection_uses_tls);
         assert_eq!(cfg_wrong_ca.profiles, vec![TestProfile::TypeDbTls]);
 

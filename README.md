@@ -91,6 +91,7 @@ Para um fluxo simplificado sem Vault, use `docker-compose.yml`. Crie `local-dev-
 docker compose up -d --build
 ```
 
+
 O arquivo é montado como Docker Secret e a aplicação o lê via `TYPEDB_PASSWORD_FILE=/run/secrets/db_password`.
 
 #### A partir do Código-Fonte
@@ -129,6 +130,7 @@ Variáveis de ambiente têm precedência sobre as configurações do arquivo TOM
 **Variáveis de Ambiente Chave:**
 
 - `TYPEDB_PASSWORD_FILE`: Caminho do arquivo contendo a senha do TypeDB. Em produção esse arquivo é gerado pelo Vault Agent; em desenvolvimento é montado via Docker Secret.
+
 
     ```bash
     export TYPEDB_PASSWORD_FILE="/caminho/para/senha.txt"
