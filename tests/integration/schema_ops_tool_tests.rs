@@ -83,7 +83,8 @@ async fn test_define_simple_entity_succeeds_and_is_retrievable() -> Result<()> {
         retrieved_schema_text
     );
     assert!(
-        retrieved_schema_text.contains("attribute name") && retrieved_schema_text.contains("value string"),
+        retrieved_schema_text.contains("attribute name")
+            && retrieved_schema_text.contains("value string"),
         "Schema retornado não contém 'attribute name' e 'value string'. Recebido: {}",
         retrieved_schema_text
     );

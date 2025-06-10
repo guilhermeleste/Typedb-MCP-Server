@@ -41,8 +41,8 @@ pub use auth_helpers::{
 pub use client::{McpClientError, TestMcpClient};
 pub use docker_helpers::DockerComposeEnv;
 pub use infrastructure_helpers::{
-    cleanup_orphaned_test_containers, ensure_clean_test_environment, 
-    is_port_available, robust_cleanup_and_verify, verify_critical_ports_available
+    cleanup_orphaned_test_containers, ensure_clean_test_environment, is_port_available,
+    robust_cleanup_and_verify, verify_critical_ports_available,
 };
 pub use mcp_utils::get_text_from_call_result;
 pub use test_env::TestEnvironment;
@@ -112,11 +112,12 @@ mod tests {
             bool,
             Duration,
         ) -> BoxFuture<'a, Result<serde_json::Value>>;
-        let _wait_ready_fn_check: WaitForReadyFnType = |docker_env, url, tls, oauth, typedb_tls, dur| {
-            Box::pin(wait_for_mcp_server_ready_from_test_env(
-                docker_env, url, tls, oauth, typedb_tls, dur,
-            ))
-        };
+        let _wait_ready_fn_check: WaitForReadyFnType =
+            |docker_env, url, tls, oauth, typedb_tls, dur| {
+                Box::pin(wait_for_mcp_server_ready_from_test_env(
+                    docker_env, url, tls, oauth, typedb_tls, dur,
+                ))
+            };
 
         // Acessar constante
         assert_eq!(super::constants::MCP_SERVER_SERVICE_NAME, "typedb-mcp-server-it");

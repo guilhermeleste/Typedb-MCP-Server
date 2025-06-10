@@ -31,7 +31,7 @@ x-default-variables: &default-env
 services:
   # Serviço principal Typedb-MCP-Server para testes de integração.
   typedb-mcp-server-it:
-    profiles: ["typedb_default", "typedb_tls", "oauth_mock"]
+    profiles: ["typedb_default", "typedb_tls", "oauth_mock", "vault_integration"]
     build:
       context: . 
       dockerfile: Dockerfile 
@@ -41,7 +41,7 @@ services:
       - "8444:8443"   # MCP HTTPS/WSS (Host:Container) - Usado se server.tlsEnabled=true no TOML
       - "9091:9090"   # Métricas Prometheus (Host:Container)
     volumes:
-      - ./tests/test_configs:/app/test_configs:ro 
+      - ./tests/test_configs:/app/test_configs:ro
       - ./tests/test_certs:/app/test_certs:ro
     environment:
       # MCP_CONFIG_PATH: Caminho do arquivo TOML DENTRO do contêiner.
@@ -58,6 +58,13 @@ services:
       
       # Flag para o HEALTHCHECK no Dockerfile. Definido pelo TestEnvironment.
       - TLS_ENABLED=${TLS_ENABLED}
+    secrets:
+      - source: mcp_approle_role_id
+        target: /run/secrets/mcp_approle_role_id
+        mode: 0400
+      - source: mcp_approle_secret_id
+        target: /run/secrets/mcp_approle_secret_id
+        mode: 0400
     
     entrypoint: [] # Sobrescreve entrypoint do Dockerfile
     command: >
@@ -169,11 +176,28 @@ services:
       start_period: 5s 
     networks:
       - typedb_mcp_test_network
-    logging: 
+    logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+  vault:
+    profiles: ["vault_integration"]
+    image: vault:latest
+    container_name: ${COMPOSE_PROJECT_NAME}-vault
+    ports:
+      - "8200"
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=root-token-for-tests
+    command: server -dev
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+    networks:
+      - typedb_mcp_test_network
 
 networks:
   typedb_mcp_test_network:
@@ -183,5 +207,11 @@ networks:
 volumes:
   typedb_data_it: 
     name: ${COMPOSE_PROJECT_NAME}_typedb_data_it 
-  typedb_tls_data_it: 
+  typedb_tls_data_it:
     name: ${COMPOSE_PROJECT_NAME}_typedb_tls_data_it
+
+secrets:
+  mcp_approle_role_id:
+    file: ./test-secrets/role_id.txt
+  mcp_approle_secret_id:
+    file: ./test-secrets/secret_id.txt

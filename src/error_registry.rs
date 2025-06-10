@@ -20,35 +20,35 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
-use chrono::{DateTime, Utc};
 
 /// Sistema de registro e rastreamento de erros para prevenção automática
-/// 
+///
 /// Este módulo implementa um sistema robusto para:
 /// - Capturar erros sistematicamente
 /// - Identificar padrões recorrentes
 /// - Aplicar medidas preventivas automaticamente
 /// - Integrar com sistema f1e memory para persistência
-/// 
+///
 /// # Exemplo
-/// 
+///
 /// ```rust
 /// use typedb_mcp_server_lib::error_registry::{ErrorRegistry, ErrorEntry, ErrorCategory};
-/// 
+///
 /// let mut registry = ErrorRegistry::new();
-/// 
+///
 /// let error = ErrorEntry::new(
 ///     ErrorCategory::TypeDB,
 ///     "High".to_string(),
 ///     "src/db.rs".to_string(),
 ///     "Connection timeout during transaction".to_string()
 /// );
-/// 
+///
 /// registry.register_error(error).expect("Failed to register error");
 /// let patterns = registry.analyze_patterns().expect("Failed to analyze patterns");
 /// ```
@@ -317,16 +317,16 @@ impl Default for ErrorRegistry {
 
 impl ErrorRegistry {
     /// Cria uma nova instância do registry
-    /// 
+    ///
     /// # Argumentos
-    /// 
+    ///
     /// * `base_path` - Diretório base para arquivos de erro
-    /// 
+    ///
     /// # Exemplo
-    /// 
+    ///
     /// ```rust
     /// use typedb_mcp_server_lib::error_registry::ErrorRegistry;
-    /// 
+    ///
     /// let registry = ErrorRegistry::new();
     /// ```
     pub fn new() -> Self {
@@ -334,9 +334,9 @@ impl ErrorRegistry {
     }
 
     /// Cria uma nova instância com caminho customizado
-    /// 
+    ///
     /// # Argumentos
-    /// 
+    ///
     /// * `base_path` - Diretório base customizado
     pub fn with_path(base_path: &str) -> Self {
         Self {
@@ -347,20 +347,20 @@ impl ErrorRegistry {
     }
 
     /// Registra um novo erro no sistema
-    /// 
+    ///
     /// # Argumentos
-    /// 
+    ///
     /// * `error` - Entrada de erro a ser registrada
-    /// 
+    ///
     /// # Retorna
-    /// 
+    ///
     /// * `Result<String, Box<dyn std::error::Error>>` - ID do erro registrado
-    /// 
+    ///
     /// # Exemplo
-    /// 
+    ///
     /// ```rust
     /// use typedb_mcp_server_lib::error_registry::{ErrorRegistry, ErrorEntry, ErrorCategory};
-    /// 
+    ///
     /// let mut registry = ErrorRegistry::new();
     /// let error = ErrorEntry::new(
     ///     ErrorCategory::TypeDB,
@@ -368,10 +368,13 @@ impl ErrorRegistry {
     ///     "src/db.rs".to_string(),
     ///     "Connection timeout".to_string()
     /// );
-    /// 
+    ///
     /// let error_id = registry.register_error(error).expect("Failed to register error");
     /// ```
-    pub fn register_error(&mut self, mut error: ErrorEntry) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn register_error(
+        &mut self,
+        mut error: ErrorEntry,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         // Gera ID único se não fornecido
         if error.id.is_empty() {
             error.id = self.generate_error_id(&error.category);
@@ -386,14 +389,14 @@ impl ErrorRegistry {
 
         // Verifica se é erro recorrente
         let existing_id = self.find_similar_error(&error).map(|e| e.id.clone());
-        
+
         if let Some(existing_id) = existing_id {
             warn!(
                 existing_id = %existing_id,
                 new_id = %error.id,
                 "Erro similar detectado - incrementando contador de recorrência"
             );
-            
+
             // Incrementa contador de recorrência
             {
                 let existing = self.errors.get_mut(&existing_id).unwrap();
@@ -416,9 +419,9 @@ impl ErrorRegistry {
     }
 
     /// Analisa padrões de erro existentes
-    /// 
+    ///
     /// # Retorna
-    /// 
+    ///
     /// * `Result<PatternAnalysis, Box<dyn std::error::Error>>` - Análise de padrões
     pub fn analyze_patterns(&self) -> Result<PatternAnalysis, Box<dyn std::error::Error>> {
         info!("Iniciando análise de padrões de erro");
@@ -441,10 +444,9 @@ impl ErrorRegistry {
         }
 
         // Calcula taxa de recorrência
-        let recurring_errors = self.errors.values()
-            .filter(|e| e.recurrence_count > 1)
-            .count() as u32;
-        
+        let recurring_errors =
+            self.errors.values().filter(|e| e.recurrence_count > 1).count() as u32;
+
         let recurrence_rate = if total_errors > 0 {
             (recurring_errors as f64 / total_errors as f64) * 100.0
         } else {
@@ -452,36 +454,31 @@ impl ErrorRegistry {
         };
 
         // Identifica categorias mais problemáticas
-        let mut top_categories: Vec<_> = category_counts.iter()
-            .map(|(cat, count)| (cat.clone(), *count))
-            .collect();
+        let mut top_categories: Vec<_> =
+            category_counts.iter().map(|(cat, count)| (cat.clone(), *count)).collect();
         top_categories.sort_by(|a, b| b.1.cmp(&a.1));
-        let top_categories: Vec<_> = top_categories.into_iter()
-            .take(3)
-            .map(|(cat, _)| cat)
-            .collect();
+        let top_categories: Vec<_> =
+            top_categories.into_iter().take(3).map(|(cat, _)| cat).collect();
 
         // Gera recomendações gerais
         let general_recommendations = self.generate_general_recommendations(&patterns);
 
-        Ok(PatternAnalysis {
-            patterns,
-            recurrence_rate,
-            top_categories,
-            general_recommendations,
-        })
+        Ok(PatternAnalysis { patterns, recurrence_rate, top_categories, general_recommendations })
     }
 
     /// Gera regras de prevenção automática
-    /// 
+    ///
     /// # Argumentos
-    /// 
+    ///
     /// * `analysis` - Análise de padrões
-    /// 
+    ///
     /// # Retorna
-    /// 
+    ///
     /// * `Result<Vec<String>, Box<dyn std::error::Error>>` - Regras geradas
-    pub fn generate_prevention_rules(&self, analysis: &PatternAnalysis) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    pub fn generate_prevention_rules(
+        &self,
+        analysis: &PatternAnalysis,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         info!("Gerando regras de prevenção automática");
 
         let mut rules = Vec::new();
@@ -520,7 +517,7 @@ impl ErrorRegistry {
     /// Carrega erros existentes do disco
     pub fn load_existing_errors(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let errors_dir = Path::new(&self.base_path);
-        
+
         if !errors_dir.exists() {
             return Ok(());
         }
@@ -528,7 +525,7 @@ impl ErrorRegistry {
         for entry in fs::read_dir(errors_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.extension().map_or(false, |ext| ext == "yml") {
                 if let Ok(content) = fs::read_to_string(&path) {
                     if let Ok(error) = serde_yaml::from_str::<ErrorEntry>(&content) {
@@ -543,26 +540,29 @@ impl ErrorRegistry {
     }
 
     /// Registra uma otimização aplicada ao sistema
-    pub fn log_optimization(&mut self, optimization: OptimizationEntry) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let span = tracing::info_span!("log_optimization", 
+    pub fn log_optimization(
+        &mut self,
+        optimization: OptimizationEntry,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let span = tracing::info_span!("log_optimization",
             optimization_id = %optimization.id,
             optimization_type = ?optimization.optimization_type
         );
         let _enter = span.enter();
-        
+
         tracing::info!(
             "Registrando otimização: {} (tipo: {:?})",
             optimization.description,
             optimization.optimization_type
         );
-        
+
         // Persiste no disco para análise histórica
         let optimization_file = self.get_optimizations_file_path()?;
         let mut optimizations = self.load_optimizations()?;
         optimizations.push(optimization.clone());
-        
+
         std::fs::write(&optimization_file, serde_yaml::to_string(&optimizations)?)?;
-        
+
         // Atualiza métricas se houver impacto medido
         if let Some(ref impact) = optimization.impact_measured {
             if impact.improvement_percentage > 0.0 {
@@ -577,132 +577,140 @@ impl ErrorRegistry {
                 );
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Registra análise de mudança de código
-    pub fn log_change_analysis(&mut self, analysis: ChangeAnalysis) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub fn log_change_analysis(
+        &mut self,
+        analysis: ChangeAnalysis,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let span = tracing::info_span!("log_change_analysis",
             analysis_id = %analysis.id,
             change_category = ?analysis.change_category,
             change_score = analysis.change_score
         );
         let _enter = span.enter();
-        
+
         tracing::info!(
             "Registrando análise de mudança: categoria {:?}, score {}, {} arquivos alterados",
             analysis.change_category,
             analysis.change_score,
             analysis.files_changed
         );
-        
+
         // Log de arquivos críticos tocados
         if !analysis.critical_files_touched.is_empty() {
-            tracing::warn!(
-                "Arquivos críticos modificados: {:?}",
-                analysis.critical_files_touched
-            );
+            tracing::warn!("Arquivos críticos modificados: {:?}", analysis.critical_files_touched);
         }
-        
+
         // Log de mudanças estruturais
         if !analysis.structural_changes.is_empty() {
-            tracing::info!(
-                "Mudanças estruturais detectadas: {:?}",
-                analysis.structural_changes
-            );
+            tracing::info!("Mudanças estruturais detectadas: {:?}", analysis.structural_changes);
         }
-        
+
         // Persiste análise
         let analysis_file = self.get_change_analysis_file_path()?;
         let mut analyses = self.load_change_analyses()?;
         analyses.push(analysis);
-        
+
         std::fs::write(&analysis_file, serde_yaml::to_string(&analyses)?)?;
-        
+
         Ok(())
     }
-    
+
     /// Gera relatório de otimizações aplicadas
-    pub fn generate_optimization_report(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn generate_optimization_report(
+        &self,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let optimizations = self.load_optimizations()?;
-        
+
         let mut report = String::new();
         report.push_str("=== RELATÓRIO DE OTIMIZAÇÕES ===\n\n");
-        
+
         // Estatísticas gerais
         let total_optimizations = optimizations.len();
         let validated_optimizations = optimizations.iter().filter(|o| o.validated).count();
-        
+
         report.push_str(&format!("Total de otimizações: {}\n", total_optimizations));
         report.push_str(&format!("Otimizações validadas: {}\n\n", validated_optimizations));
-        
+
         // Agrupamento por tipo
         let mut by_type: HashMap<String, Vec<&OptimizationEntry>> = HashMap::new();
         for optimization in &optimizations {
-            by_type.entry(format!("{:?}", optimization.optimization_type))
-                   .or_insert_with(Vec::new)
-                   .push(optimization);
+            by_type
+                .entry(format!("{:?}", optimization.optimization_type))
+                .or_insert_with(Vec::new)
+                .push(optimization);
         }
-        
+
         report.push_str("=== POR TIPO ===\n");
         for (optimization_type, entries) in &by_type {
             report.push_str(&format!("{}: {} otimizações\n", optimization_type, entries.len()));
-            
+
             // Calcula impacto médio
-            let impacts: Vec<f64> = entries.iter()
+            let impacts: Vec<f64> = entries
+                .iter()
                 .filter_map(|e| e.impact_measured.as_ref())
                 .map(|i| i.improvement_percentage)
                 .collect();
-            
+
             if !impacts.is_empty() {
                 let avg_impact = impacts.iter().sum::<f64>() / impacts.len() as f64;
                 report.push_str(&format!("  Impacto médio: {:.1}%\n", avg_impact));
             }
         }
-        
+
         // Otimizações recentes (últimos 7 dias)
         let week_ago = Utc::now() - chrono::Duration::days(7);
-        let recent_optimizations: Vec<&OptimizationEntry> = optimizations.iter()
-            .filter(|o| o.applied_at > week_ago)
-            .collect();
-        
+        let recent_optimizations: Vec<&OptimizationEntry> =
+            optimizations.iter().filter(|o| o.applied_at > week_ago).collect();
+
         if !recent_optimizations.is_empty() {
             report.push_str(&format!("\n=== OTIMIZAÇÕES RECENTES (7 dias) ===\n"));
             for optimization in recent_optimizations {
-                report.push_str(&format!("- {}: {}\n", 
+                report.push_str(&format!(
+                    "- {}: {}\n",
                     optimization.applied_at.format("%Y-%m-%d"),
                     optimization.description
                 ));
             }
         }
-        
+
         Ok(report)
     }
-    
+
     /// Gera relatório de análises de mudança
-    pub fn generate_change_analysis_report(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn generate_change_analysis_report(
+        &self,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let analyses = self.load_change_analyses()?;
-        
+
         let mut report = String::new();
         report.push_str("=== RELATÓRIO DE ANÁLISES DE MUDANÇA ===\n\n");
-        
+
         // Estatísticas por categoria
         let mut by_category: HashMap<String, Vec<&ChangeAnalysis>> = HashMap::new();
         for analysis in &analyses {
-            by_category.entry(format!("{:?}", analysis.change_category))
-                       .or_insert_with(Vec::new)
-                       .push(analysis);
+            by_category
+                .entry(format!("{:?}", analysis.change_category))
+                .or_insert_with(Vec::new)
+                .push(analysis);
         }
-        
+
         report.push_str("=== DISTRIBUIÇÃO POR CATEGORIA ===\n");
         for (category, entries) in &by_category {
-            let avg_score = entries.iter().map(|e| e.change_score as f64).sum::<f64>() / entries.len() as f64;
-            report.push_str(&format!("{}: {} mudanças (score médio: {:.1})\n", 
-                category, entries.len(), avg_score
+            let avg_score =
+                entries.iter().map(|e| e.change_score as f64).sum::<f64>() / entries.len() as f64;
+            report.push_str(&format!(
+                "{}: {} mudanças (score médio: {:.1})\n",
+                category,
+                entries.len(),
+                avg_score
             ));
         }
-        
+
         // Arquivos mais modificados
         let mut file_frequency: HashMap<String, u32> = HashMap::new();
         for analysis in &analyses {
@@ -710,57 +718,65 @@ impl ErrorRegistry {
                 *file_frequency.entry(file.clone()).or_insert(0) += 1;
             }
         }
-        
+
         if !file_frequency.is_empty() {
             report.push_str("\n=== ARQUIVOS CRÍTICOS MAIS MODIFICADOS ===\n");
             let mut sorted_files: Vec<_> = file_frequency.iter().collect();
             sorted_files.sort_by(|a, b| b.1.cmp(a.1));
-            
+
             for (file, count) in sorted_files.iter().take(10) {
                 report.push_str(&format!("{}: {} vezes\n", file, count));
             }
         }
-        
+
         Ok(report)
     }
-    
+
     /// Carrega otimizações do disco
-    fn load_optimizations(&self) -> Result<Vec<OptimizationEntry>, Box<dyn std::error::Error + Send + Sync>> {
+    fn load_optimizations(
+        &self,
+    ) -> Result<Vec<OptimizationEntry>, Box<dyn std::error::Error + Send + Sync>> {
         let file_path = self.get_optimizations_file_path()?;
-        
+
         if !file_path.exists() {
             return Ok(Vec::new());
         }
-        
+
         let content = std::fs::read_to_string(file_path)?;
         let optimizations: Vec<OptimizationEntry> = serde_yaml::from_str(&content)?;
         Ok(optimizations)
     }
-    
+
     /// Carrega análises de mudança do disco
-    fn load_change_analyses(&self) -> Result<Vec<ChangeAnalysis>, Box<dyn std::error::Error + Send + Sync>> {
+    fn load_change_analyses(
+        &self,
+    ) -> Result<Vec<ChangeAnalysis>, Box<dyn std::error::Error + Send + Sync>> {
         let file_path = self.get_change_analysis_file_path()?;
-        
+
         if !file_path.exists() {
             return Ok(Vec::new());
         }
-        
+
         let content = std::fs::read_to_string(file_path)?;
         let analyses: Vec<ChangeAnalysis> = serde_yaml::from_str(&content)?;
         Ok(analyses)
     }
-    
+
     /// Caminho do arquivo de otimizações
-    fn get_optimizations_file_path(&self) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+    fn get_optimizations_file_path(
+        &self,
+    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         let mut path = PathBuf::from(&self.base_path);
         path.push("optimizations");
         std::fs::create_dir_all(&path)?;
         path.push("applied_optimizations.yml");
         Ok(path)
     }
-    
+
     /// Caminho do arquivo de análises de mudança
-    fn get_change_analysis_file_path(&self) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
+    fn get_change_analysis_file_path(
+        &self,
+    ) -> Result<PathBuf, Box<dyn std::error::Error + Send + Sync>> {
         let mut path = PathBuf::from(&self.base_path);
         path.push("change-analysis");
         std::fs::create_dir_all(&path)?;
@@ -787,9 +803,9 @@ impl ErrorRegistry {
     fn find_similar_error(&self, error: &ErrorEntry) -> Option<&ErrorEntry> {
         // Busca erros similares baseado na descrição e componente
         self.errors.values().find(|existing| {
-            existing.category == error.category &&
-            existing.component == error.component &&
-            self.similarity_score(&existing.description, &error.description) > 0.8
+            existing.category == error.category
+                && existing.component == error.component
+                && self.similarity_score(&existing.description, &error.description) > 0.8
         })
     }
 
@@ -798,60 +814,61 @@ impl ErrorRegistry {
         // Em produção, usar algoritmos mais sofisticados como Levenshtein
         let words1: std::collections::HashSet<_> = text1.split_whitespace().collect();
         let words2: std::collections::HashSet<_> = text2.split_whitespace().collect();
-        
+
         let intersection = words1.intersection(&words2).count();
         let union = words1.union(&words2).count();
-        
-        if union == 0 { 0.0 } else { intersection as f64 / union as f64 }
+
+        if union == 0 {
+            0.0
+        } else {
+            intersection as f64 / union as f64
+        }
     }
 
     fn save_error(&self, error_id: &str) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(error) = self.errors.get(error_id) {
             let file_path = format!("{}/{}.yml", self.base_path, error_id);
             let content = serde_yaml::to_string(error)?;
-            
+
             // Garante que o diretório existe
             if let Some(parent) = Path::new(&file_path).parent() {
                 fs::create_dir_all(parent)?;
             }
-            
+
             fs::write(file_path, content)?;
         }
         Ok(())
     }
 
-    fn analyze_category_pattern(&self, category: &ErrorCategory) -> Result<ErrorPattern, Box<dyn std::error::Error>> {
-        let category_errors: Vec<_> = self.errors.values()
-            .filter(|e| &e.category == category)
-            .collect();
+    fn analyze_category_pattern(
+        &self,
+        category: &ErrorCategory,
+    ) -> Result<ErrorPattern, Box<dyn std::error::Error>> {
+        let category_errors: Vec<_> =
+            self.errors.values().filter(|e| &e.category == category).collect();
 
         let frequency = category_errors.len() as u32;
-        
+
         // Analisa componentes mais afetados
         let mut component_counts: HashMap<String, u32> = HashMap::new();
         for error in &category_errors {
             *component_counts.entry(error.component.clone()).or_insert(0) += 1;
         }
-        
+
         let mut affected_components: Vec<_> = component_counts.into_iter().collect();
         affected_components.sort_by(|a, b| b.1.cmp(&a.1));
-        let affected_components = affected_components.into_iter()
-            .take(5)
-            .map(|(comp, _)| comp)
-            .collect();
+        let affected_components =
+            affected_components.into_iter().take(5).map(|(comp, _)| comp).collect();
 
         // Analisa mensagens comuns
         let mut message_counts: HashMap<String, u32> = HashMap::new();
         for error in &category_errors {
             *message_counts.entry(error.description.clone()).or_insert(0) += 1;
         }
-        
+
         let mut common_messages: Vec<_> = message_counts.into_iter().collect();
         common_messages.sort_by(|a, b| b.1.cmp(&a.1));
-        let common_messages = common_messages.into_iter()
-            .take(5)
-            .map(|(msg, _)| msg)
-            .collect();
+        let common_messages = common_messages.into_iter().take(5).map(|(msg, _)| msg).collect();
 
         // Gera recomendações específicas
         let prevention_recommendations = self.generate_category_recommendations(category);
@@ -922,7 +939,7 @@ impl ErrorRegistry {
         }
 
         recommendations.push("Continuar monitoramento automático".to_string());
-        
+
         recommendations
     }
 
@@ -932,7 +949,7 @@ impl ErrorRegistry {
         // 2. Enviar alertas
         // 3. Atualizar métricas
         // 4. Trigger prevenção automática
-        
+
         info!("Análise automática triggerada");
         Ok(())
     }
@@ -940,9 +957,9 @@ impl ErrorRegistry {
 
 impl ErrorEntry {
     /// Cria uma nova entrada de erro
-    /// 
+    ///
     /// # Argumentos
-    /// 
+    ///
     /// * `category` - Categoria do erro
     /// * `severity` - Severidade (Critical, High, Medium, Low)
     /// * `component` - Componente afetado
@@ -979,9 +996,9 @@ impl ErrorEntry {
     }
 
     /// Marca o erro como resolvido
-    /// 
+    ///
     /// # Argumentos
-    /// 
+    ///
     /// * `solution` - Solução aplicada
     /// * `resolved_by` - Responsável pela resolução
     pub fn mark_resolved(&mut self, solution: ErrorSolution, resolved_by: String) {
@@ -992,9 +1009,9 @@ impl ErrorEntry {
     }
 
     /// Adiciona medidas de prevenção
-    /// 
+    ///
     /// # Argumentos
-    /// 
+    ///
     /// * `prevention` - Medidas de prevenção implementadas
     pub fn add_prevention(&mut self, prevention: ErrorPrevention) {
         self.prevention = Some(prevention);
@@ -1074,16 +1091,16 @@ mod tests {
         }
 
         let analysis = registry.analyze_patterns().unwrap();
-        
+
         // Deve detectar padrão de compilação (>=1 erro por categoria)
-        let comp_pattern = analysis.patterns.iter()
-            .find(|p| matches!(p.category, ErrorCategory::Compilation));
-        
+        let comp_pattern =
+            analysis.patterns.iter().find(|p| matches!(p.category, ErrorCategory::Compilation));
+
         // Se temos 3 erros da mesma categoria, deve criar padrão
         if registry.errors.len() >= 2 {
             assert!(comp_pattern.is_some());
         }
-        
+
         // Verifica que a análise retorna dados válidos
         assert!(analysis.recurrence_rate >= 0.0);
         assert!(!analysis.top_categories.is_empty());
@@ -1092,7 +1109,7 @@ mod tests {
     #[test]
     fn test_prevention_rules_generation() {
         let registry = ErrorRegistry::new();
-        
+
         let pattern = ErrorPattern {
             category: ErrorCategory::Compilation,
             frequency: 3,
@@ -1117,7 +1134,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let mut registry = ErrorRegistry::default();
         registry.base_path = temp_dir.path().to_string_lossy().to_string();
-        
+
         let optimization = OptimizationEntry {
             id: "opt-001".to_string(),
             optimization_type: OptimizationType::DockerBuildOptimization,
@@ -1138,21 +1155,21 @@ mod tests {
             author: Some("test_user".to_string()),
             validated: true,
         };
-        
+
         registry.log_optimization(optimization).unwrap();
-        
+
         let report = registry.generate_optimization_report().unwrap();
         assert!(report.contains("Total de otimizações: 1"));
         assert!(report.contains("DockerBuildOptimization"));
         assert!(report.contains("60.0%"));
     }
-    
+
     #[test]
     fn test_change_analysis_logging() {
         let temp_dir = tempfile::tempdir().unwrap();
         let mut registry = ErrorRegistry::default();
         registry.base_path = temp_dir.path().to_string_lossy().to_string();
-        
+
         let analysis = ChangeAnalysis {
             id: "change-001".to_string(),
             change_category: ChangeCategory::LargeChange,
@@ -1168,9 +1185,9 @@ mod tests {
             base_branch: "main".to_string(),
             head_branch: "feature/large-feature".to_string(),
         };
-        
+
         registry.log_change_analysis(analysis).unwrap();
-        
+
         let report = registry.generate_change_analysis_report().unwrap();
         assert!(report.contains("LargeChange"));
         assert!(report.contains("src/main.rs"));

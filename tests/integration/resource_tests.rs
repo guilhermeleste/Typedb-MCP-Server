@@ -232,7 +232,7 @@ async fn test_read_dynamic_schema_resource_full_and_types() -> Result<()> {
     {
         assert_eq!(uri, &full_schema_uri);
         assert_eq!(mime_type.as_deref(), Some("text/plain+typeql"));
-        
+
         // Debug: Print actual schema content to see exact format
         // Verificar se contém os elementos básicos do schema (formato TypeDB 3.x)
         assert!(text.contains("entity person"));
@@ -278,7 +278,9 @@ async fn test_read_dynamic_schema_resource_full_and_types() -> Result<()> {
     if let ResourceContents::TextResourceContents { text, .. } = &result_invalid_type.contents[0] {
         assert!(text.contains("entity person"));
         // TypeDB 3.x não tem regras, então testamos apenas tipos
-        info!("Schema com tipo inválido deveria defaultar para 'full' (apenas tipos no TypeDB 3.x).");
+        info!(
+            "Schema com tipo inválido deveria defaultar para 'full' (apenas tipos no TypeDB 3.x)."
+        );
         info!("Schema com tipo inválido usou default 'full' como esperado.");
     } else {
         panic!("Conteúdo inesperado para schema com tipo inválido.");

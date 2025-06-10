@@ -65,7 +65,7 @@ async fn wait_for_readyz_status(
             Ok(resp) => {
                 let status_code = resp.status();
                 let body_bytes_result = resp.bytes().await;
-                
+
                 let body_text_for_log = match &body_bytes_result {
                     Ok(b) => String::from_utf8_lossy(b).to_string(),
                     Err(e) => format!("<corpo não pôde ser lido: {}>", e),
@@ -95,7 +95,10 @@ async fn wait_for_readyz_status(
                                 .and_then(|s| s.as_str())
                                 .map_or(false, |s| s.eq_ignore_ascii_case(expected_overall_status))
                             {
-                                info!("Estado esperado '{}' alcançado para /readyz.", expected_overall_status);
+                                info!(
+                                    "Estado esperado '{}' alcançado para /readyz.",
+                                    expected_overall_status
+                                );
                                 return Ok(Some(json_body));
                             }
                         }
@@ -107,7 +110,7 @@ async fn wait_for_readyz_status(
                         }
                     },
                     Err(e) => {
-                         warn!(
+                        warn!(
                             "/readyz para '{}' retornou status {} mas falhou ao ler o corpo de bytes: {}. Aguardando...",
                             readyz_url, status_code, e
                         );
@@ -169,8 +172,9 @@ async fn test_readiness_probe_all_healthy_default_config() -> Result<()> {
     info!("Iniciando teste: test_readiness_probe_all_healthy_default_config");
     let test_env =
         TestEnvironment::setup("obs_ready_ok_def", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
-    
-    let readyz_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
+
+    let readyz_url =
+        format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
     let client = reqwest::Client::new();
     let resp = client.get(&readyz_url).send().await?.json::<JsonValue>().await?;
 
@@ -192,7 +196,8 @@ async fn test_readiness_probe_all_healthy_oauth_enabled() -> Result<()> {
             .await?;
     assert!(test_env.is_oauth_enabled, "OAuth deveria estar habilitado.");
 
-    let readyz_url = format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
+    let readyz_url =
+        format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
     let client = reqwest::Client::new();
     let resp = client.get(&readyz_url).send().await?.json::<JsonValue>().await?;
 
@@ -220,7 +225,7 @@ async fn test_readiness_probe_typedb_down() -> Result<()> {
         constants::TYPEDB_SERVICE_NAME
     );
     test_env.docker_env.stop_service(constants::TYPEDB_SERVICE_NAME)?;
-    
+
     let json_response = wait_for_readyz_status(
         &readyz_url,
         "DOWN",
@@ -268,7 +273,7 @@ async fn test_readiness_probe_jwks_down_when_oauth_enabled() -> Result<()> {
         constants::MOCK_OAUTH_SERVICE_NAME
     );
     test_env.docker_env.stop_service(constants::MOCK_OAUTH_SERVICE_NAME)?;
-    
+
     let json_response_down = wait_for_readyz_status(
         &readyz_url,
         "DOWN",
@@ -294,7 +299,7 @@ async fn test_metrics_endpoint_returns_prometheus_format() -> Result<()> {
         TestEnvironment::setup("obs_metrics_fmt", constants::DEFAULT_TEST_CONFIG_FILENAME).await?;
 
     info!("Teste: Verificando /metrics em {}", test_env.mcp_metrics_url);
-    
+
     // Aguarda que o endpoint de métricas esteja disponível
     helper_wait_for_metrics_endpoint(&test_env.mcp_metrics_url, 10)
         .await
@@ -319,18 +324,14 @@ async fn test_metrics_endpoint_returns_prometheus_format() -> Result<()> {
     let body = resp.text().await?;
     debug!("/metrics body (primeiras 500 chars): {:.500}", body);
 
-    let expected_info_metric = format!(
-        "{}{}",
-        METRIC_PREFIX,
-        SERVER_INFO_GAUGE
-    );
+    let expected_info_metric = format!("{}{}", METRIC_PREFIX, SERVER_INFO_GAUGE);
     assert!(
         body.contains(&expected_info_metric),
         "A métrica de informação ('{}') não foi encontrada no corpo da resposta /metrics. Corpo recebido:\n{}",
         expected_info_metric,
         body
     );
-    
+
     info!("Endpoint /metrics acessível e contém métricas esperadas.");
     Ok(())
 }

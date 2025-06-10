@@ -190,11 +190,17 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
         if start_time.elapsed() >= timeout_duration {
             error!(
                 "Timeout ({:?}) atingido esperando /readyz em '{}'. Projeto Docker: '{}'.",
-                timeout_duration, readyz_url, docker_env_ref.project_name()
+                timeout_duration,
+                readyz_url,
+                docker_env_ref.project_name()
             );
             // Tentar logar os logs do docker_env no erro de timeout
             if let Err(e) = docker_env_ref.logs_all_services() {
-                error!("Falha ao obter logs do Docker Compose durante timeout do /readyz para {}: {}", docker_env_ref.project_name(), e);
+                error!(
+                    "Falha ao obter logs do Docker Compose durante timeout do /readyz para {}: {}",
+                    docker_env_ref.project_name(),
+                    e
+                );
             }
             bail!("/readyz timeout para '{}' após {:?}", readyz_url, timeout_duration);
         }
@@ -245,12 +251,10 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
                             let typedb_ok = typedb_comp_status.eq_ignore_ascii_case("UP");
                             let jwks_target_status_str =
                                 if expect_oauth_jwks_up { "UP" } else { "NOT_CONFIGURED" };
-                            let jwks_ok = jwks_comp_status.eq_ignore_ascii_case(jwks_target_status_str);
+                            let jwks_ok =
+                                jwks_comp_status.eq_ignore_ascii_case(jwks_target_status_str);
 
-                            if overall_status.eq_ignore_ascii_case("UP")
-                                && typedb_ok
-                                && jwks_ok
-                            {
+                            if overall_status.eq_ignore_ascii_case("UP") && typedb_ok && jwks_ok {
                                 info!("/readyz para '{}' está UP e todas as dependências configuradas estão prontas. Corpo: {}", readyz_url, serde_json::to_string(&json_body).unwrap_or_default());
                                 return Ok(json_body);
                             }
@@ -267,7 +271,7 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
                         }
                     },
                     Err(e) => {
-                         warn!(
+                        warn!(
                             "/readyz para '{}' retornou status {} mas falhou ao ler o corpo de bytes: {}. Aguardando...",
                             readyz_url, status_code, e
                         );
@@ -301,29 +305,33 @@ mod tests {
     #[test]
     fn test_wait_for_mcp_server_ready_signature_check() {
         // Apenas para verificar a assinatura da função (teste de compilação)
-        type WaitFnSig = for<'a> fn(
-            &'a DockerComposeEnv,
-            &'a str,
-            bool,
-            bool,
-            bool,
-            Duration,
-        ) -> futures_util::future::BoxFuture<'a, Result<serde_json::Value>>; // Removido Box dyn error
+        type WaitFnSig =
+            for<'a> fn(
+                &'a DockerComposeEnv,
+                &'a str,
+                bool,
+                bool,
+                bool,
+                Duration,
+            )
+                -> futures_util::future::BoxFuture<'a, Result<serde_json::Value>>; // Removido Box dyn error
 
-        let _fn_ptr: WaitFnSig = |env, url, tls_mcp, oauth_up, typedb_tls_conn, timeout_duration| {
-            Box::pin(async move {
-                wait_for_mcp_server_ready_from_test_env(
-                    env,
-                    url,
-                    tls_mcp,
-                    oauth_up,
-                    typedb_tls_conn,
-                    timeout_duration, // Corrigido para usar timeout_duration
-                )
-                .await
-                // map_err desnecessário se o tipo de erro já for anyhow::Error
-            })
-        };
+
+        let _fn_ptr: WaitFnSig =
+            |env, url, tls_mcp, oauth_up, typedb_tls_conn, timeout_duration| {
+                Box::pin(async move {
+                    wait_for_mcp_server_ready_from_test_env(
+                        env,
+                        url,
+                        tls_mcp,
+                        oauth_up,
+                        typedb_tls_conn,
+                        timeout_duration, // Corrigido para usar timeout_duration
+                    )
+                    .await
+                    // map_err desnecessário se o tipo de erro já for anyhow::Error
+                })
+            };
     }
 }
 

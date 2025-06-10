@@ -36,23 +36,10 @@ use std::sync::Arc;
 use rmcp::{
     handler::server::tool::ToolBox,
     model::{
-        CallToolRequestParam,
-        CallToolResult,
-        ErrorCode,
-        ErrorData,
-        GetPromptRequestParam,
-        GetPromptResult,
-        Implementation,
-        ListPromptsResult,
-        ListResourceTemplatesResult,
-        ListResourcesResult,
-        ListToolsResult,
-        PaginatedRequestParam,
-        ProtocolVersion,
-        ReadResourceRequestParam,
-        ReadResourceResult,
-        ResourceContents,
-        ServerCapabilities,
+        CallToolRequestParam, CallToolResult, ErrorCode, ErrorData, GetPromptRequestParam,
+        GetPromptResult, Implementation, ListPromptsResult, ListResourceTemplatesResult,
+        ListResourcesResult, ListToolsResult, PaginatedRequestParam, ProtocolVersion,
+        ReadResourceRequestParam, ReadResourceResult, ResourceContents, ServerCapabilities,
         ServerInfo,
     },
     service::{RequestContext, RoleServer},
@@ -163,23 +150,25 @@ impl McpServiceHandler {
         tool_scopes_map.insert("insert_data".to_string(), vec!["typedb:write_data".to_string()]);
         tool_scopes_map.insert("delete_data".to_string(), vec!["typedb:write_data".to_string()]);
         tool_scopes_map.insert("update_data".to_string(), vec!["typedb:write_data".to_string()]);
-        tool_scopes_map.insert("define_schema".to_string(), vec!["typedb:manage_schema".to_string()]);
-        tool_scopes_map.insert("undefine_schema".to_string(), vec!["typedb:manage_schema".to_string()]);
+        tool_scopes_map
+            .insert("define_schema".to_string(), vec!["typedb:manage_schema".to_string()]);
+        tool_scopes_map
+            .insert("undefine_schema".to_string(), vec!["typedb:manage_schema".to_string()]);
         tool_scopes_map.insert("get_schema".to_string(), vec!["typedb:manage_schema".to_string()]);
-        tool_scopes_map.insert("create_database".to_string(), vec!["typedb:manage_databases".to_string()]);
-        tool_scopes_map.insert("database_exists".to_string(), vec!["typedb:manage_databases".to_string()]);
-        tool_scopes_map.insert("list_databases".to_string(), vec!["typedb:manage_databases".to_string()]);
-        tool_scopes_map.insert("delete_database".to_string(), vec!["typedb:admin_databases".to_string()]);
-        tool_scopes_map.insert("validate_query".to_string(), vec!["typedb:validate_queries".to_string()]);
+        tool_scopes_map
+            .insert("create_database".to_string(), vec!["typedb:manage_databases".to_string()]);
+        tool_scopes_map
+            .insert("database_exists".to_string(), vec!["typedb:manage_databases".to_string()]);
+        tool_scopes_map
+            .insert("list_databases".to_string(), vec!["typedb:manage_databases".to_string()]);
+        tool_scopes_map
+            .insert("delete_database".to_string(), vec!["typedb:admin_databases".to_string()]);
+        tool_scopes_map
+            .insert("validate_query".to_string(), vec!["typedb:validate_queries".to_string()]);
 
-        Self {
-            driver,
-            settings,
-            tool_required_scopes: Arc::new(tool_scopes_map),
-            auth_context,
-        }
+        Self { driver, settings, tool_required_scopes: Arc::new(tool_scopes_map), auth_context }
     }
-    
+
     /// Construtor usado para criar uma instância "template" do `McpServiceHandler`,
     /// tipicamente para fins onde um `auth_context` específico da conexão ainda não está disponível
     /// (ex: obtenção de ServerInfo antes da conexão estar totalmente estabelecida).
@@ -342,7 +331,7 @@ impl ServerHandler for McpServiceHandler {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: ProtocolVersion::V_2025_03_26, // Última versão conhecida do RMCP
-            server_info: Implementation::from_build_env(), // Obtém info do Cargo.toml
+            server_info: Implementation::from_build_env(),   // Obtém info do Cargo.toml
             capabilities: Self::build_server_capabilities(),
             instructions: Some(SERVER_INSTRUCTIONS.to_string()),
         }
@@ -367,7 +356,8 @@ impl ServerHandler for McpServiceHandler {
 
         // Verificação de autorização baseada em escopos OAuth2
         if self.settings.oauth.enabled {
-            if let Some(ref auth_ctx) = self.auth_context { // Usa o auth_context da instância
+            if let Some(ref auth_ctx) = self.auth_context {
+                // Usa o auth_context da instância
                 if let Some(required_scopes) = self.tool_required_scopes.get(tool_name_str) {
                     if required_scopes.is_empty() {
                         tracing::debug!(tool.name = %tool_name_str, "Nenhum escopo específico requerido para esta ferramenta, acesso permitido.");

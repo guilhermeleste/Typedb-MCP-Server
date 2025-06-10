@@ -18,7 +18,7 @@ services:
       - MCP_CONFIG_PATH=/app/typedb_mcp_server_config.toml
       - TYPEDB_ADDRESS=typedb-server-dev:1729
       - TYPEDB_USERNAME=${TYPEDB_USERNAME:-admin}
-      - TYPEDB_PASSWORD=${TYPEDB_PASSWORD}
+      - TYPEDB_PASSWORD_FILE=/run/secrets/db_password
       - TYPEDB_TLS_ENABLED=${TYPEDB_TLS_ENABLED:-false}
       - TYPEDB_TLS_CA_PATH=${TYPEDB_TLS_CA_PATH:-/app/certs/typedb-ca.pem}
       - MCP_SERVER_TLS_ENABLED=${MCP_SERVER_TLS_ENABLED:-false}
@@ -31,6 +31,8 @@ services:
     networks:
       - typedb_mcp_network
     restart: unless-stopped
+    secrets:
+      - db_password
 
   typedb-server-dev:
     image: typedb/typedb:3.2.0
@@ -57,3 +59,7 @@ networks:
 
 volumes:
   typedb-dev-data:
+
+secrets:
+  db_password:
+    file: ./local-dev-secrets/password.txt

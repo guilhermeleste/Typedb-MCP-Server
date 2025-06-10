@@ -26,7 +26,7 @@
 //! o envio de requisições de ferramentas e o recebimento de respostas.
 
 use anyhow::Result;
-use futures_util::{SinkExt, StreamExt, future::BoxFuture};
+use futures_util::{future::BoxFuture, SinkExt, StreamExt};
 use http::{header::AUTHORIZATION, Request as HttpRequest, StatusCode as HttpStatus};
 use rmcp::model::{
     CallToolRequestMethod, CallToolRequestParam, CallToolResult, CancelledNotificationMethod,
@@ -39,6 +39,12 @@ use rmcp::model::{
     ReadResourceRequestMethod, ReadResourceRequestParam, ReadResourceResult, RequestId, ServerInfo,
     ServerJsonRpcMessage, ServerResult,
 };
+use rustls::pki_types::{CertificateDer, ServerName as PkiServerName, UnixTime};
+use rustls::{
+    client::danger::HandshakeSignatureValid, client::danger::ServerCertVerified,
+    client::danger::ServerCertVerifier, ClientConfig, DigitallySignedStruct, Error as RustlsError,
+    SignatureScheme,
+};
 use serde::de::DeserializeOwned;
 use serde_json::Value as JsonValue;
 use std::fmt::Debug;
@@ -48,11 +54,10 @@ use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 use tokio_tungstenite::{
-    connect_async, connect_async_tls_with_config, tungstenite::protocol::Message as TungsteniteWsMessage,
-    tungstenite::Error as WsError, Connector, MaybeTlsStream, WebSocketStream,
+    connect_async, connect_async_tls_with_config,
+    tungstenite::protocol::Message as TungsteniteWsMessage, tungstenite::Error as WsError,
+    Connector, MaybeTlsStream, WebSocketStream,
 };
-use rustls::{ClientConfig, client::danger::HandshakeSignatureValid, client::danger::ServerCertVerified, client::danger::ServerCertVerifier, DigitallySignedStruct, SignatureScheme, Error as RustlsError};
-use rustls::pki_types::{CertificateDer, ServerName as PkiServerName, UnixTime};
 use tracing::{debug, error, info, trace, warn};
 use url::Url;
 
@@ -257,18 +262,18 @@ impl TestMcpClient {
 
         // Detectar se é uma conexão WSS e configurar TLS apropriadamente
         let is_wss = url.scheme() == "wss";
-        
+
         let connect_future: BoxFuture<'_, Result<_, _>> = if is_wss {
             info!("TestMcpClient: Detectada conexão WSS, configurando TLS para aceitar certificados de teste");
-            
+
             // Criar configuração TLS que aceita certificados autoassinados para testes
             let client_config = ClientConfig::builder()
                 .dangerous()
                 .with_custom_certificate_verifier(Arc::new(NoVerification))
                 .with_no_client_auth();
-            
+
             let connector = Connector::Rustls(Arc::new(client_config));
-            
+
             debug!("TestMcpClient: Usando TLS connector customizado para aceitar certificados de teste");
             Box::pin(connect_async_tls_with_config(request, None, false, Some(connector)))
         } else {

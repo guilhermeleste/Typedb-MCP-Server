@@ -44,32 +44,56 @@ const ENV_SEPARATOR: &str = "__";
 // --- Funções Default para os campos das structs ---
 
 // Para TypeDB
-fn default_typedb_address() -> String { "localhost:1729".to_string() }
-fn default_typedb_username() -> Option<String> { Some("admin".to_string()) }
+fn default_typedb_address() -> String {
+    "localhost:1729".to_string()
+}
+fn default_typedb_username() -> Option<String> {
+    Some("admin".to_string())
+}
 
 // Para Server
-fn default_server_bind_address() -> String { "0.0.0.0:8787".to_string() }
+fn default_server_bind_address() -> String {
+    "0.0.0.0:8787".to_string()
+}
 
 // Para OAuth
 // REMOVIDO: default_oauth_jwks_refresh_interval_raw() - será tratado no pós-processamento
-fn default_oauth_jwks_request_timeout_seconds() -> Option<u64> { Some(30) }
+fn default_oauth_jwks_request_timeout_seconds() -> Option<u64> {
+    Some(30)
+}
 const DEFAULT_JWKS_REFRESH_INTERVAL_STR: &str = "1h"; // Default programático
 
 // Para Logging
-fn default_logging_rust_log() -> String { "info,typedb_mcp_server_lib=info,typedb_driver=info".to_string() }
+fn default_logging_rust_log() -> String {
+    "info,typedb_mcp_server_lib=info,typedb_driver=info".to_string()
+}
 
 // Para Cors
-fn default_cors_allowed_origins() -> Vec<String> { vec!["*".to_string()] }
+fn default_cors_allowed_origins() -> Vec<String> {
+    vec!["*".to_string()]
+}
 
 // Para RateLimit
-const fn default_rate_limit_enabled() -> bool { true }
-fn default_rate_limit_requests_per_second() -> Option<u64> { Some(100) }
-fn default_rate_limit_burst_size() -> Option<u32> { Some(200) }
+const fn default_rate_limit_enabled() -> bool {
+    true
+}
+fn default_rate_limit_requests_per_second() -> Option<u64> {
+    Some(100)
+}
+fn default_rate_limit_burst_size() -> Option<u32> {
+    Some(200)
+}
 
 // Para TracingConfig
-fn default_tracing_service_name() -> String { "typedb-mcp-server".to_string() }
-fn default_tracing_sampler() -> String { "always_on".to_string() }
-fn default_tracing_sampler_arg() -> String { "1.0".to_string() }
+fn default_tracing_service_name() -> String {
+    "typedb-mcp-server".to_string()
+}
+fn default_tracing_sampler() -> String {
+    "always_on".to_string()
+}
+fn default_tracing_sampler_arg() -> String {
+    "1.0".to_string()
+}
 
 /// Estrutura principal que agrupa todas as configurações da aplicação.
 ///
@@ -230,7 +254,7 @@ pub struct OAuth {
     #[serde(default)]
     pub audience: Option<Vec<String>>,
     /// Intervalo para recarregar o JWKS. Processado a partir de `jwks_refresh_interval_raw`.
-    #[serde(skip)] 
+    #[serde(skip)]
     pub jwks_refresh_interval: Option<Duration>,
     /// String raw para `jwks_refresh_interval` lida do TOML/ENV (ex: "1h", "30m").
     /// Usada para popular `jwks_refresh_interval`.
@@ -255,7 +279,7 @@ fn default_oauth_settings() -> OAuth {
         issuer: None,
         audience: None,
         jwks_refresh_interval: Some(Duration::from_secs(3600)), // Default programático para Duration
-        jwks_refresh_interval_raw: None, // Será None se não vier de TOML/ENV
+        jwks_refresh_interval_raw: None,                        // Será None se não vier de TOML/ENV
         jwks_request_timeout_seconds: default_oauth_jwks_request_timeout_seconds(),
         required_scopes: None,
     }
@@ -366,7 +390,6 @@ fn default_tracing_config_settings() -> TracingConfig {
     }
 }
 
-
 impl Settings {
     /// Carrega as configurações da aplicação.
     /// A ordem de precedência é:
@@ -383,71 +406,191 @@ impl Settings {
             ENV_PREFIX,
             ENV_SEPARATOR
         );
-        
+
         let s = Config::builder()
             .add_source(
-                ConfigFile::with_name(&config_file_path)
-                    .format(FileFormat::Toml)
-                    .required(false),
+                ConfigFile::with_name(&config_file_path).format(FileFormat::Toml).required(false),
             )
             .add_source(
                 Environment::with_prefix(ENV_PREFIX)
                     .separator(ENV_SEPARATOR)
-                    .try_parsing(true) 
-                    .list_separator(",") 
-                    .with_list_parse_key("oauth.issuer") 
+                    .try_parsing(true)
+                    .list_separator(",")
+                    .with_list_parse_key("oauth.issuer")
                     .with_list_parse_key("oauth.audience")
-                    .with_list_parse_key("oauth.requiredScopes") 
+                    .with_list_parse_key("oauth.requiredScopes")
                     .with_list_parse_key("cors.allowedOrigins"),
             )
             .build()?;
 
         let mut settings: Self = s.try_deserialize().map_err(|e| {
-            tracing::error!("Erro ao desserializar configurações base (TOML/ENV automático da lib config): {}", e);
+            tracing::error!(
+                "Erro ao desserializar configurações base (TOML/ENV automático da lib config): {}",
+                e
+            );
             e
         })?;
 
         tracing::debug!(config_base = ?settings, "Configurações após carregamento pela lib 'config' (TOML e ENV automático).");
 
         // --- Pós-processamento manual para garantir ENV > TOML/Default ---
-        overwrite_from_env_string(&mut settings.server.bind_address, "MCP_SERVER__BIND_ADDRESS", "MCP_SERVER__bindAddress");
-        overwrite_from_env_bool(&mut settings.server.tls_enabled, "MCP_SERVER__TLS_ENABLED", "MCP_SERVER__tlsEnabled");
-        overwrite_from_env_option_string(&mut settings.server.tls_cert_path, "MCP_SERVER__TLS_CERT_PATH", "MCP_SERVER__tlsCertPath");
-        overwrite_from_env_option_string(&mut settings.server.tls_key_path, "MCP_SERVER__TLS_KEY_PATH", "MCP_SERVER__tlsKeyPath");
-        overwrite_from_env_option_usize(&mut settings.server.worker_threads, "MCP_SERVER__WORKER_THREADS", "MCP_SERVER__workerThreads");
-        overwrite_from_env_option_string(&mut settings.server.metrics_bind_address, "MCP_SERVER__METRICS_BIND_ADDRESS", "MCP_SERVER__metricsBindAddress");
-        overwrite_from_env_option_string(&mut settings.server.mcp_websocket_path, "MCP_SERVER__MCP_WEBSOCKET_PATH", "MCP_SERVER__mcpWebsocketPath");
-        overwrite_from_env_option_string(&mut settings.server.metrics_path, "MCP_SERVER__METRICS_PATH", "MCP_SERVER__metricsPath");
+        overwrite_from_env_string(
+            &mut settings.server.bind_address,
+            "MCP_SERVER__BIND_ADDRESS",
+            "MCP_SERVER__bindAddress",
+        );
+        overwrite_from_env_bool(
+            &mut settings.server.tls_enabled,
+            "MCP_SERVER__TLS_ENABLED",
+            "MCP_SERVER__tlsEnabled",
+        );
+        overwrite_from_env_option_string(
+            &mut settings.server.tls_cert_path,
+            "MCP_SERVER__TLS_CERT_PATH",
+            "MCP_SERVER__tlsCertPath",
+        );
+        overwrite_from_env_option_string(
+            &mut settings.server.tls_key_path,
+            "MCP_SERVER__TLS_KEY_PATH",
+            "MCP_SERVER__tlsKeyPath",
+        );
+        overwrite_from_env_option_usize(
+            &mut settings.server.worker_threads,
+            "MCP_SERVER__WORKER_THREADS",
+            "MCP_SERVER__workerThreads",
+        );
+        overwrite_from_env_option_string(
+            &mut settings.server.metrics_bind_address,
+            "MCP_SERVER__METRICS_BIND_ADDRESS",
+            "MCP_SERVER__metricsBindAddress",
+        );
+        overwrite_from_env_option_string(
+            &mut settings.server.mcp_websocket_path,
+            "MCP_SERVER__MCP_WEBSOCKET_PATH",
+            "MCP_SERVER__mcpWebsocketPath",
+        );
+        overwrite_from_env_option_string(
+            &mut settings.server.metrics_path,
+            "MCP_SERVER__METRICS_PATH",
+            "MCP_SERVER__metricsPath",
+        );
 
-        overwrite_from_env_string(&mut settings.typedb.address, "MCP_TYPEDB__ADDRESS", "MCP_TYPEDB__address");
-        overwrite_from_env_option_string(&mut settings.typedb.username, "MCP_TYPEDB__USERNAME", "MCP_TYPEDB__username");
-        overwrite_from_env_bool(&mut settings.typedb.tls_enabled, "MCP_TYPEDB__TLS_ENABLED", "MCP_TYPEDB__tlsEnabled");
-        overwrite_from_env_option_string(&mut settings.typedb.tls_ca_path, "MCP_TYPEDB__TLS_CA_PATH", "MCP_TYPEDB__tlsCaPath");
+        overwrite_from_env_string(
+            &mut settings.typedb.address,
+            "MCP_TYPEDB__ADDRESS",
+            "MCP_TYPEDB__address",
+        );
+        overwrite_from_env_option_string(
+            &mut settings.typedb.username,
+            "MCP_TYPEDB__USERNAME",
+            "MCP_TYPEDB__username",
+        );
+        overwrite_from_env_bool(
+            &mut settings.typedb.tls_enabled,
+            "MCP_TYPEDB__TLS_ENABLED",
+            "MCP_TYPEDB__tlsEnabled",
+        );
+        overwrite_from_env_option_string(
+            &mut settings.typedb.tls_ca_path,
+            "MCP_TYPEDB__TLS_CA_PATH",
+            "MCP_TYPEDB__tlsCaPath",
+        );
 
-        overwrite_from_env_bool(&mut settings.oauth.enabled, "MCP_OAUTH__ENABLED", "MCP_OAUTH__enabled");
-        overwrite_from_env_option_string(&mut settings.oauth.jwks_uri, "MCP_OAUTH__JWKS_URI", "MCP_OAUTH__jwksUri");
-        overwrite_from_env_option_vec_string(&mut settings.oauth.issuer, "MCP_OAUTH__ISSUER", "MCP_OAUTH__issuer");
-        overwrite_from_env_option_vec_string(&mut settings.oauth.audience, "MCP_OAUTH__AUDIENCE", "MCP_OAUTH__audience");
-        overwrite_from_env_option_string(&mut settings.oauth.jwks_refresh_interval_raw, "MCP_OAUTH__JWKS_REFRESH_INTERVAL", "MCP_OAUTH__jwksRefreshInterval");
-        overwrite_from_env_option_u64(&mut settings.oauth.jwks_request_timeout_seconds, "MCP_OAUTH__JWKS_REQUEST_TIMEOUT_SECONDS", "MCP_OAUTH__jwksRequestTimeoutSeconds");
-        overwrite_from_env_option_vec_string(&mut settings.oauth.required_scopes, "MCP_OAUTH__REQUIRED_SCOPES", "MCP_OAUTH__requiredScopes");
+        overwrite_from_env_bool(
+            &mut settings.oauth.enabled,
+            "MCP_OAUTH__ENABLED",
+            "MCP_OAUTH__enabled",
+        );
+        overwrite_from_env_option_string(
+            &mut settings.oauth.jwks_uri,
+            "MCP_OAUTH__JWKS_URI",
+            "MCP_OAUTH__jwksUri",
+        );
+        overwrite_from_env_option_vec_string(
+            &mut settings.oauth.issuer,
+            "MCP_OAUTH__ISSUER",
+            "MCP_OAUTH__issuer",
+        );
+        overwrite_from_env_option_vec_string(
+            &mut settings.oauth.audience,
+            "MCP_OAUTH__AUDIENCE",
+            "MCP_OAUTH__audience",
+        );
+        overwrite_from_env_option_string(
+            &mut settings.oauth.jwks_refresh_interval_raw,
+            "MCP_OAUTH__JWKS_REFRESH_INTERVAL",
+            "MCP_OAUTH__jwksRefreshInterval",
+        );
+        overwrite_from_env_option_u64(
+            &mut settings.oauth.jwks_request_timeout_seconds,
+            "MCP_OAUTH__JWKS_REQUEST_TIMEOUT_SECONDS",
+            "MCP_OAUTH__jwksRequestTimeoutSeconds",
+        );
+        overwrite_from_env_option_vec_string(
+            &mut settings.oauth.required_scopes,
+            "MCP_OAUTH__REQUIRED_SCOPES",
+            "MCP_OAUTH__requiredScopes",
+        );
 
-        overwrite_from_env_string(&mut settings.logging.rust_log, "MCP_LOGGING__RUST_LOG", "MCP_LOGGING__rustLog");
-        overwrite_from_env_vec_string(&mut settings.cors.allowed_origins, "MCP_CORS__ALLOWED_ORIGINS", "MCP_CORS__allowedOrigins");
-        overwrite_from_env_bool(&mut settings.rate_limit.enabled, "MCP_RATE_LIMIT__ENABLED", "MCP_RATE_LIMIT__enabled");
-        overwrite_from_env_option_u64(&mut settings.rate_limit.requests_per_second, "MCP_RATE_LIMIT__REQUESTS_PER_SECOND", "MCP_RATE_LIMIT__requestsPerSecond");
-        overwrite_from_env_option_u32(&mut settings.rate_limit.burst_size, "MCP_RATE_LIMIT__BURST_SIZE", "MCP_RATE_LIMIT__burstSize");
+        overwrite_from_env_string(
+            &mut settings.logging.rust_log,
+            "MCP_LOGGING__RUST_LOG",
+            "MCP_LOGGING__rustLog",
+        );
+        overwrite_from_env_vec_string(
+            &mut settings.cors.allowed_origins,
+            "MCP_CORS__ALLOWED_ORIGINS",
+            "MCP_CORS__allowedOrigins",
+        );
+        overwrite_from_env_bool(
+            &mut settings.rate_limit.enabled,
+            "MCP_RATE_LIMIT__ENABLED",
+            "MCP_RATE_LIMIT__enabled",
+        );
+        overwrite_from_env_option_u64(
+            &mut settings.rate_limit.requests_per_second,
+            "MCP_RATE_LIMIT__REQUESTS_PER_SECOND",
+            "MCP_RATE_LIMIT__requestsPerSecond",
+        );
+        overwrite_from_env_option_u32(
+            &mut settings.rate_limit.burst_size,
+            "MCP_RATE_LIMIT__BURST_SIZE",
+            "MCP_RATE_LIMIT__burstSize",
+        );
 
-        overwrite_from_env_bool(&mut settings.tracing.enabled, "MCP_TRACING__ENABLED", "MCP_TRACING__enabled");
-        overwrite_from_env_option_string(&mut settings.tracing.exporter_otlp_endpoint, "MCP_TRACING__EXPORTER_OTLP_ENDPOINT", "MCP_TRACING__exporterOtlpEndpoint");
-        overwrite_from_env_string(&mut settings.tracing.service_name, "MCP_TRACING__SERVICE_NAME", "MCP_TRACING__serviceName");
-        overwrite_from_env_string(&mut settings.tracing.sampler, "MCP_TRACING__SAMPLER", "MCP_TRACING__sampler");
-        overwrite_from_env_string(&mut settings.tracing.sampler_arg, "MCP_TRACING__SAMPLER_ARG", "MCP_TRACING__samplerArg");
+        overwrite_from_env_bool(
+            &mut settings.tracing.enabled,
+            "MCP_TRACING__ENABLED",
+            "MCP_TRACING__enabled",
+        );
+        overwrite_from_env_option_string(
+            &mut settings.tracing.exporter_otlp_endpoint,
+            "MCP_TRACING__EXPORTER_OTLP_ENDPOINT",
+            "MCP_TRACING__exporterOtlpEndpoint",
+        );
+        overwrite_from_env_string(
+            &mut settings.tracing.service_name,
+            "MCP_TRACING__SERVICE_NAME",
+            "MCP_TRACING__serviceName",
+        );
+        overwrite_from_env_string(
+            &mut settings.tracing.sampler,
+            "MCP_TRACING__SAMPLER",
+            "MCP_TRACING__sampler",
+        );
+        overwrite_from_env_string(
+            &mut settings.tracing.sampler_arg,
+            "MCP_TRACING__SAMPLER_ARG",
+            "MCP_TRACING__samplerArg",
+        );
 
         // Processamento final de `jwks_refresh_interval_raw` -> `jwks_refresh_interval` (Duration)
         // Se jwks_refresh_interval_raw for None após o override da ENV (ou se não houve ENV),
         // usar o default programático.
-        let raw_interval_to_parse = settings.oauth.jwks_refresh_interval_raw.as_deref()
+        let raw_interval_to_parse = settings
+            .oauth
+            .jwks_refresh_interval_raw
+            .as_deref()
             .filter(|s| !s.is_empty()) // Considera string vazia da ENV como "não definido"
             .unwrap_or(DEFAULT_JWKS_REFRESH_INTERVAL_STR); // Default programático "1h"
 
@@ -456,15 +599,18 @@ impl Settings {
                 tracing::debug!("[CONFIG_DURATION_PARSE] Convertendo jwks_refresh_interval_raw ('{}') para Duration: {:?}", raw_interval_to_parse, duration);
                 settings.oauth.jwks_refresh_interval = Some(duration);
                 // Se o valor parseado era o default programático, atualiza o raw para consistência (opcional, mas bom para debug)
-                if raw_interval_to_parse == DEFAULT_JWKS_REFRESH_INTERVAL_STR && settings.oauth.jwks_refresh_interval_raw.is_none() {
-                    settings.oauth.jwks_refresh_interval_raw = Some(DEFAULT_JWKS_REFRESH_INTERVAL_STR.to_string());
+                if raw_interval_to_parse == DEFAULT_JWKS_REFRESH_INTERVAL_STR
+                    && settings.oauth.jwks_refresh_interval_raw.is_none()
+                {
+                    settings.oauth.jwks_refresh_interval_raw =
+                        Some(DEFAULT_JWKS_REFRESH_INTERVAL_STR.to_string());
                 }
             }
             Err(e) => {
                 // Se falhou ao parsear algo que NÃO era o default programático, é um erro de config.
                 if raw_interval_to_parse != DEFAULT_JWKS_REFRESH_INTERVAL_STR {
                     tracing::error!("[CONFIG_ERROR] Falha ao parsear jwksRefreshInterval (valor: '{}'): {}. Usando default da struct se disponível ou falhando.", raw_interval_to_parse, e);
-                     return Err(ConfigError::Message(format!(
+                    return Err(ConfigError::Message(format!(
                         "Falha ao parsear 'oauth.jwksRefreshInterval' (valor ENV/TOML: '{}'): {}",
                         raw_interval_to_parse, e
                     )));
@@ -473,17 +619,20 @@ impl Settings {
                 // o `settings.oauth.jwks_refresh_interval` já deve ter o Duration default de `default_oauth_settings()`.
                 // Se não tiver, logamos um aviso e usamos o default Duration.
                 if settings.oauth.jwks_refresh_interval.is_none() {
-                     tracing::warn!("[CONFIG_WARN] jwks_refresh_interval (Duration) ainda é None após tentativa de parse de '{}'. Aplicando default Duration (1h).", raw_interval_to_parse);
-                     settings.oauth.jwks_refresh_interval = Some(Duration::from_secs(3600));
+                    tracing::warn!("[CONFIG_WARN] jwks_refresh_interval (Duration) ainda é None após tentativa de parse de '{}'. Aplicando default Duration (1h).", raw_interval_to_parse);
+                    settings.oauth.jwks_refresh_interval = Some(Duration::from_secs(3600));
                 }
-                tracing::debug!("[CONFIG_DURATION_PARSE] Usando jwks_refresh_interval (Duration): {:?}", settings.oauth.jwks_refresh_interval);
+                tracing::debug!(
+                    "[CONFIG_DURATION_PARSE] Usando jwks_refresh_interval (Duration): {:?}",
+                    settings.oauth.jwks_refresh_interval
+                );
             }
         }
         // Garante que jwks_refresh_interval_raw reflita o que foi efetivamente usado para parsear Duration, ou o default se nada foi fornecido.
         if settings.oauth.jwks_refresh_interval_raw.is_none() {
-            settings.oauth.jwks_refresh_interval_raw = Some(DEFAULT_JWKS_REFRESH_INTERVAL_STR.to_string());
+            settings.oauth.jwks_refresh_interval_raw =
+                Some(DEFAULT_JWKS_REFRESH_INTERVAL_STR.to_string());
         }
-
 
         tracing::info!("Configurações carregadas e pós-processadas com sucesso (com overrides de ENV explícitos).");
         tracing::debug!(config = ?settings, "Configurações finais da aplicação.");
@@ -506,7 +655,11 @@ fn overwrite_from_env_string(target_field: &mut String, env_key_upper: &str, env
 
 /// Tenta ler uma variável de ambiente e, se encontrada, sobrescreve `target_field` (que é `Option<String>`).
 /// Se a ENV for uma string vazia, o campo se torna `None`.
-fn overwrite_from_env_option_string(target_field: &mut Option<String>, env_key_upper: &str, env_key_camel: &str) {
+fn overwrite_from_env_option_string(
+    target_field: &mut Option<String>,
+    env_key_upper: &str,
+    env_key_camel: &str,
+) {
     if let Ok(val) = env::var(env_key_upper).or_else(|_| env::var(env_key_camel)) {
         let field_name = env_key_upper.to_lowercase().replace("__", ".");
         if val.is_empty() {
@@ -538,7 +691,11 @@ fn overwrite_from_env_bool(target_field: &mut bool, env_key_upper: &str, env_key
 }
 
 /// Tenta ler uma variável de ambiente, parseá-la como `usize`, e sobrescrever `target_field`.
-fn overwrite_from_env_option_usize(target_field: &mut Option<usize>, env_key_upper: &str, env_key_camel: &str) {
+fn overwrite_from_env_option_usize(
+    target_field: &mut Option<usize>,
+    env_key_upper: &str,
+    env_key_camel: &str,
+) {
     if let Ok(val) = env::var(env_key_upper).or_else(|_| env::var(env_key_camel)) {
         let field_name = env_key_upper.to_lowercase().replace("__", ".");
         if val.is_empty() {
@@ -554,10 +711,14 @@ fn overwrite_from_env_option_usize(target_field: &mut Option<usize>, env_key_upp
 }
 
 /// Tenta ler uma variável de ambiente, parseá-la como `u64`, e sobrescrever `target_field`.
-fn overwrite_from_env_option_u64(target_field: &mut Option<u64>, env_key_upper: &str, env_key_camel: &str) {
+fn overwrite_from_env_option_u64(
+    target_field: &mut Option<u64>,
+    env_key_upper: &str,
+    env_key_camel: &str,
+) {
     if let Ok(val) = env::var(env_key_upper).or_else(|_| env::var(env_key_camel)) {
         let field_name = env_key_upper.to_lowercase().replace("__", ".");
-         if val.is_empty() {
+        if val.is_empty() {
             *target_field = None;
             tracing::info!("[ENV_OVERRIDE] Campo '{}' via ENV: None (de string vazia)", field_name);
         } else if let Ok(parsed) = val.parse::<u64>() {
@@ -570,7 +731,11 @@ fn overwrite_from_env_option_u64(target_field: &mut Option<u64>, env_key_upper: 
 }
 
 /// Tenta ler uma variável de ambiente, parseá-la como `u32`, e sobrescrever `target_field`.
-fn overwrite_from_env_option_u32(target_field: &mut Option<u32>, env_key_upper: &str, env_key_camel: &str) {
+fn overwrite_from_env_option_u32(
+    target_field: &mut Option<u32>,
+    env_key_upper: &str,
+    env_key_camel: &str,
+) {
     if let Ok(val) = env::var(env_key_upper).or_else(|_| env::var(env_key_camel)) {
         let field_name = env_key_upper.to_lowercase().replace("__", ".");
         if val.is_empty() {
@@ -588,17 +753,19 @@ fn overwrite_from_env_option_u32(target_field: &mut Option<u32>, env_key_upper: 
 /// Tenta ler uma variável de ambiente (string separada por vírgulas), parseá-la como `Vec<String>`,
 /// e sobrescrever `target_field` (que é `Option<Vec<String>>`). Se a ENV for vazia ou resultar
 /// em um Vec vazio após parse, o `target_field` se torna `None`.
-fn overwrite_from_env_option_vec_string(target_field: &mut Option<Vec<String>>, env_key_upper: &str, env_key_camel: &str) {
+fn overwrite_from_env_option_vec_string(
+    target_field: &mut Option<Vec<String>>,
+    env_key_upper: &str,
+    env_key_camel: &str,
+) {
     if let Ok(val) = env::var(env_key_upper).or_else(|_| env::var(env_key_camel)) {
         let field_name = env_key_upper.to_lowercase().replace("__", ".");
         if val.is_empty() {
-            *target_field = None; 
+            *target_field = None;
             tracing::info!("[ENV_OVERRIDE] Campo '{}' via ENV: None (de string vazia)", field_name);
         } else {
-            let parsed: Vec<String> = val.split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()) 
-                .collect();
+            let parsed: Vec<String> =
+                val.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
             if !parsed.is_empty() {
                 tracing::info!("[ENV_OVERRIDE] Campo '{}' via ENV: {:?}", field_name, parsed);
                 *target_field = Some(parsed);
@@ -613,22 +780,24 @@ fn overwrite_from_env_option_vec_string(target_field: &mut Option<Vec<String>>, 
 /// Tenta ler uma variável de ambiente (string separada por vírgulas), parseá-la como `Vec<String>`,
 /// e sobrescrever `target_field` (que é `Vec<String>`). Só sobrescreve se a ENV fornecer valores não vazios.
 /// Se a ENV for vazia ou resultar em um Vec vazio, o valor original do `target_field` (do TOML/default) é mantido.
-fn overwrite_from_env_vec_string(target_field: &mut Vec<String>, env_key_upper: &str, env_key_camel: &str) {
+fn overwrite_from_env_vec_string(
+    target_field: &mut Vec<String>,
+    env_key_upper: &str,
+    env_key_camel: &str,
+) {
     if let Ok(val) = env::var(env_key_upper).or_else(|_| env::var(env_key_camel)) {
         let field_name = env_key_upper.to_lowercase().replace("__", ".");
         if !val.is_empty() {
-            let parsed: Vec<String> = val.split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-            if !parsed.is_empty() { 
+            let parsed: Vec<String> =
+                val.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+            if !parsed.is_empty() {
                 tracing::info!("[ENV_OVERRIDE] Campo '{}' via ENV: {:?}", field_name, parsed);
                 *target_field = parsed;
             } else {
                 tracing::info!("[ENV_OVERRIDE_INFO] ENV para '{}' (valor: '{}') resultou em Vec vazio após parse. Mantendo valor de TOML/default: {:?}", field_name, val, target_field);
             }
         } else {
-             tracing::info!("[ENV_OVERRIDE_INFO] ENV para '{}' estava vazia. Mantendo valor de TOML/default: {:?}", field_name, target_field);
+            tracing::info!("[ENV_OVERRIDE_INFO] ENV para '{}' estava vazia. Mantendo valor de TOML/default: {:?}", field_name, target_field);
         }
     }
 }
@@ -646,39 +815,68 @@ mod tests {
         file.flush().expect("Failed to flush temp file");
         file
     }
-    
+
     fn clear_test_env_vars() {
         let vars_to_clear = [
             "MCP_CONFIG_PATH",
-            "MCP_SERVER__BIND_ADDRESS", "MCP_SERVER__bindAddress",
-            "MCP_SERVER__TLS_ENABLED", "MCP_SERVER__tlsEnabled",
-            "MCP_SERVER__TLS_CERT_PATH", "MCP_SERVER__tlsCertPath",
-            "MCP_SERVER__TLS_KEY_PATH", "MCP_SERVER__tlsKeyPath",
-            "MCP_SERVER__WORKER_THREADS", "MCP_SERVER__workerThreads",
-            "MCP_SERVER__METRICS_BIND_ADDRESS", "MCP_SERVER__metricsBindAddress",
-            "MCP_SERVER__MCP_WEBSOCKET_PATH", "MCP_SERVER__mcpWebsocketPath",
-            "MCP_SERVER__METRICS_PATH", "MCP_SERVER__metricsPath",
-            "MCP_TYPEDB__ADDRESS", "MCP_TYPEDB__address",
-            "MCP_TYPEDB__USERNAME", "MCP_TYPEDB__username",
-            "MCP_TYPEDB__TLS_ENABLED", "MCP_TYPEDB__tlsEnabled",
-            "MCP_TYPEDB__TLS_CA_PATH", "MCP_TYPEDB__tlsCaPath",
-            "MCP_OAUTH__ENABLED", "MCP_OAUTH__enabled",
-            "MCP_OAUTH__JWKS_URI", "MCP_OAUTH__jwksUri",
-            "MCP_OAUTH__ISSUER", "MCP_OAUTH__issuer",
-            "MCP_OAUTH__AUDIENCE", "MCP_OAUTH__audience",
-            "MCP_OAUTH__JWKS_REFRESH_INTERVAL", "MCP_OAUTH__jwksRefreshInterval",
-            "MCP_OAUTH__JWKS_REQUEST_TIMEOUT_SECONDS", "MCP_OAUTH__jwksRequestTimeoutSeconds",
-            "MCP_OAUTH__REQUIRED_SCOPES", "MCP_OAUTH__requiredScopes",
-            "MCP_LOGGING__RUST_LOG", "MCP_LOGGING__rustLog",
-            "MCP_CORS__ALLOWED_ORIGINS", "MCP_CORS__allowedOrigins",
-            "MCP_RATE_LIMIT__ENABLED", "MCP_RATE_LIMIT__enabled",
-            "MCP_RATE_LIMIT__REQUESTS_PER_SECOND", "MCP_RATE_LIMIT__requestsPerSecond",
-            "MCP_RATE_LIMIT__BURST_SIZE", "MCP_RATE_LIMIT__burstSize",
-            "MCP_TRACING__ENABLED", "MCP_TRACING__enabled",
-            "MCP_TRACING__EXPORTER_OTLP_ENDPOINT", "MCP_TRACING__exporterOtlpEndpoint",
-            "MCP_TRACING__SERVICE_NAME", "MCP_TRACING__serviceName",
-            "MCP_TRACING__SAMPLER", "MCP_TRACING__sampler",
-            "MCP_TRACING__SAMPLER_ARG", "MCP_TRACING__samplerArg",
+            "MCP_SERVER__BIND_ADDRESS",
+            "MCP_SERVER__bindAddress",
+            "MCP_SERVER__TLS_ENABLED",
+            "MCP_SERVER__tlsEnabled",
+            "MCP_SERVER__TLS_CERT_PATH",
+            "MCP_SERVER__tlsCertPath",
+            "MCP_SERVER__TLS_KEY_PATH",
+            "MCP_SERVER__tlsKeyPath",
+            "MCP_SERVER__WORKER_THREADS",
+            "MCP_SERVER__workerThreads",
+            "MCP_SERVER__METRICS_BIND_ADDRESS",
+            "MCP_SERVER__metricsBindAddress",
+            "MCP_SERVER__MCP_WEBSOCKET_PATH",
+            "MCP_SERVER__mcpWebsocketPath",
+            "MCP_SERVER__METRICS_PATH",
+            "MCP_SERVER__metricsPath",
+            "MCP_TYPEDB__ADDRESS",
+            "MCP_TYPEDB__address",
+            "MCP_TYPEDB__USERNAME",
+            "MCP_TYPEDB__username",
+            "MCP_TYPEDB__TLS_ENABLED",
+            "MCP_TYPEDB__tlsEnabled",
+            "MCP_TYPEDB__TLS_CA_PATH",
+            "MCP_TYPEDB__tlsCaPath",
+            "MCP_OAUTH__ENABLED",
+            "MCP_OAUTH__enabled",
+            "MCP_OAUTH__JWKS_URI",
+            "MCP_OAUTH__jwksUri",
+            "MCP_OAUTH__ISSUER",
+            "MCP_OAUTH__issuer",
+            "MCP_OAUTH__AUDIENCE",
+            "MCP_OAUTH__audience",
+            "MCP_OAUTH__JWKS_REFRESH_INTERVAL",
+            "MCP_OAUTH__jwksRefreshInterval",
+            "MCP_OAUTH__JWKS_REQUEST_TIMEOUT_SECONDS",
+            "MCP_OAUTH__jwksRequestTimeoutSeconds",
+            "MCP_OAUTH__REQUIRED_SCOPES",
+            "MCP_OAUTH__requiredScopes",
+            "MCP_LOGGING__RUST_LOG",
+            "MCP_LOGGING__rustLog",
+            "MCP_CORS__ALLOWED_ORIGINS",
+            "MCP_CORS__allowedOrigins",
+            "MCP_RATE_LIMIT__ENABLED",
+            "MCP_RATE_LIMIT__enabled",
+            "MCP_RATE_LIMIT__REQUESTS_PER_SECOND",
+            "MCP_RATE_LIMIT__requestsPerSecond",
+            "MCP_RATE_LIMIT__BURST_SIZE",
+            "MCP_RATE_LIMIT__burstSize",
+            "MCP_TRACING__ENABLED",
+            "MCP_TRACING__enabled",
+            "MCP_TRACING__EXPORTER_OTLP_ENDPOINT",
+            "MCP_TRACING__exporterOtlpEndpoint",
+            "MCP_TRACING__SERVICE_NAME",
+            "MCP_TRACING__serviceName",
+            "MCP_TRACING__SAMPLER",
+            "MCP_TRACING__sampler",
+            "MCP_TRACING__SAMPLER_ARG",
+            "MCP_TRACING__samplerArg",
         ];
         for var_key in vars_to_clear {
             env::remove_var(var_key);
@@ -686,28 +884,40 @@ mod tests {
     }
 
     struct EnvCleaner;
-    impl EnvCleaner { fn new() -> Self { clear_test_env_vars(); EnvCleaner } }
-    impl Drop for EnvCleaner { fn drop(&mut self) { clear_test_env_vars(); } }
+    impl EnvCleaner {
+        fn new() -> Self {
+            clear_test_env_vars();
+            EnvCleaner
+        }
+    }
+    impl Drop for EnvCleaner {
+        fn drop(&mut self) {
+            clear_test_env_vars();
+        }
+    }
 
     #[test]
     #[serial]
     fn test_load_defaults_when_no_file_or_env_vars() {
         let _env_cleaner = EnvCleaner::new();
-        env::remove_var("MCP_CONFIG_PATH"); 
+        env::remove_var("MCP_CONFIG_PATH");
 
         let settings = Settings::new().expect("Falha ao carregar configurações default");
 
         assert_eq!(settings.typedb.address, default_typedb_address());
         assert_eq!(settings.typedb.username, default_typedb_username());
-        assert_eq!(settings.typedb.tls_enabled, false); 
+        assert_eq!(settings.typedb.tls_enabled, false);
         assert_eq!(settings.server.bind_address, default_server_bind_address());
-        assert_eq!(settings.oauth.enabled, false); 
-        assert_eq!(settings.oauth.jwks_refresh_interval, Some(Duration::from_secs(3600))); 
-        assert_eq!(settings.oauth.jwks_refresh_interval_raw, Some(DEFAULT_JWKS_REFRESH_INTERVAL_STR.to_string()));
+        assert_eq!(settings.oauth.enabled, false);
+        assert_eq!(settings.oauth.jwks_refresh_interval, Some(Duration::from_secs(3600)));
+        assert_eq!(
+            settings.oauth.jwks_refresh_interval_raw,
+            Some(DEFAULT_JWKS_REFRESH_INTERVAL_STR.to_string())
+        );
         assert_eq!(settings.logging.rust_log, default_logging_rust_log());
         assert_eq!(settings.cors.allowed_origins, default_cors_allowed_origins());
         assert_eq!(settings.rate_limit.enabled, default_rate_limit_enabled());
-        assert_eq!(settings.tracing.enabled, false); 
+        assert_eq!(settings.tracing.enabled, false);
     }
 
     #[test]
@@ -766,20 +976,26 @@ mod tests {
         assert_eq!(settings.oauth.issuer, Some(vec!["issuer1".to_string(), "issuer2".to_string()]));
         assert_eq!(settings.oauth.audience, Some(vec!["aud1".to_string()]));
         assert_eq!(settings.oauth.jwks_refresh_interval_raw, Some("30m".to_string()));
-        assert_eq!(settings.oauth.jwks_refresh_interval, Some(Duration::from_secs(30 * 60))); 
-        assert_eq!(settings.oauth.required_scopes, Some(vec!["scope1".to_string(), "scope2".to_string()]));
+        assert_eq!(settings.oauth.jwks_refresh_interval, Some(Duration::from_secs(30 * 60)));
+        assert_eq!(
+            settings.oauth.required_scopes,
+            Some(vec!["scope1".to_string(), "scope2".to_string()])
+        );
         assert_eq!(settings.logging.rust_log, "debug");
         assert_eq!(settings.cors.allowed_origins, vec!["http://frontend.local".to_string()]);
         assert!(!settings.rate_limit.enabled);
         assert_eq!(settings.rate_limit.requests_per_second, Some(50));
         assert!(settings.tracing.enabled);
-        assert_eq!(settings.tracing.exporter_otlp_endpoint, Some("http://otel.local:4317".to_string()));
+        assert_eq!(
+            settings.tracing.exporter_otlp_endpoint,
+            Some("http://otel.local:4317".to_string())
+        );
         assert_eq!(settings.tracing.service_name, "my-mcp-server");
     }
 
     #[test]
     #[serial]
-    fn test_override_toml_with_env_vars() { 
+    fn test_override_toml_with_env_vars() {
         let _env_cleaner = EnvCleaner::new();
         let toml_content = r#"
             [server]
@@ -794,30 +1010,32 @@ mod tests {
         let temp_file = create_temp_toml_config(toml_content);
         env::set_var("MCP_CONFIG_PATH", temp_file.path());
 
-        env::set_var("MCP_SERVER__BIND_ADDRESS", "127.0.0.1:8888"); 
-        env::set_var("MCP_SERVER__TLS_ENABLED", "true");      
-        env_remove_var_silently("MCP_SERVER__tlsEnabled"); 
+        env::set_var("MCP_SERVER__BIND_ADDRESS", "127.0.0.1:8888");
+        env::set_var("MCP_SERVER__TLS_ENABLED", "true");
+        env_remove_var_silently("MCP_SERVER__tlsEnabled");
 
-        env::set_var("MCP_OAUTH__ENABLED", "true");           
+        env::set_var("MCP_OAUTH__ENABLED", "true");
         env_remove_var_silently("MCP_OAUTH__enabled");
 
-        env::set_var("MCP_OAUTH__ISSUER", "env_issuer1,env_issuer2"); 
+        env::set_var("MCP_OAUTH__ISSUER", "env_issuer1,env_issuer2");
         env_remove_var_silently("MCP_OAUTH__issuer");
 
-        env::set_var("MCP_OAUTH__JWKS_REFRESH_INTERVAL", "15m"); 
+        env::set_var("MCP_OAUTH__JWKS_REFRESH_INTERVAL", "15m");
         env_remove_var_silently("MCP_OAUTH__jwksRefreshInterval");
-
 
         let settings = Settings::new().expect("Falha ao carregar config com overrides de env");
 
         assert_eq!(settings.server.bind_address, "127.0.0.1:8888");
         assert!(settings.server.tls_enabled);
         assert!(settings.oauth.enabled);
-        assert_eq!(settings.oauth.issuer, Some(vec!["env_issuer1".to_string(), "env_issuer2".to_string()]));
+        assert_eq!(
+            settings.oauth.issuer,
+            Some(vec!["env_issuer1".to_string(), "env_issuer2".to_string()])
+        );
         assert_eq!(settings.oauth.jwks_refresh_interval_raw, Some("15m".to_string()));
         assert_eq!(settings.oauth.jwks_refresh_interval, Some(Duration::from_secs(15 * 60)));
     }
-    
+
     /// Helper para remover uma ENV var, ignorando se ela não existir.
     fn env_remove_var_silently(key: &str) {
         let _ = env::remove_var(key);
@@ -833,17 +1051,18 @@ mod tests {
         "#;
         let temp_file = create_temp_toml_config(toml_content);
         env::set_var("MCP_CONFIG_PATH", temp_file.path());
-        
-        env::set_var("MCP_SERVER__bindAddress", "127.0.0.1:7777"); // ENV camelCase
-        env_remove_var_silently("MCP_SERVER__BIND_ADDRESS"); 
 
-        let settings = Settings::new().expect("Falha ao carregar config com override de env camelCase");
+        env::set_var("MCP_SERVER__bindAddress", "127.0.0.1:7777"); // ENV camelCase
+        env_remove_var_silently("MCP_SERVER__BIND_ADDRESS");
+
+        let settings =
+            Settings::new().expect("Falha ao carregar config com override de env camelCase");
         assert_eq!(settings.server.bind_address, "127.0.0.1:7777");
     }
 
     #[test]
     #[serial]
-    fn test_partial_toml_uses_struct_defaults() { 
+    fn test_partial_toml_uses_struct_defaults() {
         let _env_cleaner = EnvCleaner::new();
         let toml_content = r#"
             [typedb]
@@ -855,14 +1074,14 @@ mod tests {
         let settings = Settings::new().expect("Falha ao carregar config parcial");
 
         assert_eq!(settings.typedb.address, "specific.typedb.host:1729");
-        assert_eq!(settings.typedb.username, default_typedb_username()); 
-        assert_eq!(settings.typedb.tls_enabled, false); 
-        assert_eq!(settings.server.bind_address, default_server_bind_address()); 
+        assert_eq!(settings.typedb.username, default_typedb_username());
+        assert_eq!(settings.typedb.tls_enabled, false);
+        assert_eq!(settings.server.bind_address, default_server_bind_address());
     }
-    
+
     #[test]
     #[serial]
-    fn test_jwks_refresh_interval_parsing_from_raw_string_in_toml() { 
+    fn test_jwks_refresh_interval_parsing_from_raw_string_in_toml() {
         let _env_cleaner = EnvCleaner::new();
         let toml_content = r#"
             [oauth]
@@ -878,7 +1097,7 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_jwks_refresh_interval_uses_struct_default_if_absent_in_toml_and_env() { 
+    fn test_jwks_refresh_interval_uses_struct_default_if_absent_in_toml_and_env() {
         let _env_cleaner = EnvCleaner::new();
         let toml_content = r#"
             [oauth]
@@ -886,17 +1105,21 @@ mod tests {
         "#;
         let temp_file = create_temp_toml_config(toml_content);
         env::set_var("MCP_CONFIG_PATH", temp_file.path());
-        
+
         env_remove_var_silently("MCP_OAUTH__JWKS_REFRESH_INTERVAL");
         env_remove_var_silently("MCP_OAUTH__jwksRefreshInterval");
 
-        let settings = Settings::new().expect("Falha ao carregar config sem jwksRefreshInterval raw");
-        
+        let settings =
+            Settings::new().expect("Falha ao carregar config sem jwksRefreshInterval raw");
+
         // O default para jwks_refresh_interval (Duration) é Some(1h)
         // O default para jwks_refresh_interval_raw (Option<String>) agora é None, mas será preenchido
         // para o default programático "1h" no final do Settings::new() se nenhuma ENV/TOML definir.
         assert_eq!(settings.oauth.jwks_refresh_interval, Some(Duration::from_secs(3600)));
-        assert_eq!(settings.oauth.jwks_refresh_interval_raw, Some(DEFAULT_JWKS_REFRESH_INTERVAL_STR.to_string()));
+        assert_eq!(
+            settings.oauth.jwks_refresh_interval_raw,
+            Some(DEFAULT_JWKS_REFRESH_INTERVAL_STR.to_string())
+        );
     }
 
     #[test]
@@ -916,36 +1139,45 @@ mod tests {
             assert!(msg.contains("Falha ao parsear 'oauth.jwksRefreshInterval'"));
             assert!(msg.contains("invalid-duration"));
         } else {
-            panic!("Esperado ConfigError::Message para duration inválida, obteve {:?}", result.err());
+            panic!(
+                "Esperado ConfigError::Message para duration inválida, obteve {:?}",
+                result.err()
+            );
         }
     }
 
-     #[test]
+    #[test]
     #[serial]
     fn test_empty_env_for_option_vec_string_results_in_none() {
         let _env_cleaner = EnvCleaner::new();
-        env::set_var("MCP_OAUTH__ISSUER", ""); 
-        
+        env::set_var("MCP_OAUTH__ISSUER", "");
+
         let settings = Settings::new().expect("Falha ao carregar config");
         assert_eq!(settings.oauth.issuer, None, "Issuer deveria ser None para ENV vazia");
 
-        env::set_var("MCP_OAUTH__ISSUER", ", ,,"); 
+        env::set_var("MCP_OAUTH__ISSUER", ", ,,");
         let settings = Settings::new().expect("Falha ao carregar config");
-        assert_eq!(settings.oauth.issuer, None, "Issuer deveria ser None para ENV com apenas vírgulas");
+        assert_eq!(
+            settings.oauth.issuer, None,
+            "Issuer deveria ser None para ENV com apenas vírgulas"
+        );
     }
 
     #[test]
     #[serial]
     fn test_empty_env_for_vec_string_keeps_default_or_toml() {
         let _env_cleaner = EnvCleaner::new();
-        
+
         let default_origins = default_cors_allowed_origins();
 
         env_remove_var_silently("MCP_CORS__ALLOWED_ORIGINS");
         env_remove_var_silently("MCP_CORS__allowedOrigins");
-        env::remove_var("MCP_CONFIG_PATH"); 
+        env::remove_var("MCP_CONFIG_PATH");
         let settings_default = Settings::new().expect("Falha ao carregar config (default)");
-        assert_eq!(settings_default.cors.allowed_origins, default_origins, "allowedOrigins deveria ser o default da struct");
+        assert_eq!(
+            settings_default.cors.allowed_origins, default_origins,
+            "allowedOrigins deveria ser o default da struct"
+        );
 
         let toml_content = r#"
             [cors]
@@ -953,13 +1185,23 @@ mod tests {
         "#;
         let temp_file = create_temp_toml_config(toml_content);
         env::set_var("MCP_CONFIG_PATH", temp_file.path());
-        env::set_var("MCP_CORS__ALLOWED_ORIGINS", ""); 
-        
-        let settings_toml_env_empty = Settings::new().expect("Falha ao carregar config (TOML e ENV vazia)");
-        assert_eq!(settings_toml_env_empty.cors.allowed_origins, vec!["http://from.toml".to_string()], "allowedOrigins deveria ser do TOML quando ENV é vazia");
+        env::set_var("MCP_CORS__ALLOWED_ORIGINS", "");
 
-        env::set_var("MCP_CORS__ALLOWED_ORIGINS", ",,,"); 
-        let settings_toml_env_commas = Settings::new().expect("Falha ao carregar config (TOML e ENV com vírgulas)");
-        assert_eq!(settings_toml_env_commas.cors.allowed_origins, vec!["http://from.toml".to_string()], "allowedOrigins deveria ser do TOML quando ENV tem só vírgulas");
+        let settings_toml_env_empty =
+            Settings::new().expect("Falha ao carregar config (TOML e ENV vazia)");
+        assert_eq!(
+            settings_toml_env_empty.cors.allowed_origins,
+            vec!["http://from.toml".to_string()],
+            "allowedOrigins deveria ser do TOML quando ENV é vazia"
+        );
+
+        env::set_var("MCP_CORS__ALLOWED_ORIGINS", ",,,");
+        let settings_toml_env_commas =
+            Settings::new().expect("Falha ao carregar config (TOML e ENV com vírgulas)");
+        assert_eq!(
+            settings_toml_env_commas.cors.allowed_origins,
+            vec!["http://from.toml".to_string()],
+            "allowedOrigins deveria ser do TOML quando ENV tem só vírgulas"
+        );
     }
 }

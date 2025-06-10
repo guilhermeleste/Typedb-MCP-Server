@@ -31,9 +31,9 @@ address = "localhost:1729"
 username = "admin"
 
 # SENHA DO TYPEDB:
-# A senha para o TypeDB DEVE ser fornecida através da variável de ambiente TYPEDB_PASSWORD.
-# Não armazene senhas em arquivos de configuração em plain text.
-# Ex: export TYPEDB_PASSWORD="mypassword"
+# A senha para o TypeDB deve ser lida de um arquivo indicado por TYPEDB_PASSWORD_FILE
+# ou fornecida via Vault (conforme docker-compose.production.yml).
+# Não armazene senhas em plain text neste arquivo.
 
 # Habilita (true) ou desabilita (false) TLS para a conexão com o servidor TypeDB.
 # Default no código: false

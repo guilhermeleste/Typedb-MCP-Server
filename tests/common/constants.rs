@@ -39,6 +39,8 @@ pub const TYPEDB_SERVICE_NAME: &str = "typedb-server-it";
 pub const TYPEDB_TLS_SERVICE_NAME: &str = "typedb-server-tls-it";
 /// Nome do serviço Docker para o Mock OAuth2/JWKS Server.
 pub const MOCK_OAUTH_SERVICE_NAME: &str = "mock-oauth2-server";
+/// Nome do serviço Docker para o Vault usado nos testes.
+pub const VAULT_SERVICE_NAME: &str = "vault";
 
 // === Portas Internas dos Contêineres ===
 // Estas são as portas que os serviços escutam DENTRO de seus respectivos contêineres Docker.
@@ -52,6 +54,8 @@ pub const MCP_SERVER_INTERNAL_METRICS_PORT: u16 = 9090;
 
 /// Porta INTERNA do contêiner para o Mock OAuth2/JWKS Server (Nginx).
 pub const MOCK_OAUTH_INTERNAL_PORT: u16 = 80;
+/// Porta INTERNA do contêiner para o Vault.
+pub const VAULT_INTERNAL_PORT: u16 = 8200;
 
 /// Porta gRPC INTERNA do contêiner para os serviços TypeDB Server.
 pub const TYPEDB_INTERNAL_PORT: u16 = 1729;

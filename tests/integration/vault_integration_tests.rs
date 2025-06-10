@@ -1,53 +1,40 @@
-use std::process::{Command, Stdio};
-use std::time::Duration;
+use crate::common::{constants, mcp_utils::get_text_from_call_result, test_env::TestEnvironment};
 use anyhow::{Context, Result};
-use tokio::time::sleep;
-use vaultrs::{client::{VaultClient, VaultClientSettingsBuilder}, kv2, sys::mount};
-
+use serial_test::serial;
+use tracing::info;
 
 #[tokio::test]
-async fn test_vault_dev_server_interaction() -> Result<()> {
-    // Inicia servidor Vault em modo dev
-    let mut child = Command::new("vault")
-        .arg("server")
-        .arg("-dev")
-        .arg("-dev-root-token-id=root")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .context("failed to spawn vault dev server")?;
+#[serial]
+async fn test_startup_with_vault_secrets_succeeds() -> Result<()> {
+    let test_env = TestEnvironment::setup_with_vault("vault_ok", None, false, true).await?;
+    let mut client = test_env.mcp_client_with_auth(None).await?;
+    let list_result =
+        client.call_tool("list_databases", None).await.context("call list_databases failed")?;
+    info!("list_databases: {}", get_text_from_call_result(list_result));
+    Ok(())
+}
 
-    // Aguarda o servidor iniciar
-    sleep(Duration::from_secs(2)).await;
+#[tokio::test]
+#[serial]
+async fn test_startup_fails_with_invalid_vault_secret_id() -> Result<()> {
+    let result =
+        TestEnvironment::setup_with_vault("vault_bad_sid", Some("wrong".into()), false, true).await;
+    assert!(result.is_err(), "setup_with_vault deveria falhar com secret_id invalido");
+    Ok(())
+}
 
-    let client = VaultClient::new(
-        VaultClientSettingsBuilder::default()
-            .address("http://127.0.0.1:8200")
-            .token("root")
-            .build()
-            .unwrap(),
-    )?;
+#[tokio::test]
+#[serial]
+async fn test_startup_fails_if_kv_secret_is_missing() -> Result<()> {
+    let result = TestEnvironment::setup_with_vault("vault_missing_kv", None, true, true).await;
+    assert!(result.is_err(), "setup_with_vault deveria falhar se o segredo KV estiver ausente");
+    Ok(())
+}
 
-    // Habilita o engine KV v2
-    mount::enable(&client, "kv", "kv", None).await?;
-
-
-    // Escreve um segredo
-    let mut data = std::collections::HashMap::new();
-    data.insert("typedb_password".to_string(), "testpw".to_string());
-    kv2::set(&client, "kv", "typedb-mcp-server/config", &data).await?;
-
-    // Lê o segredo de volta
-    let secret: std::collections::HashMap<String, String> =
-        kv2::read(&client, "kv", "typedb-mcp-server/config").await?;
-    let pass = secret
-        .get("typedb_password")
-        .context("password key missing")?
-        .as_str();
-
-
-    assert_eq!(pass, "testpw");
-
-    let _ = child.kill();
+#[tokio::test]
+#[serial]
+async fn test_startup_fails_if_vault_is_unavailable() -> Result<()> {
+    let result = TestEnvironment::setup_with_vault("vault_unavail", None, false, false).await;
+    assert!(result.is_err(), "setup_with_vault deveria falhar se o Vault estiver indisponivel");
     Ok(())
 }

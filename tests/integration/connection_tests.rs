@@ -157,37 +157,44 @@ async fn test_server_tls_connection_succeeds_with_wss() -> Result<()> {
     match client_result {
         Ok(mut client) => {
             info!("✅ Conexão WSS estabelecida com sucesso!");
-            
+
             info!("🔧 Testando list_tools via WSS...");
             match client.list_tools(None).await {
                 Ok(tools_result) => {
-                    info!("✅ list_tools bem-sucedido via WSS. Ferramentas disponíveis: {}", tools_result.tools.len());
+                    info!(
+                        "✅ list_tools bem-sucedido via WSS. Ferramentas disponíveis: {}",
+                        tools_result.tools.len()
+                    );
                     info!("🎉 Teste WSS completamente bem-sucedido!");
                 }
                 Err(ref list_tools_error) => {
                     // Tratar especificamente UnexpectedEof conforme documentação rustls
                     match list_tools_error {
-                        McpClientError::WebSocket(ws_err) => {
-                            match ws_err {
-                                tokio_tungstenite::tungstenite::Error::Io(io_err) => {
-                                    if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
-                                        warn!("⚠️  list_tools retornou UnexpectedEof - conexão fechada sem close_notify");
-                                        warn!("📖 Conforme documentação rustls, este erro pode ser tratado como EOF normal");
-                                        warn!("🔍 Possível causa: aplicação usa length framing e conexão foi fechada adequadamente");
-                                        info!("✅ Tratando UnexpectedEof como sucesso condicional para este teste");
-                                    } else {
-                                        error!("❌ list_tools falhou com erro IO inesperado: {:?}", io_err);
-                                        panic!("Erro IO inesperado em list_tools: {:?}", io_err);
-                                    }
-                                }
-                                _ => {
-                                    error!("❌ list_tools falhou com erro WebSocket: {:?}", ws_err);
-                                    panic!("Erro WebSocket inesperado em list_tools: {:?}", ws_err);
+                        McpClientError::WebSocket(ws_err) => match ws_err {
+                            tokio_tungstenite::tungstenite::Error::Io(io_err) => {
+                                if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
+                                    warn!("⚠️  list_tools retornou UnexpectedEof - conexão fechada sem close_notify");
+                                    warn!("📖 Conforme documentação rustls, este erro pode ser tratado como EOF normal");
+                                    warn!("🔍 Possível causa: aplicação usa length framing e conexão foi fechada adequadamente");
+                                    info!("✅ Tratando UnexpectedEof como sucesso condicional para este teste");
+                                } else {
+                                    error!(
+                                        "❌ list_tools falhou com erro IO inesperado: {:?}",
+                                        io_err
+                                    );
+                                    panic!("Erro IO inesperado em list_tools: {:?}", io_err);
                                 }
                             }
-                        }
+                            _ => {
+                                error!("❌ list_tools falhou com erro WebSocket: {:?}", ws_err);
+                                panic!("Erro WebSocket inesperado em list_tools: {:?}", ws_err);
+                            }
+                        },
                         _ => {
-                            error!("❌ list_tools falhou com erro inesperado: {:?}", list_tools_error);
+                            error!(
+                                "❌ list_tools falhou com erro inesperado: {:?}",
+                                list_tools_error
+                            );
                             panic!("Erro inesperado em list_tools: {:?}", list_tools_error);
                         }
                     }

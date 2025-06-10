@@ -140,18 +140,18 @@ async fn test_insert_and_query_read_person() -> Result<()> {
         {
             // A resposta do TypeDB 3.x retorna valores diretamente, não como objetos encapsulados
             // Adicionado campos extras que o TypeDB 3.x inclui na resposta (iid, category)
-            "a": { 
-                "value": 30, 
-                "typeLabel": "age", 
+            "a": {
+                "value": 30,
+                "typeLabel": "age",
                 "valueType": "integer",
                 "category": "Attribute",
                 "iid": json_value[0]["a"]["iid"] // Copiar o iid real pois é gerado dinamicamente
             },
-            "n": { 
-                "value": "Alice", 
-                "typeLabel": "name", 
+            "n": {
+                "value": "Alice",
+                "typeLabel": "name",
                 "valueType": "string",
-                "category": "Attribute", 
+                "category": "Attribute",
                 "iid": json_value[0]["n"]["iid"] // Copiar o iid real pois é gerado dinamicamente
             },
             "p": {
@@ -202,13 +202,13 @@ async fn test_query_read_aggregate_count() -> Result<()> {
 
     let text_content = get_text_from_call_result(agg_result);
     info!("Resultado da agregação reduce (RAW): '{}'", text_content);
-    
+
     // Parse como JSON genérico para ver a estrutura
     let json_value: serde_json::Value = serde_json::from_str(&text_content)
         .context("Falha ao parsear resultado de reduce como JSON")?;
-    
+
     info!("JSON parseado COMPLETO: {:#}", json_value);
-    
+
     // Tentar extrair o valor de diferentes maneiras
     let count_value = if let Some(array) = json_value.as_array() {
         info!("É um array com {} elementos", array.len());
@@ -283,7 +283,7 @@ async fn test_update_attribute_value() -> Result<()> {
     // Verificar se o array não está vazio e contém a pessoa com idade atualizada
     if let Some(array) = json_value.as_array() {
         assert!(!array.is_empty(), "Resultado está vazio após update");
-        
+
         // Buscar o valor da idade no primeiro resultado
         if let Some(first_result) = array.first() {
             if let Some(a_obj) = first_result.get("a") {
@@ -297,8 +297,11 @@ async fn test_update_attribute_value() -> Result<()> {
                     } else {
                         0
                     };
-                    
-                    assert_eq!(age_value, 26, "Valor do atributo 'age' não foi atualizado corretamente para 26");
+
+                    assert_eq!(
+                        age_value, 26,
+                        "Valor do atributo 'age' não foi atualizado corretamente para 26"
+                    );
                 } else {
                     panic!("Campo 'value' não encontrado na resposta");
                 }

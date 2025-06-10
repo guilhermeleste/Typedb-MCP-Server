@@ -73,13 +73,26 @@ Construído em Rust, o servidor foi desenvolvido com foco em performance (utiliz
 
 #### Usando Docker (Recomendado para Início Rápido)
 
-A forma mais simples de executar o servidor, especialmente para desenvolvimento e testes, é com Docker Compose.
+O fluxo de implantação padrão utiliza o HashiCorp Vault para fornecer a senha do TypeDB por meio do Vault Agent. Após configurar o Vault com o AppRole e o segredo `kv/typedb-mcp-server/config`, coloque os arquivos `role_id.txt` e `secret_id.txt` no diretório `production-secrets/` e execute:
 
-1. Clone o repositório: `git clone https://github.com/guilhermeleste/Typedb-MCP-Server.git && cd Typedb-MCP-Server`
-2. Se o seu TypeDB (serviço `typedb-server-dev` no `docker-compose.yml`) exigir senha, crie um arquivo de texto contendo a senha e defina `TYPEDB_PASSWORD_FILE` apontando para ele no `.env` ou nas variáveis de ambiente.
-3. Execute: `docker-compose up -d --build`
+```bash
+docker compose -f docker-compose.production.yml up -d --build
+```
 
-Para mais detalhes, incluindo build multi-plataforma, veja o [`README.docker.md`](./README.docker.md) e a seção de [Instalação com Docker](/docs/user_guide/03_installation.md#2-usando-docker).
+Esse compose inicia um Vault, o TypeDB e o servidor MCP. O Vault Agent roda no entrypoint do contêiner, renderiza a senha em `/vault/secrets/db_password.txt` e a aplicação a carrega via `TYPEDB_PASSWORD_FILE`.
+
+Para detalhes sobre configuração do Vault e uso em produção, consulte [`README.docker.md`](./README.docker.md) e a seção [Instalação com Docker](/docs/user_guide/03_installation.md#2-usando-docker).
+
+##### Desenvolvimento Local
+
+Para um fluxo simplificado sem Vault, use `docker-compose.yml`. Crie `local-dev-secrets/password.txt` contendo a senha e execute:
+
+```bash
+docker compose up -d --build
+```
+
+
+O arquivo é montado como Docker Secret e a aplicação o lê via `TYPEDB_PASSWORD_FILE=/run/secrets/db_password`.
 
 #### A partir do Código-Fonte
 
@@ -116,7 +129,8 @@ Variáveis de ambiente têm precedência sobre as configurações do arquivo TOM
 
 **Variáveis de Ambiente Chave:**
 
-- `TYPEDB_PASSWORD_FILE`: **Obrigatória** se o TypeDB usa autenticação. Aponte para um arquivo contendo a senha em texto simples.
+- `TYPEDB_PASSWORD_FILE`: Caminho do arquivo contendo a senha do TypeDB. Em produção esse arquivo é gerado pelo Vault Agent; em desenvolvimento é montado via Docker Secret.
+
 
     ```bash
     export TYPEDB_PASSWORD_FILE="/caminho/para/senha.txt"
