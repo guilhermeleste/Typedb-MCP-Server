@@ -304,7 +304,7 @@ impl TestEnvironment {
         });
 
         let active_profiles = config.as_compose_profiles();
-        
+
         let mcp_target_typedb_svc_name = config.mcp_target_typedb_service_name();
         let typedb_address_for_mcp_container = format!(
             "{}:{}",
@@ -332,14 +332,14 @@ impl TestEnvironment {
                     typedb_address_for_mcp_container
                 )
             })?;
-            
+
         // Se o typedb-server-it (padrão) for iniciado (devido ao depends_on ou perfis default/oauth/typedb_tls)
         // E não for o alvo principal do MCP, esperamos por ele também.
         // Isso garante que a condição `depends_on` do docker-compose.yml seja respeitada.
-        if primary_typedb_to_await_health != constants::TYPEDB_SERVICE_NAME && 
-           (config.profiles.contains(&TestProfile::TypeDbDefault) || 
+        if primary_typedb_to_await_health != constants::TYPEDB_SERVICE_NAME &&
+           (config.profiles.contains(&TestProfile::TypeDbDefault) ||
             config.profiles.contains(&TestProfile::OAuthMock) ||
-            config.profiles.contains(&TestProfile::TypeDbTls)) { 
+            config.profiles.contains(&TestProfile::TypeDbTls)) {
             info!(
                 "Aguardando serviço TypeDB padrão ('{}') ficar saudável (devido a depends_on/perfil) para projeto '{}'.",
                 constants::TYPEDB_SERVICE_NAME,
@@ -441,7 +441,7 @@ impl TestEnvironment {
                 constants::MCP_SERVER_SERVICE_NAME,
                 docker_env.project_name(),
                 config.config_filename,
-                typedb_address_for_mcp_container 
+                typedb_address_for_mcp_container
             )
         })?;
 
@@ -712,7 +712,7 @@ mod tests {
         let cfg_typedb_tls = TestEnvironment::derive_configuration_from_filename(constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME);
         assert!(cfg_typedb_tls.typedb_connection_uses_tls && !cfg_typedb_tls.mcp_server_tls && !cfg_typedb_tls.is_oauth_enabled());
         assert_eq!(cfg_typedb_tls.profiles, vec![TestProfile::TypeDbTls]);
-        
+
         let cfg_wrong_ca = TestEnvironment::derive_configuration_from_filename("typedb_tls_wrong_ca.test.toml");
         assert!(cfg_wrong_ca.typedb_connection_uses_tls);
         assert_eq!(cfg_wrong_ca.profiles, vec![TestProfile::TypeDbTls]);

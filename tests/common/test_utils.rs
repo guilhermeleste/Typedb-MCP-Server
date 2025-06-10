@@ -24,15 +24,15 @@
 //! Este módulo centraliza funções repetitivas usadas em múltiplas suítes de teste.
 
 use anyhow::{bail, Context as AnyhowContext, Result};
-use serde_json::json; 
+use serde_json::json;
 use std::time::{Duration, Instant};
-use tracing::{debug, error, info, trace, warn}; 
+use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 
 // Importar tipos do mesmo crate `common`
 use super::client::TestMcpClient;
-use super::constants; 
-use super::docker_helpers::DockerComposeEnv; 
+use super::constants;
+use super::docker_helpers::DockerComposeEnv;
 
 /// Gera um nome de banco de dados único prefixado para evitar conflitos entre testes.
 ///
@@ -165,11 +165,11 @@ pub async fn define_test_db_schema(client: &mut TestMcpClient, db_name: &str) ->
 /// `Result<serde_json::Value>` contendo o corpo JSON da resposta `/readyz` bem-sucedida,
 /// ou um erro se o timeout_duration for atingido ou ocorrer outra falha.
 pub async fn wait_for_mcp_server_ready_from_test_env(
-    docker_env_ref: &DockerComposeEnv, 
-    mcp_http_base_url: &str,           
-    is_mcp_server_tls: bool,           
-    expect_oauth_jwks_up: bool,        
-    _expect_typedb_tls_connection: bool, 
+    docker_env_ref: &DockerComposeEnv,
+    mcp_http_base_url: &str,
+    is_mcp_server_tls: bool,
+    expect_oauth_jwks_up: bool,
+    _expect_typedb_tls_connection: bool,
     timeout_duration: Duration,
 ) -> Result<serde_json::Value> {
     let readyz_url = format!("{}{}", mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
@@ -204,7 +204,7 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
                 let status_code = resp.status();
                 // Tentar obter o corpo como texto primeiro para logging em caso de falha de parse JSON
                 let body_bytes_result = resp.bytes().await;
-                
+
                 let body_text_for_log = match &body_bytes_result {
                     Ok(b) => String::from_utf8_lossy(b).to_string(),
                     Err(e) => format!("<corpo não pôde ser lido: {}>", e),
@@ -254,13 +254,13 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
                                 info!("/readyz para '{}' está UP e todas as dependências configuradas estão prontas. Corpo: {}", readyz_url, serde_json::to_string(&json_body).unwrap_or_default());
                                 return Ok(json_body);
                             }
-                            info!( 
+                            info!(
                                 "/readyz para '{}' ainda não está pronto. Status HTTP: {}, Overall: {}, TypeDB: {}, JWKS: {} (esperado JWKS: {}). Corpo: {}. Aguardando...",
                                 readyz_url, status_code, overall_status, typedb_comp_status, jwks_comp_status, jwks_target_status_str, body_text_for_log
                             );
                         }
                         Err(e) => {
-                            warn!( 
+                            warn!(
                                 "/readyz para '{}' retornou status {} mas falhou ao parsear JSON: {}. Corpo como texto: '{}'. Aguardando...",
                                 readyz_url, status_code, e, body_text_for_log
                             );
@@ -303,10 +303,10 @@ mod tests {
         // Apenas para verificar a assinatura da função (teste de compilação)
         type WaitFnSig = for<'a> fn(
             &'a DockerComposeEnv,
-            &'a str, 
-            bool,    
-            bool,    
-            bool,    
+            &'a str,
+            bool,
+            bool,
+            bool,
             Duration,
         ) -> futures_util::future::BoxFuture<'a, Result<serde_json::Value>>; // Removido Box dyn error
 
@@ -328,7 +328,7 @@ mod tests {
 }
 
 /// Aguarda que o endpoint de métricas esteja disponível e respondendo.
-/// 
+///
 /// Realiza polling ativo tentando conectar ao endpoint até que esteja disponível
 /// ou até o timeout ser atingido.
 ///

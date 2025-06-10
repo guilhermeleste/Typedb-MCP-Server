@@ -84,7 +84,7 @@ impl DockerComposeEnv {
             .chars()
             .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
             .collect::<String>();
-        
+
         // Monta o nome do projeto e garante que não exceda o limite de comprimento.
         let mut project_name = format!("{}_{}_{:03}", sanitized_prefix, unique_id_uuid_short, unique_id_num);
         const MAX_PROJECT_NAME_LEN: usize = 60; // Limite prático para nomes de projeto Docker
@@ -143,7 +143,7 @@ impl DockerComposeEnv {
                 constants::TYPEDB_INTERNAL_PORT
             )
         });
-        
+
         vec![
             (
                 // Usada pelo Docker Compose para popular MCP_CONFIG_PATH no contêiner MCP.
@@ -198,7 +198,7 @@ impl DockerComposeEnv {
         // Argumentos específicos do projeto devem vir antes dos globais e do subcomando.
         command.arg("-f").arg(&self.compose_file_path);
         command.arg("-p").arg(self.project_name());
-        
+
         command.args(global_args);    // Ex: --profile <nome>
         command.args(subcommand_args); // Ex: up -d --wait
 
@@ -360,7 +360,7 @@ impl DockerComposeEnv {
             "Derrubando ambiente Docker Compose para projeto: '{}' (remover volumes: {})",
             self.project_name(), remove_volumes
         );
-        
+
         // Passa None para config_filename e typedb_address_override, pois não são
         // estritamente necessários para 'down', mas get_compose_env_vars os espera.
         // tls_enabled_mcp=false também é um valor seguro para 'down'.
@@ -369,7 +369,7 @@ impl DockerComposeEnv {
             .iter()
             .map(|(k, v)| (k.as_str(), v.clone()))
             .collect();
-        
+
         let mut subcommand_args = vec!["down", "--remove-orphans"];
         if remove_volumes {
             subcommand_args.push("-v"); // Flag para remover volumes
@@ -396,12 +396,12 @@ impl DockerComposeEnv {
         }
         Ok(())
     }
-    
+
     /// Força a remoção de quaisquer contêineres que possam ter ficado órfãos
     /// para este projeto Docker Compose. Útil após falhas de `down`.
     fn force_cleanup_orphaned_containers(&self) -> Result<()> {
         debug!("Executando cleanup forçado de containers órfãos para projeto '{}'", self.project_name());
-        
+
         let list_output = Command::new("docker")
             .arg("ps")
             .arg("-a") // Lista todos os contêineres (rodando e parados)
@@ -425,7 +425,7 @@ impl DockerComposeEnv {
         if container_ids.is_empty() {
             debug!("Nenhum container órfão encontrado para projeto '{}'", self.project_name());
         } else {
-            info!("Removendo {} containers órfãos para projeto '{}': {:?}", 
+            info!("Removendo {} containers órfãos para projeto '{}': {:?}",
                   container_ids.len(), self.project_name(), container_ids);
 
             let mut remove_cmd = Command::new("docker");
@@ -476,14 +476,14 @@ impl DockerComposeEnv {
             debug!("Nenhuma rede órfã encontrada para projeto '{}'", self.project_name());
             return Ok(());
         }
-        info!("Removendo {} redes órfãs para projeto '{}': {:?}", 
+        info!("Removendo {} redes órfãs para projeto '{}': {:?}",
               network_ids.len(), self.project_name(), network_ids);
         let mut remove_cmd = Command::new("docker");
         remove_cmd.arg("network").arg("rm");
         remove_cmd.args(&network_ids);
         let remove_output = remove_cmd.output()
             .with_context(|| format!("Falha ao executar 'docker network rm' para redes órfãs do projeto '{}'", self.project_name()))?;
-        
+
         if !remove_output.status.success() {
             let stderr = String::from_utf8_lossy(&remove_output.stderr);
             // É comum que a remoção de rede falhe se ainda houver endpoints (mesmo de contêineres parados),
@@ -494,7 +494,7 @@ impl DockerComposeEnv {
         }
         Ok(())
     }
-    
+
     /// Coleta e loga os logs de todos os serviços definidos no arquivo Docker Compose.
     /// Útil para depuração após a falha de um teste.
     pub fn logs_all_services(&self) -> Result<()> {
@@ -521,7 +521,7 @@ impl DockerComposeEnv {
         }
         Ok(())
     }
-    
+
     /// Obtém a porta do *host* que está mapeada para uma porta interna de um serviço específico.
     ///
     /// # Arguments
@@ -569,7 +569,7 @@ impl DockerComposeEnv {
         std::thread::sleep(Duration::from_secs(3)); // Pequena pausa para permitir que o serviço inicie.
         Ok(())
     }
-    
+
     /// Aguarda até que um serviço específico atinja um estado saudável (conforme seu `healthcheck`
     /// no Docker Compose) ou esteja no estado "running" (se nenhum healthcheck estiver definido
     /// ou se o healthcheck já passou e o estado é apenas "running").
@@ -597,7 +597,7 @@ impl DockerComposeEnv {
 
             let output_str = match ps_output_res {
                 Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).to_string(),
-                Ok(out) => { 
+                Ok(out) => {
                     debug!("'docker compose ps' para serviço '{}' falhou (status {}). Stderr: {}. Tentando novamente...", service_name, out.status, String::from_utf8_lossy(&out.stderr));
                     tokio::time::sleep(check_interval).await;
                     continue; // Tenta novamente
@@ -611,7 +611,7 @@ impl DockerComposeEnv {
                     continue; // Tenta novamente
                 }
             };
-            
+
             // O output de `docker compose ps --format json <service_name>` é uma stream de objetos JSON,
             // um por contêiner do serviço (se houver scale > 1, o que não é comum para estes testes).
             // Pegamos a primeira linha/objeto.
@@ -628,7 +628,7 @@ impl DockerComposeEnv {
                         // O campo "Status" (ex: "Up X seconds (healthy)", "Up Y seconds (starting)") contém o status do healthcheck.
                         let container_state = service_info.get("State").and_then(|s| s.as_str()).unwrap_or("").to_lowercase();
                         let container_status_field = service_info.get("Status").and_then(|s| s.as_str()).unwrap_or("").to_lowercase();
-                        
+
                         debug!("Serviço '{}' (projeto '{}') estado do contêiner: '{}', campo Status: '{}'", service_name, self.project_name(), container_state, container_status_field);
 
                         if container_state == "running" {
@@ -738,7 +738,7 @@ services:
         info!("Nome projeto 1: {}, Nome projeto 2: {}", env1.project_name(), env2.project_name());
         Ok(())
     }
-    
+
     #[tokio::test]
     #[serial]
     async fn test_docker_compose_env_up_down_cycle_with_minimal_service() -> Result<()> {
@@ -748,12 +748,12 @@ services:
 
         info!("Iniciando teste test_docker_compose_env_up_down_cycle_with_minimal_service");
         let env = DockerComposeEnv::new(&compose_path_str, "hlp_cycle_min");
-        
+
         // Endereço TypeDB não é relevante para este serviço dummy, mas `up` espera.
         let dummy_typedb_addr = "dummy-typedb:1729".to_string();
-        env.up("dummy_config.toml", None, true, false, dummy_typedb_addr) 
+        env.up("dummy_config.toml", None, true, false, dummy_typedb_addr)
             .context("Falha no env.up() no teste de ciclo de vida com serviço mínimo")?;
-        
+
         // Aguarda o serviço ficar saudável (healthcheck definido no YAML)
         env.wait_for_service_healthy("alpine-dummy-service", Duration::from_secs(20))
             .await
@@ -767,7 +767,7 @@ services:
         // apenas verificamos se uma porta > 0 foi atribuída.
         assert!(host_port > 0, "Porta mapeada para alpine-dummy-service incorreta: {}", host_port);
         info!("Porta do host para alpine-dummy-service (interna :80) é {}", host_port);
-        
+
         // O Drop de `env` chamará `down()` automaticamente no final do escopo.
         Ok(())
     }
@@ -777,25 +777,25 @@ services:
     #[ignore] // Este teste usa o `docker-compose.test.yml` real, pode ser mais pesado e requerer setup.
     async fn test_real_services_up_down_and_port_retrieval() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-        
-        let compose_path_str = constants::DEFAULT_DOCKER_COMPOSE_TEST_FILE; 
+
+        let compose_path_str = constants::DEFAULT_DOCKER_COMPOSE_TEST_FILE;
         let env = DockerComposeEnv::new(compose_path_str, "hlp_real_svc");
 
         // Endereço para o MCP Server se conectar ao TypeDB padrão.
         let typedb_addr_for_mcp = format!("{}:{}", constants::TYPEDB_SERVICE_NAME, constants::TYPEDB_INTERNAL_PORT);
         env.up(
-            constants::DEFAULT_TEST_CONFIG_FILENAME, 
+            constants::DEFAULT_TEST_CONFIG_FILENAME,
             Some(vec!["typedb_default".to_string()]), // Ativa o perfil para o TypeDB padrão
             true,  // wait_for_health
             false, // tls_enabled_mcp
             typedb_addr_for_mcp // MCP se conecta ao TypeDB padrão
         ).context("Falha ao executar 'up' com config default e perfil typedb_default")?;
-            
+
         // Aguarda o serviço TypeDB padrão ficar saudável.
         env.wait_for_service_healthy(constants::TYPEDB_SERVICE_NAME, constants::DEFAULT_TYPEDB_READY_TIMEOUT)
             .await
             .with_context(|| format!("Serviço '{}' não ficou saudável", constants::TYPEDB_SERVICE_NAME))?;
-        
+
         // Obtém a porta do host para o serviço TypeDB padrão.
         let typedb_host_port = env.get_service_host_port(constants::TYPEDB_SERVICE_NAME, constants::TYPEDB_INTERNAL_PORT)
             .with_context(|| format!("Falha ao obter porta para {}", constants::TYPEDB_SERVICE_NAME))?;

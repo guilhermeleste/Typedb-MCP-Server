@@ -2,7 +2,8 @@ use std::process::{Command, Stdio};
 use std::time::Duration;
 use anyhow::{Context, Result};
 use tokio::time::sleep;
-use vaultrs::{client::{VaultClient, VaultClientSettingsBuilder}, kv2, sys};
+use vaultrs::{client::{VaultClient, VaultClientSettingsBuilder}, kv2, sys::mount};
+
 
 #[tokio::test]
 async fn test_vault_dev_server_interaction() -> Result<()> {
@@ -28,25 +29,22 @@ async fn test_vault_dev_server_interaction() -> Result<()> {
     )?;
 
     // Habilita o engine KV v2
-    sys::mounts::enable(
-        &client,
-        "kv",
-        "kv",
-        sys::mounts::MountType::Kv2,
-        None::<sys::mounts::MountConfig>,
-    ).await?;
+    mount::enable(&client, "kv", "kv", None).await?;
+
 
     // Escreve um segredo
     let mut data = std::collections::HashMap::new();
     data.insert("typedb_password".to_string(), "testpw".to_string());
-    kv2::set(&client, "typedb-mcp-server/config", data).await?;
+    kv2::set(&client, "kv", "typedb-mcp-server/config", &data).await?;
 
     // Lê o segredo de volta
-    let secret = kv2::read(&client, "typedb-mcp-server/config").await?;
-    let pass = secret.data.get("typedb_password")
+    let secret: std::collections::HashMap<String, String> =
+        kv2::read(&client, "kv", "typedb-mcp-server/config").await?;
+    let pass = secret
+        .get("typedb_password")
         .context("password key missing")?
-        .as_str()
-        .context("password value not string")?;
+        .as_str();
+
 
     assert_eq!(pass, "testpw");
 
