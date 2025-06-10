@@ -45,3 +45,4 @@ dev-certs/
 
 # Informações do projeto (não necessárias na imagem)
 /project_info/
+production-secrets/

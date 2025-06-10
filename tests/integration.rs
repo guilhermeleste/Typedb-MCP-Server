@@ -101,6 +101,10 @@ pub mod schema_ops_tool_tests;
 #[path = "integration/typedb_tls_tests.rs"]
 pub mod typedb_tls_tests;
 
+/// Testes para integração básica com o Vault em modo dev.
+#[path = "integration/vault_integration_tests.rs"]
+pub mod vault_integration_tests;
+
 // Se você adicionar novos arquivos de teste em `tests/integration/`,
 // adicione uma declaração de módulo similar para eles aqui.
 // Exemplo:
