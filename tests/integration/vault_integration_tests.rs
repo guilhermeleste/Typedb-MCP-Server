@@ -1,16 +1,17 @@
+use anyhow::{Context, Result};
 use std::process::{Command, Stdio};
 use std::time::Duration;
-use anyhow::{Context, Result};
 use tokio::time::sleep;
-use vaultrs::{client::{VaultClient, VaultClientSettingsBuilder}, kv2, sys::mount};
+use vaultrs::{
+    client::{VaultClient, VaultClientSettingsBuilder},
+    kv2,
+    sys::mount,
+};
 
 
-#[tokio::test]
-async fn test_vault_dev_server_interaction() -> Result<()> {
-    // Inicia servidor Vault em modo dev
-    let mut child = Command::new("vault")
-        .arg("server")
-        .arg("-dev")
+    sleep(Duration::from_secs(5)).await;
+    mount::enable(&client, "kv", "kv-v2", None).await?;
+    let pass = secret.get("typedb_password").context("password key missing")?.as_str();
         .arg("-dev-root-token-id=root")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
