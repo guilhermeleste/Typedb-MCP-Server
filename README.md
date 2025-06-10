@@ -241,6 +241,18 @@ Principais seções:
 - **[Referência da API](/docs/reference/api.md):** Detalhes das ferramentas MCP e endpoints HTTP.
 - **[Perguntas Frequentes (FAQ)](/docs/FAQ.md)**
 
+## Testes de Integração
+
+Os testes de integração utilizam `docker compose` para subir instâncias do TypeDB e do servidor com configurações de exemplo. Para executá-los é necessário ter o **Docker** instalado **e o daemon em execução**.
+
+Arquivos de exemplo contendo credenciais do Vault são fornecidos em `test-secrets/`. Eles são montados nos containers durante os testes e podem ser sobrescritos conforme necessário.
+
+Execute:
+
+```bash
+cargo test --test integration
+```
+
 ## Contribuição
 
 Suas contribuições são muito bem-vindas! Por favor, leia nosso [Guia de Contribuição](./CONTRIBUTING.md) e nosso [Código de Conduta](./CODE_OF_CONDUCT.md).
