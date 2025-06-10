@@ -21,7 +21,7 @@
 // SOFTWARE.
 
 //! Infrastructure Helpers para garantir cleanup robusto de containers Docker
-//! 
+//!
 //! Este módulo fornece utilitários para:
 //! - Verificar se portas estão disponíveis antes de iniciar testes
 //! - Forçar cleanup de containers órfãos
@@ -33,19 +33,17 @@ use std::process::Command;
 use tracing::{debug, info, warn};
 
 /// Verifica se uma porta está disponível para uso.
-/// 
+///
 /// # Argumentos
 /// * `port` - Número da porta a verificar
-/// 
+///
 /// # Retorna
 /// * `Ok(true)` se a porta está disponível
 /// * `Ok(false)` se a porta está em uso
 /// * `Err` se houve erro na verificação
 pub fn is_port_available(port: u16) -> Result<bool> {
-    let output = Command::new("ss")
-        .args(["-tlnp"])
-        .output()
-        .context("Falha ao executar 'ss -tlnp'")?;
+    let output =
+        Command::new("ss").args(["-tlnp"]).output().context("Falha ao executar 'ss -tlnp'")?;
 
     if !output.status.success() {
         bail!("Comando 'ss -tlnp' falhou: {}", String::from_utf8_lossy(&output.stderr));
@@ -54,13 +52,13 @@ pub fn is_port_available(port: u16) -> Result<bool> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let port_pattern = format!(":{}\\s", port);
     let is_available = !stdout.contains(&port_pattern);
-    
+
     debug!("Verificação de porta {}: {}", port, if is_available { "disponível" } else { "em uso" });
     Ok(is_available)
 }
 
 /// Lista todos os containers Docker que podem estar relacionados aos testes MCP.
-/// 
+///
 /// # Retorna
 /// Lista de (container_id, image, status, ports) para containers relacionados a testes
 pub fn list_test_containers() -> Result<Vec<(String, String, String, String)>> {
@@ -80,19 +78,25 @@ pub fn list_test_containers() -> Result<Vec<(String, String, String, String)>> {
         if line.is_empty() {
             continue;
         }
-        
+
         let parts: Vec<&str> = line.split('\t').collect();
         if parts.len() >= 4 {
             let (id, image, status, ports) = (parts[0], parts[1], parts[2], parts[3]);
-            
+
             // Filtrar containers relacionados a testes MCP
-            if image.contains("mcp") || 
-               image.contains("typedb") || 
-               id.contains("mcp") ||
-               ports.contains("1729") ||
-               ports.contains("8787") ||
-               ports.contains("8443") {
-                containers.push((id.to_string(), image.to_string(), status.to_string(), ports.to_string()));
+            if image.contains("mcp")
+                || image.contains("typedb")
+                || id.contains("mcp")
+                || ports.contains("1729")
+                || ports.contains("8787")
+                || ports.contains("8443")
+            {
+                containers.push((
+                    id.to_string(),
+                    image.to_string(),
+                    status.to_string(),
+                    ports.to_string(),
+                ));
             }
         }
     }
@@ -101,10 +105,10 @@ pub fn list_test_containers() -> Result<Vec<(String, String, String, String)>> {
 }
 
 /// Remove containers órfãos relacionados aos testes.
-/// 
+///
 /// # Argumentos
 /// * `force` - Se true, para containers rodando antes de remover
-/// 
+///
 /// # Retorna
 /// Número de containers removidos
 pub fn cleanup_orphaned_test_containers(force: bool) -> Result<usize> {
@@ -114,8 +118,10 @@ pub fn cleanup_orphaned_test_containers(force: bool) -> Result<usize> {
     info!("Encontrados {} containers relacionados a testes", containers.len());
 
     for (container_id, image, status, ports) in containers {
-        info!("Processando container: {} (imagem: {}, status: {}, portas: {})", 
-              container_id, image, status, ports);
+        info!(
+            "Processando container: {} (imagem: {}, status: {}, portas: {})",
+            container_id, image, status, ports
+        );
 
         // Se o container está rodando e force=true, parar primeiro
         if status.contains("Up") && force {
@@ -126,8 +132,11 @@ pub fn cleanup_orphaned_test_containers(force: bool) -> Result<usize> {
                 .context(format!("Falha ao parar container {}", container_id))?;
 
             if !stop_output.status.success() {
-                warn!("Falha ao parar container {}: {}", 
-                      container_id, String::from_utf8_lossy(&stop_output.stderr));
+                warn!(
+                    "Falha ao parar container {}: {}",
+                    container_id,
+                    String::from_utf8_lossy(&stop_output.stderr)
+                );
                 continue;
             }
         }
@@ -143,8 +152,11 @@ pub fn cleanup_orphaned_test_containers(force: bool) -> Result<usize> {
             info!("Container {} removido com sucesso", container_id);
             removed_count += 1;
         } else {
-            warn!("Falha ao remover container {}: {}", 
-                  container_id, String::from_utf8_lossy(&rm_output.stderr));
+            warn!(
+                "Falha ao remover container {}: {}",
+                container_id,
+                String::from_utf8_lossy(&rm_output.stderr)
+            );
         }
     }
 
@@ -153,7 +165,7 @@ pub fn cleanup_orphaned_test_containers(force: bool) -> Result<usize> {
 }
 
 /// Verifica se as portas críticas do MCP estão disponíveis.
-/// 
+///
 /// # Retorna
 /// * `Ok(())` se todas as portas estão disponíveis
 /// * `Err` com detalhes das portas ocupadas
@@ -168,7 +180,10 @@ pub fn verify_critical_ports_available() -> Result<()> {
     }
 
     if !occupied_ports.is_empty() {
-        bail!("Portas críticas ocupadas: {:?}. Execute cleanup manual antes dos testes.", occupied_ports);
+        bail!(
+            "Portas críticas ocupadas: {:?}. Execute cleanup manual antes dos testes.",
+            occupied_ports
+        );
     }
 
     debug!("Todas as portas críticas estão disponíveis: {:?}", critical_ports);
@@ -176,7 +191,7 @@ pub fn verify_critical_ports_available() -> Result<()> {
 }
 
 /// Executa cleanup completo e verifica que foi bem-sucedido.
-/// 
+///
 /// Esta função implementa uma estratégia robusta de cleanup:
 /// 1. Lista containers existentes
 /// 2. Para e remove containers relacionados a testes
@@ -187,24 +202,24 @@ pub fn robust_cleanup_and_verify() -> Result<()> {
 
     // Passo 1: Cleanup de containers órfãos
     let removed_count = cleanup_orphaned_test_containers(true)?;
-    
+
     // Passo 2: Pequena pausa para garantir que ports sejam liberadas
     std::thread::sleep(std::time::Duration::from_secs(2));
-    
+
     // Passo 3: Verificar se portas críticas estão disponíveis
     verify_critical_ports_available().context("Falha na verificação de portas após cleanup")?;
-    
+
     info!("Cleanup robusto concluído com sucesso: {} containers removidos, todas as portas críticas disponíveis", removed_count);
     Ok(())
 }
 
 /// Helper para ser usado no início de testes críticos.
-/// 
+///
 /// Executa verificação prévia e cleanup se necessário, garantindo
 /// que o ambiente está limpo antes de iniciar o teste.
 pub fn ensure_clean_test_environment() -> Result<()> {
     debug!("Verificando ambiente limpo antes do teste");
-    
+
     match verify_critical_ports_available() {
         Ok(()) => {
             debug!("Ambiente já está limpo, prosseguindo com teste");
@@ -228,7 +243,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test] 
+    #[test]
     fn test_list_test_containers() {
         let result = list_test_containers();
         assert!(result.is_ok());

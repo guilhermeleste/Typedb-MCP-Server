@@ -34,8 +34,7 @@
 [typedb]
 address = "typedb-server-dev:1729" # Nome do serviço Docker para o TypeDB de desenvolvimento
 username = "admin"
-# A SENHA (TYPEDB_PASSWORD) DEVE VIR DO AMBIENTE (.env ou exportada)
-# password = "" # REMOVER ESTA LINHA - NUNCA ARMAZENAR SENHAS EM ARQUIVOS TOML
+# A senha é lida de TYPEDB_PASSWORD_FILE ou via Vault. Não definir aqui.
 tls_enabled = false # Para comunicação interna no Docker, TLS pode ser desabilitado
 # tls_ca_path = "/app/certs/generated-dev/rootCA.pem" # Se typedb.tls_enabled = true e usando CA customizada
 # ca_path = "/app/certs/typedb-ca.pem" # Campo antigo/não mapeado, usar typedb.tls_ca_path

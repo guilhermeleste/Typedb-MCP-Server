@@ -22,7 +22,7 @@
 
 //! Ponto de entrada principal para o Typedb-MCP-Server.
 
-use std::{error::Error as StdError, net::SocketAddr, sync::Arc, time::Duration};
+use anyhow::Context;
 use axum::{
     extract::{ws::WebSocketUpgrade, ConnectInfo, Extension, State},
     http::StatusCode,
@@ -32,28 +32,27 @@ use axum::{
     Router,
 };
 use axum_server::{tls_rustls::RustlsConfig, Handle as AxumServerHandle};
-use tokio_util::sync::CancellationToken;
-use typedb_mcp_server_lib::{
-    auth::{oauth_middleware, ClientAuthContext, JwksCache},
-    config::{Server as AppServerConfig, Settings},
-    db::connect as connect_to_typedb,
-    mcp_service_handler::McpServiceHandler,
-    metrics,
-    telemetry,
-    transport::WebSocketTransport,
-    AuthErrorDetail,
-    McpServerError,
-};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use reqwest::Client as ReqwestClient;
 use rmcp::service::{
     RoleServer, RunningService, ServerInitializeError, ServiceExt as RmcpServiceExt,
 };
-use tracing::{debug, error, info, warn, Instrument, Dispatch};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
-use typedb_driver::TypeDBDriver;
 use rustc_version_runtime;
 use rustls::crypto::CryptoProvider;
+use std::{error::Error as StdError, net::SocketAddr, sync::Arc, time::Duration};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, error, info, warn, Dispatch, Instrument};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
+use typedb_driver::TypeDBDriver;
+use typedb_mcp_server_lib::{
+    auth::{oauth_middleware, ClientAuthContext, JwksCache},
+    config::{Server as AppServerConfig, Settings},
+    db::connect as connect_to_typedb,
+    mcp_service_handler::McpServiceHandler,
+    metrics, telemetry,
+    transport::WebSocketTransport,
+    AuthErrorDetail, McpServerError,
+};
 
 /// Estrutura para o estado da aplicação compartilhado com os handlers Axum.
 #[derive(Clone)]
@@ -114,8 +113,7 @@ fn setup_metrics_recorder(
     info!("Descrições de métricas Prometheus registradas.");
 
     PrometheusBuilder::new().install_recorder().map_err(|e| {
-        let err_msg =
-            format!("Não foi possível instalar o recorder de métricas Prometheus: {}", e);
+        let err_msg = format!("Não foi possível instalar o recorder de métricas Prometheus: {}", e);
         error!("[METRICS_SETUP_ERROR] {}", err_msg);
         Box::new(std::io::Error::other(err_msg)) as Box<dyn StdError + Send + Sync>
     })
@@ -125,16 +123,25 @@ fn setup_metrics_recorder(
 async fn initialize_core_services(
     settings: &Arc<Settings>,
 ) -> Result<(Arc<TypeDBDriver>, Option<Arc<JwksCache>>), Box<dyn StdError + Send + Sync>> {
+    info!("Buscando senha do TypeDB do caminho de arquivo especificado...");
+
+    let password_file_path = std::env::var("TYPEDB_PASSWORD_FILE")
+        .context("A variável de ambiente TYPEDB_PASSWORD_FILE não foi definida. O entrypoint script deve configurá-la.")?;
+
+    let typedb_password_from_vault =
+        std::fs::read_to_string(&password_file_path).with_context(|| {
+            format!("Não foi possível ler o arquivo de senha do TypeDB em '{}'", password_file_path)
+        })?;
+
     info!(
         "Tentando conectar ao TypeDB. Configurado em: {} (TLS: {})",
         settings.typedb.address, settings.typedb.tls_enabled
     );
-    let typedb_password_from_env = std::env::var("TYPEDB_PASSWORD").ok();
 
     let typedb_driver_instance = match connect_to_typedb(
         Some(settings.typedb.address.clone()),
         settings.typedb.username.clone(),
-        typedb_password_from_env,
+        Some(typedb_password_from_vault.trim().to_string()),
         settings.typedb.tls_enabled,
         settings.typedb.tls_ca_path.clone(),
     )
@@ -160,34 +167,28 @@ async fn initialize_core_services(
                 as Box<dyn StdError + Send + Sync>
         })?;
 
-        let http_client_timeout =
-            settings.oauth.jwks_request_timeout_seconds.map_or_else(
-                || {
-                    warn!("oauth.jwks_request_timeout_seconds não configurado, usando default de 10s.");
-                    Duration::from_secs(10)
-                },
-                Duration::from_secs,
-            );
+        let http_client_timeout = settings.oauth.jwks_request_timeout_seconds.map_or_else(
+            || {
+                warn!("oauth.jwks_request_timeout_seconds não configurado, usando default de 10s.");
+                Duration::from_secs(10)
+            },
+            Duration::from_secs,
+        );
 
-        let http_client = ReqwestClient::builder().timeout(http_client_timeout).build().map_err(
-            |e| {
+        let http_client =
+            ReqwestClient::builder().timeout(http_client_timeout).build().map_err(|e| {
                 Box::new(McpServerError::Internal(format!(
                     "Falha ao construir HTTP client para JWKS: {}",
                     e
                 )))
-            },
-        )?;
+            })?;
 
         let jwks_refresh_interval = settings.oauth.jwks_refresh_interval.unwrap_or_else(|| {
             warn!("oauth.jwks_refresh_interval não pôde ser parseado ou estava ausente, usando default de 1 hora para o cache.");
             Duration::from_secs(3600)
         });
 
-        let cache = Arc::new(JwksCache::new(
-            jwks_uri.clone(),
-            jwks_refresh_interval,
-            http_client,
-        ));
+        let cache = Arc::new(JwksCache::new(jwks_uri.clone(), jwks_refresh_interval, http_client));
 
         match cache.refresh_keys().await {
             Ok(()) => {
@@ -216,12 +217,7 @@ fn create_app_state(
     jwks_cache: Option<Arc<JwksCache>>,
     global_shutdown_token: CancellationToken,
 ) -> AppState {
-    AppState {
-        typedb_driver_ref: typedb_driver,
-        settings,
-        jwks_cache,
-        global_shutdown_token,
-    }
+    AppState { typedb_driver_ref: typedb_driver, settings, jwks_cache, global_shutdown_token }
 }
 
 /// Constrói o router Axum principal com todas as rotas e middlewares.
@@ -230,11 +226,8 @@ fn build_axum_router(
     settings: &Arc<Settings>,
     metrics_handle_opt: Option<PrometheusHandle>,
 ) -> Router {
-    let mcp_ws_path_str = settings
-        .server
-        .mcp_websocket_path
-        .clone()
-        .unwrap_or_else(|| "/mcp/ws".to_string());
+    let mcp_ws_path_str =
+        settings.server.mcp_websocket_path.clone().unwrap_or_else(|| "/mcp/ws".to_string());
     let metrics_path_str =
         settings.server.metrics_path.clone().unwrap_or_else(|| "/metrics".to_string());
 
@@ -245,9 +238,12 @@ fn build_axum_router(
     if let Some(metrics_h) = metrics_handle_opt {
         info!("Configurando endpoint de métricas Axum em: {}", metrics_path_str);
         // CORREÇÃO APLICADA: A rota de métricas é adicionada ao `base_router` existente.
-        base_router = base_router.route(&metrics_path_str, get(metrics_handler).with_state(metrics_h));
+        base_router =
+            base_router.route(&metrics_path_str, get(metrics_handler).with_state(metrics_h));
     } else {
-        warn!("PrometheusHandle não disponível. Endpoint de métricas via Axum não será configurado.");
+        warn!(
+            "PrometheusHandle não disponível. Endpoint de métricas via Axum não será configurado."
+        );
     }
 
     let mut mcp_ws_router = Router::new().route(&mcp_ws_path_str, get(websocket_handler));
@@ -287,9 +283,7 @@ async fn run_axum_server(
 
     tokio::spawn(async move {
         shutdown_token_for_axum_server.cancelled().await;
-        info!(
-            "Sinal de desligamento recebido, iniciando graceful shutdown do servidor Axum..."
-        );
+        info!("Sinal de desligamento recebido, iniciando graceful shutdown do servidor Axum...");
         shutdown_task_handle_clone.graceful_shutdown(Some(Duration::from_secs(30)));
     });
 
@@ -369,8 +363,8 @@ fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
         let temp_subscriber = fmt::Subscriber::builder()
             .with_env_filter(temp_env_filter)
-            .with_writer(std::io::stderr) 
-            .json() 
+            .with_writer(std::io::stderr)
+            .json()
             .finish();
         let _temp_guard = tracing::dispatcher::set_default(&Dispatch::new(temp_subscriber));
 
@@ -394,7 +388,7 @@ fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
                 e
             );
         }
-        
+
         info!("Configurações carregadas e sistema de logging/tracing global inicializado.");
         debug!(config = ?settings, "Configurações da aplicação carregadas e prontas para uso.");
 
@@ -425,9 +419,11 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
             info!("Exportador de métricas Prometheus configurado com sucesso (será servido via Axum).");
             let app_version = env!("CARGO_PKG_VERSION");
             let rust_version_val = rustc_version_runtime::version().to_string();
-            
-            let startup_counter_name = format!("{}{}", metrics::METRIC_PREFIX, "server_startup_total");
-            let info_gauge_name = format!("{}{}", metrics::METRIC_PREFIX, metrics::SERVER_INFO_GAUGE);
+
+            let startup_counter_name =
+                format!("{}{}", metrics::METRIC_PREFIX, "server_startup_total");
+            let info_gauge_name =
+                format!("{}{}", metrics::METRIC_PREFIX, metrics::SERVER_INFO_GAUGE);
 
             ::metrics::counter!(startup_counter_name).increment(1);
             ::metrics::gauge!(
@@ -457,7 +453,7 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
         Err(e) => {
             error!("Falha na inicialização dos serviços principais (TypeDB ou JWKS): {}. O servidor será encerrado.", e);
             if !global_shutdown_token.is_cancelled() {
-                 global_shutdown_token.cancel();
+                global_shutdown_token.cancel();
             }
             return Err(e);
         }
@@ -558,11 +554,7 @@ async fn metrics_handler(State(prometheus_handle): State<PrometheusHandle>) -> A
     tracing::trace!("[METRICS_HANDLER_AXUM] Recebida requisição para /metrics");
     let metrics_data = prometheus_handle.render();
     tracing::trace!("[METRICS_HANDLER_AXUM] Métricas renderizadas com sucesso");
-    (
-        StatusCode::OK,
-        [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
-        metrics_data,
-    )
+    (StatusCode::OK, [("content-type", "text/plain; version=0.0.4; charset=utf-8")], metrics_data)
         .into_response()
 }
 
@@ -594,85 +586,81 @@ async fn websocket_handler(
     }
 
     let auth_context_for_this_connection = maybe_auth_context.map(|Extension(ctx)| ctx);
-    
-    let mcp_handler_for_this_connection = Arc::new(
-        McpServiceHandler::new_for_connection(
-            app_state.typedb_driver_ref.clone(),
-            app_state.settings.clone(),
-            auth_context_for_this_connection,
-        )
-    );
-    
+
+    let mcp_handler_for_this_connection = Arc::new(McpServiceHandler::new_for_connection(
+        app_state.typedb_driver_ref.clone(),
+        app_state.settings.clone(),
+        auth_context_for_this_connection,
+    ));
+
     let global_shutdown_token_clone = app_state.global_shutdown_token.clone();
 
-    ws.on_upgrade(move |socket| {
-        async move {
-            let connection_specific_shutdown_token = global_shutdown_token_clone.child_token();
-            info!("Conexão WebSocket MCP estabelecida.");
-            let adapter = WebSocketTransport::new(socket);
+    ws.on_upgrade(move |socket| async move {
+        let connection_specific_shutdown_token = global_shutdown_token_clone.child_token();
+        info!("Conexão WebSocket MCP estabelecida.");
+        let adapter = WebSocketTransport::new(socket);
 
-            let user_id_for_inner_task_log = user_id_for_log;
-            let connection_span = tracing::info_span!(
-                "mcp_connection_task",
-                client.user_id = %user_id_for_inner_task_log,
-                client.addr = %addr
-            );
+        let user_id_for_inner_task_log = user_id_for_log;
+        let connection_span = tracing::info_span!(
+            "mcp_connection_task",
+            client.user_id = %user_id_for_inner_task_log,
+            client.addr = %addr
+        );
 
-            tokio::spawn(
-                async move {
-                    let mcp_handler_instance = (*mcp_handler_for_this_connection).clone();
-                    let token_for_serve = connection_specific_shutdown_token.clone();
+        tokio::spawn(
+            async move {
+                let mcp_handler_instance = (*mcp_handler_for_this_connection).clone();
+                let token_for_serve = connection_specific_shutdown_token.clone();
 
-                    info!(
-                        "Iniciando handshake e serviço MCP (serve_with_ct). Token is_cancelled: {}",
-                        token_for_serve.is_cancelled()
-                    );
+                info!(
+                    "Iniciando handshake e serviço MCP (serve_with_ct). Token is_cancelled: {}",
+                    token_for_serve.is_cancelled()
+                );
 
-                    let running_service_result: Result<
-                        RunningService<RoleServer, McpServiceHandler>, 
-                        ServerInitializeError<std::io::Error>,
-                    > = mcp_handler_instance.serve_with_ct(adapter, token_for_serve).await;
+                let running_service_result: Result<
+                    RunningService<RoleServer, McpServiceHandler>,
+                    ServerInitializeError<std::io::Error>,
+                > = mcp_handler_instance.serve_with_ct(adapter, token_for_serve).await;
 
-                    match running_service_result {
-                        Ok(running_service) => {
-                            info!(
-                                client.user_id = %user_id_for_inner_task_log,
-                                "Handshake MCP bem-sucedido. Aguardando conclusão do serviço."
-                            );
-                            match running_service.waiting().await {
-                                Ok(quit_reason) => {
-                                    info!(
-                                        client.user_id = %user_id_for_inner_task_log,
-                                        "Serviço MCP para WebSocket encerrado: {:?}",
-                                        quit_reason
-                                    );
-                                }
-                                Err(join_error) => {
-                                    error!(
-                                        client.user_id = %user_id_for_inner_task_log,
-                                        error.message = %join_error,
-                                        "Task do serviço MCP falhou (JoinError)."
-                                    );
-                                }
+                match running_service_result {
+                    Ok(running_service) => {
+                        info!(
+                            client.user_id = %user_id_for_inner_task_log,
+                            "Handshake MCP bem-sucedido. Aguardando conclusão do serviço."
+                        );
+                        match running_service.waiting().await {
+                            Ok(quit_reason) => {
+                                info!(
+                                    client.user_id = %user_id_for_inner_task_log,
+                                    "Serviço MCP para WebSocket encerrado: {:?}",
+                                    quit_reason
+                                );
+                            }
+                            Err(join_error) => {
+                                error!(
+                                    client.user_id = %user_id_for_inner_task_log,
+                                    error.message = %join_error,
+                                    "Task do serviço MCP falhou (JoinError)."
+                                );
                             }
                         }
-                        Err(init_err) => {
-                            error!(
-                                client.user_id = %user_id_for_inner_task_log,
-                                error.message = %init_err.to_string(),
-                                "Falha na inicialização (handshake) do serviço MCP."
-                            );
-                        }
                     }
-                    info!(
-                        "Task de conexão MCP para user '{}' finalizada. Token (conn) is_cancelled: {}",
-                        user_id_for_inner_task_log,
-                        connection_specific_shutdown_token.is_cancelled()
-                    );
+                    Err(init_err) => {
+                        error!(
+                            client.user_id = %user_id_for_inner_task_log,
+                            error.message = %init_err.to_string(),
+                            "Falha na inicialização (handshake) do serviço MCP."
+                        );
+                    }
                 }
-                .instrument(connection_span),
-            );
-        }
+                info!(
+                    "Task de conexão MCP para user '{}' finalizada. Token (conn) is_cancelled: {}",
+                    user_id_for_inner_task_log,
+                    connection_specific_shutdown_token.is_cancelled()
+                );
+            }
+            .instrument(connection_span),
+        );
     })
 }
 
@@ -692,7 +680,10 @@ fn setup_signal_handler(token: CancellationToken) {
             let mut sigterm = match signal(SignalKind::terminate()) {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("[FATAL_ERROR] Falha ao instalar handler SIGTERM: {}. Encerrando.", e);
+                    eprintln!(
+                        "[FATAL_ERROR] Falha ao instalar handler SIGTERM: {}. Encerrando.",
+                        e
+                    );
                     std::process::exit(1);
                 }
             };

@@ -245,10 +245,10 @@ pub async fn handle_delete_database(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rmcp::model::ErrorCode; 
-    use std::borrow::Cow; 
-    use typedb_driver::Error as TypeDBError; 
-    use serde_json::json; // Para json! macro
+    use rmcp::model::ErrorCode;
+    use serde_json::json;
+    use std::borrow::Cow;
+    use typedb_driver::Error as TypeDBError; // Para json! macro
 
     // Testes para handle_create_database
     #[tokio::test]
@@ -291,9 +291,12 @@ mod tests {
         // Simula o ErrorData que seria retornado se o banco já existisse
         let expected_mcp_error_data = ErrorData {
             code: ErrorCode::INTERNAL_ERROR, // Código alterado para INTERNAL_ERROR
-            message: Cow::Owned(format!("Falha ao criar banco: O banco de dados '{}' já existe.", db_name)),
+            message: Cow::Owned(format!(
+                "Falha ao criar banco: O banco de dados '{}' já existe.",
+                db_name
+            )),
             data: Some(json!({
-                "type": "DatabaseAlreadyExists", 
+                "type": "DatabaseAlreadyExists",
                 "databaseName": db_name,
                 "detail": "Um banco de dados com este nome já está presente no servidor TypeDB."
             })),
@@ -305,7 +308,10 @@ mod tests {
             assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR); // Verifica se o código é INTERNAL_ERROR
             assert!(err_data.message.contains("já existe"));
             let data_field = err_data.data.as_ref().expect("Campo data não pode ser None");
-            assert_eq!(data_field.get("type").and_then(|v| v.as_str()), Some("DatabaseAlreadyExists"));
+            assert_eq!(
+                data_field.get("type").and_then(|v| v.as_str()),
+                Some("DatabaseAlreadyExists")
+            );
             assert_eq!(data_field.get("databaseName").and_then(|v| v.as_str()), Some(db_name));
         } else {
             panic!("Esperado Err, mas obteve Ok.");

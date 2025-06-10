@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  typedb-mcp-server:
+    build: .
+    image: typedb-mcp-server-prod:latest
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    environment:
+      - VAULT_ADDR=http://vault:8200
+      - TYPEDB_PASSWORD_FILE=/vault/secrets/db_password.txt
+    secrets:
+      - source: mcp_role_id_secret
+        target: mcp_approle_role_id
+      - source: mcp_secret_id_secret
+        target: mcp_approle_secret_id
+    depends_on:
+      - vault
+      - typedb
+
+  vault:
+    image: vault:1.17.0
+    ports:
+      - "8200:8200"
+    volumes:
+      - vault_data:/vault/data
+      - vault_logs:/vault/logs
+    environment:
+      - VAULT_ADDR=http://127.0.0.1:8200
+      - VAULT_DEV_ROOT_TOKEN_ID=my-root-token
+    cap_add:
+      - IPC_LOCK
+
+  typedb:
+    image: typedb/typedb:3.2.0
+    volumes:
+      - typedb_data:/opt/typedb/server/data
+
+volumes:
+  vault_data:
+  vault_logs:
+  typedb_data:
+
+secrets:
+  mcp_role_id_secret:
+    file: ./production-secrets/role_id.txt
+  mcp_secret_id_secret:
+    file: ./production-secrets/secret_id.txt

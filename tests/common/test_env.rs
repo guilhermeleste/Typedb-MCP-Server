@@ -30,7 +30,7 @@
 //!   e prontos para uso nos testes de integração.
 //! - Lidar com a inicialização de provedores criptográficos para `rustls` quando necessário.
 
-use anyhow::{Context as AnyhowContext, Result};
+use anyhow::{bail, Context as AnyhowContext, Result};
 use rustls::crypto::CryptoProvider;
 use std::time::Duration;
 use tracing::{error, info, warn};
@@ -41,6 +41,7 @@ use super::client::TestMcpClient;
 use super::constants;
 use super::docker_helpers::DockerComposeEnv;
 use super::test_utils::wait_for_mcp_server_ready_from_test_env;
+use std::process::Command;
 
 /// Perfis Docker disponíveis para testes de integração.
 ///
@@ -58,6 +59,8 @@ pub enum TestProfile {
     /// servindo um JWKS estático.
     /// Corresponde ao perfil "oauth_mock" no Docker Compose.
     OAuthMock,
+    /// Ativa o serviço Vault para testes de integração.
+    VaultIntegration,
 }
 
 impl TestProfile {
@@ -68,6 +71,7 @@ impl TestProfile {
             TestProfile::TypeDbDefault => "typedb_default",
             TestProfile::TypeDbTls => "typedb_tls",
             TestProfile::OAuthMock => "oauth_mock",
+            TestProfile::VaultIntegration => "vault_integration",
         }
     }
 
@@ -80,6 +84,7 @@ impl TestProfile {
             TestProfile::TypeDbDefault => Some(constants::TYPEDB_SERVICE_NAME),
             TestProfile::TypeDbTls => Some(constants::TYPEDB_TLS_SERVICE_NAME),
             TestProfile::OAuthMock => None, // OAuthMock por si só não define um serviço TypeDB.
+            TestProfile::VaultIntegration => Some(constants::TYPEDB_SERVICE_NAME),
         }
     }
 }
@@ -304,13 +309,10 @@ impl TestEnvironment {
         });
 
         let active_profiles = config.as_compose_profiles();
-        
+
         let mcp_target_typedb_svc_name = config.mcp_target_typedb_service_name();
-        let typedb_address_for_mcp_container = format!(
-            "{}:{}",
-            mcp_target_typedb_svc_name,
-            constants::TYPEDB_INTERNAL_PORT
-        );
+        let typedb_address_for_mcp_container =
+            format!("{}:{}", mcp_target_typedb_svc_name, constants::TYPEDB_INTERNAL_PORT);
 
         let primary_typedb_to_await_health = config.primary_typedb_service_to_wait_for_health();
         let should_wait_docker_compose_health = !config.mcp_server_tls;
@@ -332,14 +334,15 @@ impl TestEnvironment {
                     typedb_address_for_mcp_container
                 )
             })?;
-            
+
         // Se o typedb-server-it (padrão) for iniciado (devido ao depends_on ou perfis default/oauth/typedb_tls)
         // E não for o alvo principal do MCP, esperamos por ele também.
         // Isso garante que a condição `depends_on` do docker-compose.yml seja respeitada.
-        if primary_typedb_to_await_health != constants::TYPEDB_SERVICE_NAME && 
-           (config.profiles.contains(&TestProfile::TypeDbDefault) || 
-            config.profiles.contains(&TestProfile::OAuthMock) ||
-            config.profiles.contains(&TestProfile::TypeDbTls)) { 
+        if primary_typedb_to_await_health != constants::TYPEDB_SERVICE_NAME
+            && (config.profiles.contains(&TestProfile::TypeDbDefault)
+                || config.profiles.contains(&TestProfile::OAuthMock)
+                || config.profiles.contains(&TestProfile::TypeDbTls))
+        {
             info!(
                 "Aguardando serviço TypeDB padrão ('{}') ficar saudável (devido a depends_on/perfil) para projeto '{}'.",
                 constants::TYPEDB_SERVICE_NAME,
@@ -441,7 +444,7 @@ impl TestEnvironment {
                 constants::MCP_SERVER_SERVICE_NAME,
                 docker_env.project_name(),
                 config.config_filename,
-                typedb_address_for_mcp_container 
+                typedb_address_for_mcp_container
             )
         })?;
 
@@ -519,6 +522,155 @@ impl TestEnvironment {
         }
     }
 
+    /// Configura um ambiente de teste utilizando o Vault para fornecer segredos via AppRole.
+    pub async fn setup_with_vault(
+        test_name_suffix: &str,
+        override_secret_id: Option<String>,
+        skip_kv_creation: bool,
+        start_vault: bool,
+    ) -> Result<Self> {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        let mut config = TestConfiguration::default(constants::DEFAULT_TEST_CONFIG_FILENAME);
+        config = config.with_profile(TestProfile::VaultIntegration);
+
+        let docker_env = DockerComposeEnv::new(
+            constants::DEFAULT_DOCKER_COMPOSE_TEST_FILE,
+            &format!("vault_{}", test_name_suffix),
+        );
+        docker_env.down(true).ok();
+
+        let mut profiles = config.as_compose_profiles();
+        if !start_vault {
+            profiles.retain(|p| p != TestProfile::VaultIntegration.as_compose_profile());
+        }
+
+        let typedb_addr =
+            format!("{}:{}", constants::TYPEDB_SERVICE_NAME, constants::TYPEDB_INTERNAL_PORT);
+
+        docker_env
+            .up(&config.config_filename, Some(profiles.clone()), false, false, typedb_addr)
+            .with_context(|| {
+            format!("Falha ao iniciar docker compose para teste vault com perfis {:?}", profiles)
+        })?;
+
+        docker_env
+            .wait_for_service_healthy(
+                constants::TYPEDB_SERVICE_NAME,
+                constants::DEFAULT_TYPEDB_READY_TIMEOUT,
+            )
+            .await?;
+
+        if start_vault {
+            docker_env
+                .wait_for_service_healthy(constants::VAULT_SERVICE_NAME, Duration::from_secs(20))
+                .await?;
+
+            let vault_container =
+                format!("{}-{}", docker_env.project_name(), constants::VAULT_SERVICE_NAME);
+            let mut exec_cmd = |args: &[&str]| -> Result<String> {
+                let output = Command::new("docker")
+                    .arg("exec")
+                    .arg(&vault_container)
+                    .args(args)
+                    .output()
+                    .with_context(|| format!("Falha ao executar docker exec {:?}", args))?;
+                if !output.status.success() {
+                    bail!(
+                        "docker exec {:?} falhou: {}",
+                        args,
+                        String::from_utf8_lossy(&output.stderr)
+                    );
+                }
+                Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+            };
+
+            exec_cmd(&["vault", "secrets", "enable", "-path=kv", "kv-v2"])?;
+
+            exec_cmd(&["sh", "-c", "echo 'path \"kv/data/typedb-mcp-server/*\" { capabilities = [\"read\",\"list\"] }' > /tmp/p.hcl"])?;
+            exec_cmd(&["vault", "policy", "write", "mcp-server-policy", "/tmp/p.hcl"])?;
+
+            exec_cmd(&["vault", "auth", "enable", "approle"])?;
+            exec_cmd(&[
+                "vault",
+                "write",
+                "auth/approle/role/mcp-server",
+                "policies=mcp-server-policy",
+            ])?;
+
+            let role_id = exec_cmd(&[
+                "vault",
+                "read",
+                "-field=role_id",
+                "auth/approle/role/mcp-server/role-id",
+            ])?;
+            let mut secret_id = exec_cmd(&[
+                "vault",
+                "write",
+                "-f",
+                "-field=secret_id",
+                "auth/approle/role/mcp-server/secret-id",
+            ])?;
+
+            if let Some(override_id) = override_secret_id {
+                secret_id = override_id;
+            }
+
+            if !skip_kv_creation {
+                let pw = std::env::var("TYPEDB_PASSWORD_TEST")
+                    .unwrap_or_else(|_| "password".to_string());
+                exec_cmd(&[
+                    "vault",
+                    "kv",
+                    "put",
+                    "kv/typedb-mcp-server/config",
+                    &format!("typedb_password={}", pw),
+                ])?;
+            }
+
+            std::fs::create_dir_all("test-secrets")?;
+            std::fs::write("test-secrets/role_id.txt", role_id)?;
+            std::fs::write("test-secrets/secret_id.txt", secret_id)?;
+        }
+
+        docker_env.stop_service(constants::MCP_SERVER_SERVICE_NAME).ok();
+        docker_env.start_service(constants::MCP_SERVER_SERVICE_NAME)?;
+
+        let mcp_ws_url = format!(
+            "ws://localhost:{}{}",
+            constants::MCP_SERVER_HOST_HTTP_PORT,
+            constants::MCP_SERVER_DEFAULT_WEBSOCKET_PATH
+        );
+        let mcp_http_base_url =
+            format!("http://localhost:{}", constants::MCP_SERVER_HOST_HTTP_PORT);
+        let mcp_metrics_url = format!(
+            "http://localhost:{}{}",
+            constants::MCP_SERVER_HOST_HTTP_PORT,
+            constants::MCP_SERVER_DEFAULT_METRICS_PATH
+        );
+
+        wait_for_mcp_server_ready_from_test_env(
+            &docker_env,
+            &mcp_http_base_url,
+            false,
+            false,
+            false,
+            constants::DEFAULT_MCP_SERVER_READY_TIMEOUT,
+        )
+        .await?;
+
+        Ok(TestEnvironment {
+            docker_env,
+            mcp_ws_url,
+            mcp_http_base_url,
+            mcp_metrics_url,
+            mock_oauth_http_url: String::new(),
+            is_mcp_server_tls: false,
+            is_oauth_enabled: false,
+            is_typedb_connection_tls: false,
+        })
+    }
+
     /// Conecta-se ao servidor MCP e inicializa uma sessão, opcionalmente com autenticação.
     ///
     /// # Arguments
@@ -540,7 +692,11 @@ impl TestEnvironment {
                 nbf: Some(now),
                 iss: Some(constants::TEST_JWT_ISSUER.to_string()),
                 aud: Some(serde_json::json!(constants::TEST_JWT_AUDIENCE)),
-                scope: if effective_scopes.is_empty() { None } else { Some(effective_scopes.to_string()) },
+                scope: if effective_scopes.is_empty() {
+                    None
+                } else {
+                    Some(effective_scopes.to_string())
+                },
                 custom_claim: None,
             };
             Some(auth_helpers::generate_test_jwt(claims, JwtAuthAlgorithm::RS256))
@@ -611,7 +767,8 @@ impl Drop for TestEnvironment {
             "Limpando TestEnvironment para projeto: '{}' (via Drop).",
             self.docker_env.project_name()
         );
-        if let Err(e) = self.docker_env.down(true) { // remove_volumes = true
+        if let Err(e) = self.docker_env.down(true) {
+            // remove_volumes = true
             error!(
                 "Falha ao derrubar ambiente Docker Compose no drop para '{}': {}. Limpeza manual pode ser necessária.",
                 self.docker_env.project_name(),
@@ -638,8 +795,15 @@ mod tests {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
         let config = TestConfiguration::default(constants::DEFAULT_TEST_CONFIG_FILENAME);
         let test_env = TestEnvironment::setup_with_profiles("setup_default_prof", config).await?;
-        assert!(!test_env.is_mcp_server_tls && !test_env.is_oauth_enabled && !test_env.is_typedb_connection_tls);
-        assert_eq!(test_env.determine_config_filename_from_flags(), constants::DEFAULT_TEST_CONFIG_FILENAME);
+        assert!(
+            !test_env.is_mcp_server_tls
+                && !test_env.is_oauth_enabled
+                && !test_env.is_typedb_connection_tls
+        );
+        assert_eq!(
+            test_env.determine_config_filename_from_flags(),
+            constants::DEFAULT_TEST_CONFIG_FILENAME
+        );
         Ok(())
     }
 
@@ -650,8 +814,15 @@ mod tests {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
         let config = TestConfiguration::with_oauth(constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME);
         let test_env = TestEnvironment::setup_with_profiles("setup_oauth_prof", config).await?;
-        assert!(!test_env.is_mcp_server_tls && test_env.is_oauth_enabled && !test_env.is_typedb_connection_tls);
-        assert_eq!(test_env.determine_config_filename_from_flags(), constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME);
+        assert!(
+            !test_env.is_mcp_server_tls
+                && test_env.is_oauth_enabled
+                && !test_env.is_typedb_connection_tls
+        );
+        assert_eq!(
+            test_env.determine_config_filename_from_flags(),
+            constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME
+        );
         Ok(())
     }
 
@@ -660,10 +831,18 @@ mod tests {
     #[ignore]
     async fn test_test_environment_setup_server_tls_config() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-        let config = TestConfiguration::with_mcp_server_tls(constants::SERVER_TLS_TEST_CONFIG_FILENAME);
+        let config =
+            TestConfiguration::with_mcp_server_tls(constants::SERVER_TLS_TEST_CONFIG_FILENAME);
         let test_env = TestEnvironment::setup_with_profiles("setup_servertls_prof", config).await?;
-        assert!(test_env.is_mcp_server_tls && !test_env.is_oauth_enabled && !test_env.is_typedb_connection_tls);
-        assert_eq!(test_env.determine_config_filename_from_flags(), constants::SERVER_TLS_TEST_CONFIG_FILENAME);
+        assert!(
+            test_env.is_mcp_server_tls
+                && !test_env.is_oauth_enabled
+                && !test_env.is_typedb_connection_tls
+        );
+        assert_eq!(
+            test_env.determine_config_filename_from_flags(),
+            constants::SERVER_TLS_TEST_CONFIG_FILENAME
+        );
         Ok(())
     }
 
@@ -672,10 +851,19 @@ mod tests {
     #[ignore]
     async fn test_test_environment_setup_typedb_tls_config() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-        let config = TestConfiguration::with_typedb_tls(constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME);
+        let config = TestConfiguration::with_typedb_tls(
+            constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME,
+        );
         let test_env = TestEnvironment::setup_with_profiles("setup_typedbtls_prof", config).await?;
-        assert!(!test_env.is_mcp_server_tls && !test_env.is_oauth_enabled && test_env.is_typedb_connection_tls);
-        assert_eq!(test_env.determine_config_filename_from_flags(), constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME);
+        assert!(
+            !test_env.is_mcp_server_tls
+                && !test_env.is_oauth_enabled
+                && test_env.is_typedb_connection_tls
+        );
+        assert_eq!(
+            test_env.determine_config_filename_from_flags(),
+            constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME
+        );
         Ok(())
     }
 
@@ -683,15 +871,27 @@ mod tests {
     fn test_test_configuration_logic() {
         let default_cfg = TestConfiguration::default("default.toml");
         assert_eq!(default_cfg.mcp_target_typedb_service_name(), constants::TYPEDB_SERVICE_NAME);
-        assert_eq!(default_cfg.primary_typedb_service_to_wait_for_health(), constants::TYPEDB_SERVICE_NAME);
+        assert_eq!(
+            default_cfg.primary_typedb_service_to_wait_for_health(),
+            constants::TYPEDB_SERVICE_NAME
+        );
 
         let typedb_tls_cfg = TestConfiguration::with_typedb_tls("typedb_tls.toml");
-        assert_eq!(typedb_tls_cfg.mcp_target_typedb_service_name(), constants::TYPEDB_TLS_SERVICE_NAME);
-        assert_eq!(typedb_tls_cfg.primary_typedb_service_to_wait_for_health(), constants::TYPEDB_TLS_SERVICE_NAME);
+        assert_eq!(
+            typedb_tls_cfg.mcp_target_typedb_service_name(),
+            constants::TYPEDB_TLS_SERVICE_NAME
+        );
+        assert_eq!(
+            typedb_tls_cfg.primary_typedb_service_to_wait_for_health(),
+            constants::TYPEDB_TLS_SERVICE_NAME
+        );
 
         let oauth_cfg = TestConfiguration::with_oauth("oauth.toml");
         assert_eq!(oauth_cfg.mcp_target_typedb_service_name(), constants::TYPEDB_SERVICE_NAME);
-        assert_eq!(oauth_cfg.primary_typedb_service_to_wait_for_health(), constants::TYPEDB_SERVICE_NAME);
+        assert_eq!(
+            oauth_cfg.primary_typedb_service_to_wait_for_health(),
+            constants::TYPEDB_SERVICE_NAME
+        );
 
         let oauth_and_typedb_tls_cfg = TestConfiguration {
             profiles: vec![TestProfile::OAuthMock, TestProfile::TypeDbTls],
@@ -699,26 +899,48 @@ mod tests {
             mcp_server_tls: false,
             typedb_connection_uses_tls: true,
         };
-        assert_eq!(oauth_and_typedb_tls_cfg.mcp_target_typedb_service_name(), constants::TYPEDB_TLS_SERVICE_NAME);
-        assert_eq!(oauth_and_typedb_tls_cfg.primary_typedb_service_to_wait_for_health(), constants::TYPEDB_TLS_SERVICE_NAME);
+        assert_eq!(
+            oauth_and_typedb_tls_cfg.mcp_target_typedb_service_name(),
+            constants::TYPEDB_TLS_SERVICE_NAME
+        );
+        assert_eq!(
+            oauth_and_typedb_tls_cfg.primary_typedb_service_to_wait_for_health(),
+            constants::TYPEDB_TLS_SERVICE_NAME
+        );
     }
 
     #[test]
     fn test_derive_configuration_from_filename_logic() {
-        let cfg_default = TestEnvironment::derive_configuration_from_filename(constants::DEFAULT_TEST_CONFIG_FILENAME);
-        assert!(!cfg_default.typedb_connection_uses_tls && !cfg_default.mcp_server_tls && !cfg_default.is_oauth_enabled());
+        let cfg_default = TestEnvironment::derive_configuration_from_filename(
+            constants::DEFAULT_TEST_CONFIG_FILENAME,
+        );
+        assert!(
+            !cfg_default.typedb_connection_uses_tls
+                && !cfg_default.mcp_server_tls
+                && !cfg_default.is_oauth_enabled()
+        );
         assert_eq!(cfg_default.profiles, vec![TestProfile::TypeDbDefault]);
 
-        let cfg_typedb_tls = TestEnvironment::derive_configuration_from_filename(constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME);
-        assert!(cfg_typedb_tls.typedb_connection_uses_tls && !cfg_typedb_tls.mcp_server_tls && !cfg_typedb_tls.is_oauth_enabled());
+        let cfg_typedb_tls = TestEnvironment::derive_configuration_from_filename(
+            constants::TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME,
+        );
+        assert!(
+            cfg_typedb_tls.typedb_connection_uses_tls
+                && !cfg_typedb_tls.mcp_server_tls
+                && !cfg_typedb_tls.is_oauth_enabled()
+        );
         assert_eq!(cfg_typedb_tls.profiles, vec![TestProfile::TypeDbTls]);
-        
-        let cfg_wrong_ca = TestEnvironment::derive_configuration_from_filename("typedb_tls_wrong_ca.test.toml");
+
+        let cfg_wrong_ca =
+            TestEnvironment::derive_configuration_from_filename("typedb_tls_wrong_ca.test.toml");
         assert!(cfg_wrong_ca.typedb_connection_uses_tls);
         assert_eq!(cfg_wrong_ca.profiles, vec![TestProfile::TypeDbTls]);
 
-        let cfg_expect_tls_plain = TestEnvironment::derive_configuration_from_filename("typedb_expect_tls_got_plain.test.toml");
+        let cfg_expect_tls_plain = TestEnvironment::derive_configuration_from_filename(
+            "typedb_expect_tls_got_plain.test.toml",
+        );
         assert!(cfg_expect_tls_plain.typedb_connection_uses_tls); // MCP Server *espera* TLS para TypeDB
-        assert_eq!(cfg_expect_tls_plain.profiles, vec![TestProfile::TypeDbDefault]); // Mas o TypeDB ativado é o SEM TLS
+        assert_eq!(cfg_expect_tls_plain.profiles, vec![TestProfile::TypeDbDefault]);
+        // Mas o TypeDB ativado é o SEM TLS
     }
 }

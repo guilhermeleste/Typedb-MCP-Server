@@ -6,22 +6,3 @@ cognitive-complexity-threshold = 25
 # Regras automáticas baseadas em padrões de erro
 # Gerado automaticamente pelo sistema de prevenção
 
-# Proíbe uso de unwrap/expect em produção
-unwrap_used = "deny"
-expect_used = "deny"
-
-# Proíbe panic em funções que retornam Result
-panic_in_result_fn = "deny"
-
-# Avisa sobre TODOs e código não finalizado
-todo = "warn"
-unimplemented = "deny"
-
-# Melhora error handling
-result_large_err = "warn"
-missing_errors_doc = "warn"
-
-# Segurança
-integer_arithmetic = "warn"
-shadow_unrelated = "warn"
-

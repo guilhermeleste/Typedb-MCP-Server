@@ -73,13 +73,25 @@ Construído em Rust, o servidor foi desenvolvido com foco em performance (utiliz
 
 #### Usando Docker (Recomendado para Início Rápido)
 
-A forma mais simples de executar o servidor, especialmente para desenvolvimento e testes, é com Docker Compose.
+O fluxo de implantação padrão utiliza o HashiCorp Vault para fornecer a senha do TypeDB por meio do Vault Agent. Após configurar o Vault com o AppRole e o segredo `kv/typedb-mcp-server/config`, coloque os arquivos `role_id.txt` e `secret_id.txt` no diretório `production-secrets/` e execute:
 
-1. Clone o repositório: `git clone https://github.com/guilhermeleste/Typedb-MCP-Server.git && cd Typedb-MCP-Server`
-2. Se o seu TypeDB (serviço `typedb-server-dev` no `docker-compose.yml`) exigir senha, crie um arquivo `.env` na raiz com `TYPEDB_PASSWORD=sua_senha_typedb` ou exporte a variável.
-3. Execute: `docker-compose up -d --build`
+```bash
+docker compose -f docker-compose.production.yml up -d --build
+```
 
-Para mais detalhes, incluindo build multi-plataforma, veja o [`README.docker.md`](./README.docker.md) e a seção de [Instalação com Docker](/docs/user_guide/03_installation.md#2-usando-docker).
+Esse compose inicia um Vault, o TypeDB e o servidor MCP. O Vault Agent roda no entrypoint do contêiner, renderiza a senha em `/vault/secrets/db_password.txt` e a aplicação a carrega via `TYPEDB_PASSWORD_FILE`.
+
+Para detalhes sobre configuração do Vault e uso em produção, consulte [`README.docker.md`](./README.docker.md) e a seção [Instalação com Docker](/docs/user_guide/03_installation.md#2-usando-docker).
+
+##### Desenvolvimento Local
+
+Para um fluxo simplificado sem Vault, use `docker-compose.yml`. Crie `local-dev-secrets/password.txt` contendo a senha e execute:
+
+```bash
+docker compose up -d --build
+```
+
+O arquivo é montado como Docker Secret e a aplicação o lê via `TYPEDB_PASSWORD_FILE=/run/secrets/db_password`.
 
 #### A partir do Código-Fonte
 
@@ -116,15 +128,15 @@ Variáveis de ambiente têm precedência sobre as configurações do arquivo TOM
 
 **Variáveis de Ambiente Chave:**
 
-- `TYPEDB_PASSWORD`: **Obrigatória** se o TypeDB usa autenticação.
+- `TYPEDB_PASSWORD_FILE`: Caminho do arquivo contendo a senha do TypeDB. Em produção esse arquivo é gerado pelo Vault Agent; em desenvolvimento é montado via Docker Secret.
 
     ```bash
-    export TYPEDB_PASSWORD="sua_senha_typedb"
+    export TYPEDB_PASSWORD_FILE="/caminho/para/senha.txt"
     # Ou defina em seu arquivo .env:
-    # TYPEDB_PASSWORD=sua_senha_typedb
+    # TYPEDB_PASSWORD_FILE=/caminho/para/senha.txt
     ```
 
-    **Importante:** Nunca coloque `TYPEDB_PASSWORD` diretamente no arquivo TOML.
+    **Importante:** Nunca coloque a senha diretamente no arquivo TOML nem versione o arquivo de senha.
 
 - `MCP_CONFIG_PATH`: Permite especificar um caminho alternativo para o arquivo de configuração TOML.
 
@@ -167,14 +179,14 @@ Após a instalação e configuração:
 - **Com Cargo:**
 
     ```bash
-    # Exporte TYPEDB_PASSWORD se necessário
+    # Defina TYPEDB_PASSWORD_FILE apontando para a senha se necessário
     cargo run --release
     ```
 
 - **Binário Compilado:**
 
     ```bash
-    # Exporte TYPEDB_PASSWORD se necessário
+    # Defina TYPEDB_PASSWORD_FILE apontando para a senha se necessário
     ./target/release/typedb_mcp_server
     ```
 
@@ -194,7 +206,7 @@ Consulte a [Referência da API - Endpoints HTTP](/docs/reference/api.md#2-endpoi
 
 - **TLS:** Fortemente recomendado para todas as comunicações em produção (MCP e TypeDB).
 - **OAuth2/JWT:** Autenticação de cliente opcional, com suporte a JWKS, validação de issuer/audience e escopos.
-- **Gerenciamento de Credenciais:** `TYPEDB_PASSWORD` via variável de ambiente é crucial.
+- **Gerenciamento de Credenciais:** utilize `TYPEDB_PASSWORD_FILE` apontando para um arquivo de senha e ferramentas como Vault para gerenciá-lo.
 - **Limitação de Taxa e CORS:** Configuráveis para maior segurança.
 
 Veja mais em [Guia do Usuário - Segurança Básica](/docs/user_guide/09_security_basics.md) e [Referência de Configuração](/docs/reference/configuration.md).

@@ -72,8 +72,7 @@ pub const SERVER_READY_STATUS: &str = "ready_status";
 /// Nome da métrica: Histograma para a distribuição da duração das chamadas de ferramentas MCP, em segundos.
 pub const TOOL_CALL_DURATION_SECONDS: &str = "tool_call_duration_seconds";
 /// Nome da métrica: Histograma para a distribuição da duração da validação de tokens `OAuth2`, em segundos.
-pub const OAUTH_TOKEN_VALIDATION_DURATION_SECONDS: &str =
-    "oauth_token_validation_duration_seconds";
+pub const OAUTH_TOKEN_VALIDATION_DURATION_SECONDS: &str = "oauth_token_validation_duration_seconds";
 /// Nome da métrica: Histograma para a distribuição da duração das requisições ao `TypeDB`, em segundos.
 pub const TYPEDB_REQUEST_DURATION_SECONDS: &str = "typedb_request_duration_seconds";
 /// Nome da métrica: Histograma para a distribuição da duração das buscas ao JWKS, em segundos.
@@ -207,9 +206,10 @@ mod tests {
 
     impl Recorder for MockMetricsRecorder {
         fn describe_counter(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            let mut guard = self.descriptions.lock().expect(
-                "Falha ao adquirir lock do descriptions (describe_counter): PoisonError",
-            );
+            let mut guard = self
+                .descriptions
+                .lock()
+                .expect("Falha ao adquirir lock do descriptions (describe_counter): PoisonError");
             guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,
@@ -230,9 +230,10 @@ mod tests {
         }
 
         fn describe_histogram(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-            let mut guard = self.descriptions.lock().expect(
-                "Falha ao adquirir lock do descriptions (describe_histogram): PoisonError",
-            );
+            let mut guard = self
+                .descriptions
+                .lock()
+                .expect("Falha ao adquirir lock do descriptions (describe_histogram): PoisonError");
             guard.push(MetricDescriptionCall {
                 name: key.as_str().to_string(),
                 unit,

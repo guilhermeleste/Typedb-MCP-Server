@@ -41,11 +41,15 @@ use axum_extra::typed_header::{TypedHeader, TypedHeaderRejection};
 
 // jsonwebtoken v9.3.1 imports
 use jsonwebtoken::{
-    decode, decode_header,
+    decode,
+    decode_header,
     errors::ErrorKind as JwtErrorKind,
     jwk::JwkSet,
-    Algorithm, DecodingKey, Header as JwtValidationHeader, // Alias para o Header do jsonwebtoken
-    TokenData, Validation,
+    Algorithm,
+    DecodingKey,
+    Header as JwtValidationHeader, // Alias para o Header do jsonwebtoken
+    TokenData,
+    Validation,
 };
 
 use serde::{Deserialize, Serialize};
@@ -198,7 +202,9 @@ impl JwksCache {
             let last_successful_refresh_guard = self.last_successful_refresh.read().await;
             needs_initial_fetch = last_successful_refresh_guard.is_none();
             needs_refresh_due_to_interval = last_successful_refresh_guard
-                .map_or(true, |last_update_time| last_update_time.elapsed() > self.refresh_interval);
+                .map_or(true, |last_update_time| {
+                    last_update_time.elapsed() > self.refresh_interval
+                });
         }
 
         let mut attempt_refresh = needs_initial_fetch || needs_refresh_due_to_interval;
@@ -224,7 +230,7 @@ impl JwksCache {
                 }
             }
         }
-        
+
         Self::get_decoding_key_from_cache(&self.keys.read().await, kid).await
     }
 
@@ -265,13 +271,16 @@ impl JwksCache {
         let last_successful_opt = *self.last_successful_refresh.read().await;
         let last_attempt_failed_before_check = *self.last_refresh_attempt_failed.read().await;
 
-        let health_check_active_refresh_threshold = self.refresh_interval.checked_div(10).unwrap_or_else(|| Duration::from_secs(30));
+        let health_check_active_refresh_threshold =
+            self.refresh_interval.checked_div(10).unwrap_or_else(|| Duration::from_secs(30));
         let min_health_check_active_refresh_interval = Duration::from_secs(15);
-        let effective_health_check_threshold = health_check_active_refresh_threshold.max(min_health_check_active_refresh_interval);
-        
+        let effective_health_check_threshold =
+            health_check_active_refresh_threshold.max(min_health_check_active_refresh_interval);
+
         let needs_active_check = match last_successful_opt {
             Some(last_success_time) => {
-                last_attempt_failed_before_check || now.duration_since(last_success_time) > effective_health_check_threshold
+                last_attempt_failed_before_check
+                    || now.duration_since(last_success_time) > effective_health_check_threshold
             }
             None => true,
         };
@@ -301,7 +310,9 @@ impl JwksCache {
                 true
             }
         } else {
-            warn!("JwksCache: Saúde DOWN para /readyz. Nunca houve um refresh bem-sucedido do JWKS.");
+            warn!(
+                "JwksCache: Saúde DOWN para /readyz. Nunca houve um refresh bem-sucedido do JWKS."
+            );
             false
         }
     }
@@ -632,7 +643,6 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
             "Cache JWKS não saudável após refresh forçado."
         );
 
-
         let now = current_timestamp_for_test();
         let claims = Claims {
             sub: "user123".to_string(),
@@ -684,58 +694,67 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
         let mock_server = MockServer::start().await;
         let jwks_uri = format!("{}/.well-known/jwks.json", mock_server.uri());
-    
+
         let http_client = reqwest::Client::new();
         let cache = test_jwks_cache_for_src_auth(jwks_uri.clone(), http_client.clone());
-    
+
         // Etapa 1: Simular falha no primeiro refresh (que ocorre dentro de check_health_for_readyz)
         Mock::given(method("GET"))
             .and(path("/.well-known/jwks.json"))
             .respond_with(ResponseTemplate::new(500).set_delay(Duration::from_millis(50))) // Simula erro do servidor JWKS
             .mount(&mock_server)
             .await;
-    
+
         // check_health_for_readyz tentará um refresh, que falhará devido ao mock acima.
         assert!(
             !cache.check_health_for_readyz().await,
             "Cache não deveria estar saudável se o primeiro refresh (interno e mockado para falhar) falhar."
         );
         mock_server.reset().await; // Limpar o mock de falha
-    
+
         // Etapa 2: Configurar mock para sucesso e fazer refresh explícito
         let public_jwk_rs256 = rsa_public_jwk_for_src_auth_test();
         let jwks_data = JwkSet { keys: vec![public_jwk_rs256.clone()] };
         Mock::given(method("GET"))
             .and(path("/.well-known/jwks.json"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(&jwks_data).set_delay(Duration::from_millis(50)))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(&jwks_data)
+                    .set_delay(Duration::from_millis(50)),
+            )
             .mount(&mock_server)
             .await;
-    
+
         let refresh_result = cache.refresh_keys().await;
         assert!(
             refresh_result.is_ok(),
             "Falha ao atualizar chaves JWKS explicitamente após mock de sucesso: {:?}",
             refresh_result.err()
         );
-    
+
         // Etapa 3: Agora check_health_for_readyz deve ser true
         assert!(
             cache.check_health_for_readyz().await,
             "Cache JWKS não saudável após refresh explícito bem-sucedido."
         );
-    
+
         // Etapa 4: Testar get_decoding_key_for_kid
         let decoding_key_result = cache.get_decoding_key_for_kid(TEST_UNIT_KID_RS256).await;
         match decoding_key_result {
             Ok(Some(_key)) => {} // Sucesso, chave encontrada
-            Ok(None) => panic!("Chave não encontrada para kid '{}' após refresh bem-sucedido", TEST_UNIT_KID_RS256),
+            Ok(None) => panic!(
+                "Chave não encontrada para kid '{}' após refresh bem-sucedido",
+                TEST_UNIT_KID_RS256
+            ),
             Err(e) => panic!("Erro ao obter chave para kid '{}': {:?}", TEST_UNIT_KID_RS256, e),
         }
-    
+
         let decoding_key_result_unknown = cache.get_decoding_key_for_kid("unknown-kid").await;
         match decoding_key_result_unknown {
             Ok(None) => {} // Sucesso, kid desconhecido não encontrado como esperado
-            Ok(Some(_)) => panic!("Chave encontrada para kid desconhecido ('unknown-kid'), esperado None"),
+            Ok(Some(_)) => {
+                panic!("Chave encontrada para kid desconhecido ('unknown-kid'), esperado None")
+            }
             Err(e) => panic!("Erro ao obter chave para KID desconhecido ('unknown-kid'): {:?}", e),
         }
     }
@@ -762,6 +781,9 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
         } else {
             panic!("Tipo de erro inesperado para falha no refresh: {:?}", refresh_result);
         }
-        assert!(!cache.check_health_for_readyz().await, "Cache JWKS não deveria estar saudável após falha no refresh.");
+        assert!(
+            !cache.check_health_for_readyz().await,
+            "Cache JWKS não deveria estar saudável após falha no refresh."
+        );
     }
 }

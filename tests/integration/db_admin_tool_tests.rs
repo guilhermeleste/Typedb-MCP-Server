@@ -90,18 +90,25 @@ async fn delete_test_db(client: &mut crate::common::client::TestMcpClient, db_na
         Ok(result) => {
             let response_text = get_text_from_call_result(result);
             if response_text == "OK" {
-                info!("Helper de teste: Banco de dados de teste '{}' deletado com sucesso.", db_name);
+                info!(
+                    "Helper de teste: Banco de dados de teste '{}' deletado com sucesso.",
+                    db_name
+                );
             } else {
-                tracing::warn!( // Usando a macro diretamente do tracing
+                tracing::warn!(
+                    // Usando a macro diretamente do tracing
                     "Helper de teste: Resposta inesperada ao deletar banco de dados '{}': {}",
-                    db_name, response_text
+                    db_name,
+                    response_text
                 );
             }
         }
         Err(e) => {
-            tracing::warn!( // Usando a macro diretamente do tracing
+            tracing::warn!(
+                // Usando a macro diretamente do tracing
                 "Helper de teste: Falha ao deletar banco de dados de teste '{}': {:?}",
-                db_name, e
+                db_name,
+                e
             );
         }
     }
@@ -138,7 +145,11 @@ async fn test_create_database_succeeds_with_valid_name() -> Result<()> {
         .await
         .with_context(|| format!("Falha ao chamar database_exists para '{}'", db_name))?;
     let exists_text = get_text_from_call_result(exists_result);
-    assert_eq!(exists_text, "true", "Banco de dados criado ('{}') não foi encontrado por database_exists.", db_name);
+    assert_eq!(
+        exists_text, "true",
+        "Banco de dados criado ('{}') não foi encontrado por database_exists.",
+        db_name
+    );
     info!("Verificação database_exists para '{}' retornou 'true'.", db_name);
 
     // Limpeza: deleta o banco de dados criado.
@@ -177,7 +188,8 @@ async fn test_create_existing_database_fails_gracefully() -> Result<()> {
                 code.0,
                 McpErrorCode::INTERNAL_ERROR.0,
                 "Código de erro inesperado para banco duplicado. Mensagem: {}, Data: {:?}",
-                message, data
+                message,
+                data
             );
             assert!(
                 message.to_lowercase().contains("banco de dados")
@@ -187,11 +199,21 @@ async fn test_create_existing_database_fails_gracefully() -> Result<()> {
             );
             // Verifica o campo 'data' para o tipo de erro específico.
             let data_val = data.expect("O campo 'data' não deveria ser None para este erro.");
-            assert_eq!(data_val.get("type").and_then(|v|v.as_str()), Some("DatabaseAlreadyExists"), "Campo 'data.type' incorreto.");
-            assert_eq!(data_val.get("databaseName").and_then(|v|v.as_str()), Some(db_name.as_str()), "Campo 'data.databaseName' incorreto.");
+            assert_eq!(
+                data_val.get("type").and_then(|v| v.as_str()),
+                Some("DatabaseAlreadyExists"),
+                "Campo 'data.type' incorreto."
+            );
+            assert_eq!(
+                data_val.get("databaseName").and_then(|v| v.as_str()),
+                Some(db_name.as_str()),
+                "Campo 'data.databaseName' incorreto."
+            );
             info!("Erro para banco duplicado ('{}') verificado corretamente.", db_name);
         }
-        other_err => panic!("Tipo de erro inesperado ao criar banco de dados duplicado: {:?}", other_err),
+        other_err => {
+            panic!("Tipo de erro inesperado ao criar banco de dados duplicado: {:?}", other_err)
+        }
     }
 
     // Limpeza.
@@ -281,7 +303,9 @@ async fn test_database_exists_functionality() -> Result<()> {
     let result_false = client
         .call_tool("database_exists", Some(json!({ "name": db_name_non_existing })))
         .await
-        .with_context(|| format!("Falha ao chamar database_exists para '{}'", db_name_non_existing))?;
+        .with_context(|| {
+            format!("Falha ao chamar database_exists para '{}'", db_name_non_existing)
+        })?;
     let text_false = get_text_from_call_result(result_false);
     assert_eq!(
         text_false, "false",
@@ -297,7 +321,10 @@ async fn test_database_exists_functionality() -> Result<()> {
         .await
         .with_context(|| format!("Falha ao chamar database_exists para '{}'", db_name_existing))?;
     let text_true = get_text_from_call_result(result_true);
-    assert_eq!(text_true, "true", "database_exists deveria retornar 'true' para banco de dados existente.");
+    assert_eq!(
+        text_true, "true",
+        "database_exists deveria retornar 'true' para banco de dados existente."
+    );
     info!("Verificação para banco existente '{}' retornou 'true'.", db_name_existing);
 
     // Limpeza.
@@ -324,7 +351,11 @@ async fn test_delete_database_succeeds_and_removes_db() -> Result<()> {
     // Confirma que o banco existe antes de deletar.
     let exists_before_result =
         client.call_tool("database_exists", Some(json!({ "name": db_name }))).await?;
-    assert_eq!(get_text_from_call_result(exists_before_result), "true", "Banco deveria existir antes da deleção.");
+    assert_eq!(
+        get_text_from_call_result(exists_before_result),
+        "true",
+        "Banco deveria existir antes da deleção."
+    );
 
     info!("Teste: Deletando banco de dados '{}'", db_name);
     let delete_result = client
@@ -340,7 +371,11 @@ async fn test_delete_database_succeeds_and_removes_db() -> Result<()> {
     let exists_after_result =
         client.call_tool("database_exists", Some(json!({ "name": db_name }))).await?;
     let exists_after_text = get_text_from_call_result(exists_after_result);
-    assert_eq!(exists_after_text, "false", "Banco de dados ('{}') não foi removido após delete_database.", db_name);
+    assert_eq!(
+        exists_after_text, "false",
+        "Banco de dados ('{}') não foi removido após delete_database.",
+        db_name
+    );
     info!("Verificação database_exists para '{}' retornou 'false' após deleção.", db_name);
     info!("Teste test_delete_database_succeeds_and_removes_db concluído.");
     Ok(())
@@ -384,7 +419,10 @@ async fn test_delete_non_existent_database_fails_gracefully() -> Result<()> {
                 "Mensagem de erro não indicou que o banco de dados não existe: {}",
                 message
             );
-            info!("Erro para deleção de banco inexistente ('{}') verificado corretamente.", db_name_missing);
+            info!(
+                "Erro para deleção de banco inexistente ('{}') verificado corretamente.",
+                db_name_missing
+            );
         }
         other_err => {
             panic!("Tipo de erro inesperado ao deletar banco de dados inexistente: {:?}", other_err)
@@ -413,9 +451,9 @@ async fn test_db_admin_operations_require_correct_scopes() -> Result<()> {
     let res_create_no_perms =
         client_no_perms.call_tool("create_database", Some(json!({"name": db_name}))).await;
     assert!(res_create_no_perms.is_err(), "create_database sem escopo deveria falhar.");
-    if let McpClientError::McpErrorResponse { code, .. } = res_create_no_perms.unwrap_err()
-    {
-        assert_eq!(code.0, McpErrorCode(-32001).0, "Esperado erro de Autorização Falhou."); // -32001: Authorization Failed
+    if let McpClientError::McpErrorResponse { code, .. } = res_create_no_perms.unwrap_err() {
+        assert_eq!(code.0, McpErrorCode(-32001).0, "Esperado erro de Autorização Falhou.");
+    // -32001: Authorization Failed
     } else {
         panic!("Esperado McpErrorResponse (Authorization Failed) para create_database sem escopo.");
     }
@@ -430,10 +468,16 @@ async fn test_db_admin_operations_require_correct_scopes() -> Result<()> {
     info!("Teste: Tentando delete_database com escopo 'typedb:manage_databases' (insuficiente).");
     let res_delete_manage_perms =
         client_manage_perms.call_tool("delete_database", Some(json!({"name": db_name}))).await;
-    assert!(res_delete_manage_perms.is_err(), "delete_database com escopo manage_databases deveria falhar.");
-    if let McpClientError::McpErrorResponse { code, .. } = res_delete_manage_perms.unwrap_err()
-    {
-        assert_eq!(code.0, McpErrorCode(-32001).0, "Esperado erro de Autorização Falhou para delete.");
+    assert!(
+        res_delete_manage_perms.is_err(),
+        "delete_database com escopo manage_databases deveria falhar."
+    );
+    if let McpClientError::McpErrorResponse { code, .. } = res_delete_manage_perms.unwrap_err() {
+        assert_eq!(
+            code.0,
+            McpErrorCode(-32001).0,
+            "Esperado erro de Autorização Falhou para delete."
+        );
     } else {
         panic!("Esperado McpErrorResponse (Authorization Failed) para delete_database com escopo insuficiente.");
     }
