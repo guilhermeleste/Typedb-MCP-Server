@@ -72,6 +72,7 @@ url = "2.5.4"
 base64 = "0.22.1"
 anyhow = "1.0.98"
 bytes = "1.10.1"
+criterion = { version = "0.5", features = ["async_tokio"] }
 
 
 [profile.dev]
@@ -155,3 +156,7 @@ print_stdout = "warn"
 print_stderr = "warn"
 # cyclomatic_complexity = "warn" # Usar cognitive_complexity em clippy.toml
 # too_many_arguments = "warn" # Configurado via threshold em clippy.toml
+
+[[bench]]
+name = "performance_benchmarks"
+harness = false
