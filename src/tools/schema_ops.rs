@@ -44,6 +44,14 @@ use crate::error::typedb_error_to_mcp_error_data;
 /// # Retorna
 /// `Ok(CallToolResult)` com "OK" em caso de sucesso, ou `Err(ErrorData)`
 /// se ocorrer um erro.
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - O banco de dados especificado não existir
+/// - A definição de esquema TypeQL for inválida ou malformada
+/// - Falhar ao abrir sessão ou transação no TypeDB
+/// - Ocorrer erro durante a execução da definição de esquema
+/// - Falhar ao fazer commit da transação
 #[tracing::instrument(skip(driver, params), name = "tool_define_schema")]
 pub async fn handle_define_schema(
     driver: Arc<TypeDBDriver>,
@@ -116,6 +124,14 @@ pub async fn handle_define_schema(
 /// # Retorna
 /// `Ok(CallToolResult)` com "OK" em caso de sucesso, ou `Err(ErrorData)`
 /// se ocorrer um erro.
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - O banco de dados especificado não existir
+/// - A declaração undefine TypeQL for inválida ou malformada
+/// - Falhar ao abrir sessão ou transação no TypeDB
+/// - Ocorrer erro durante a execução da undefinição de esquema
+/// - Falhar ao fazer commit da transação
 #[tracing::instrument(skip(driver, params), name = "tool_undefine_schema")]
 pub async fn handle_undefine_schema(
     driver: Arc<TypeDBDriver>,
@@ -188,6 +204,13 @@ pub async fn handle_undefine_schema(
 /// # Retorna
 /// `Ok(CallToolResult)` com o conteúdo do esquema em caso de sucesso,
 /// ou `Err(ErrorData)` se ocorrer um erro.
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - O banco de dados especificado não existir
+/// - Falhar ao abrir sessão ou transação no TypeDB
+/// - Ocorrer erro durante a consulta do esquema
+/// - Falhar na serialização dos resultados para JSON
 #[tracing::instrument(skip(driver, params), name = "tool_get_schema")]
 pub async fn handle_get_schema(
     driver: Arc<TypeDBDriver>,

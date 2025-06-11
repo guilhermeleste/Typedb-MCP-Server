@@ -56,6 +56,12 @@ use crate::error::typedb_error_to_mcp_error_data; // Utilitário para converter 
 ///   - O banco de dados já existe (retorna `ErrorCode::INTERNAL_ERROR` com `data.type = "DatabaseAlreadyExists"`).
 ///   - Falha ao comunicar com o TypeDB.
 ///   - Outros erros do driver TypeDB.
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - O banco de dados especificado já existir
+/// - Falhar na comunicação com o servidor TypeDB
+/// - Ocorrer erro interno do driver TypeDB
 #[tracing::instrument(skip(driver, params), fields(db.name = %params.name), name = "db_admin_handle_create_database")]
 pub async fn handle_create_database(
     driver: Arc<TypeDBDriver>,
@@ -129,6 +135,9 @@ pub async fn handle_create_database(
 /// `Result<CallToolResult, ErrorData>`:
 /// * `Ok(CallToolResult)` com "true" ou "false" (como string) no conteúdo.
 /// * `Err(ErrorData)` se ocorrer um erro durante a comunicação com o TypeDB.
+///
+/// # Errors
+/// Retorna `ErrorData` se ocorrer erro na comunicação com o servidor TypeDB.
 #[tracing::instrument(skip(driver, params), fields(db.name = %params.name), name = "db_admin_handle_database_exists")]
 pub async fn handle_database_exists(
     driver: Arc<TypeDBDriver>,
@@ -159,6 +168,11 @@ pub async fn handle_database_exists(
 /// `Result<CallToolResult, ErrorData>`:
 /// * `Ok(CallToolResult)` com uma string JSON contendo um array dos nomes dos bancos.
 /// * `Err(ErrorData)` se ocorrer um erro ao listar os bancos ou ao serializar a lista para JSON.
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - Falhar na comunicação com o servidor TypeDB
+/// - Ocorrer erro ao serializar a lista de bancos para JSON
 #[tracing::instrument(skip(driver), name = "db_admin_handle_list_databases")]
 pub async fn handle_list_databases(driver: Arc<TypeDBDriver>) -> Result<CallToolResult, ErrorData> {
     tracing::info!("Executando ferramenta 'list_databases'");
@@ -210,6 +224,12 @@ pub async fn handle_list_databases(driver: Arc<TypeDBDriver>) -> Result<CallTool
 /// `Result<CallToolResult, ErrorData>`:
 /// * `Ok(CallToolResult)` com "OK" no conteúdo em caso de deleção bem-sucedida.
 /// * `Err(ErrorData)` se o banco de dados não for encontrado ou ocorrer outro erro durante a deleção.
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - O banco de dados especificado não existir
+/// - Falhar na comunicação com o servidor TypeDB
+/// - Ocorrer erro durante a operação de deleção
 #[tracing::instrument(skip(driver, params), fields(db.name = %params.name), name = "db_admin_handle_delete_database")]
 pub async fn handle_delete_database(
     driver: Arc<TypeDBDriver>,

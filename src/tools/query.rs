@@ -145,6 +145,23 @@ fn concept_row_to_json_value(row: &ConceptRow) -> serde_json::Value {
 // --- Implementações das Ferramentas ---
 
 /// Handler para a ferramenta `query_read`.
+///
+/// Executa uma consulta TypeQL de leitura no banco de dados especificado.
+///
+/// # Parâmetros
+/// * `driver`: Uma referência `Arc` para o `TypeDBDriver` conectado
+/// * `params`: Parâmetros da consulta, incluindo nome do banco e query TypeQL
+///
+/// # Retorna
+/// `Result<CallToolResult, ErrorData>` com os resultados da consulta em formato JSON
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - Falhar ao abrir transação de leitura no banco especificado
+/// - A consulta TypeQL for inválida ou malformada
+/// - Ocorrer erro durante a execução da consulta
+/// - Falhar na serialização dos resultados para JSON
+#[allow(clippy::too_many_lines)] // Função de query complexa com tratamento detalhado de diferentes tipos de resultado
 #[tracing::instrument(skip(driver, params), name = "tool_query_read", fields(db.name = %params.database_name, query.length = params.query.len()))]
 pub async fn handle_query_read(
     driver: Arc<TypeDBDriver>,
@@ -259,6 +276,22 @@ pub async fn handle_query_read(
 }
 
 /// Handler para a ferramenta `insert_data`.
+///
+/// Executa uma operação de inserção de dados usando TypeQL no banco especificado.
+///
+/// # Parâmetros
+/// * `driver`: Uma referência `Arc` para o `TypeDBDriver` conectado
+/// * `params`: Parâmetros da operação, incluindo nome do banco e query de inserção
+///
+/// # Retorna
+/// `Result<CallToolResult, ErrorData>` confirmando a inserção ou detalhes de erro
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - Falhar ao abrir transação de escrita no banco especificado
+/// - A query de inserção TypeQL for inválida
+/// - Ocorrer erro durante a execução da inserção
+/// - Falhar ao fazer commit da transação
 #[tracing::instrument(skip(driver, params), name = "tool_insert_data", fields(db.name = %params.database_name, query.length = params.query.len()))]
 pub async fn handle_insert_data(
     driver: Arc<TypeDBDriver>,
@@ -320,6 +353,22 @@ pub async fn handle_insert_data(
 }
 
 /// Handler para a ferramenta `delete_data`.
+///
+/// Executa uma operação de deleção de dados usando TypeQL no banco especificado.
+///
+/// # Parâmetros
+/// * `driver`: Uma referência `Arc` para o `TypeDBDriver` conectado
+/// * `params`: Parâmetros da operação, incluindo nome do banco e query de deleção
+///
+/// # Retorna
+/// `Result<CallToolResult, ErrorData>` confirmando a deleção ou detalhes de erro
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - Falhar ao abrir transação de escrita no banco especificado
+/// - A query de deleção TypeQL for inválida
+/// - Ocorrer erro durante a execução da deleção
+/// - Falhar ao fazer commit da transação
 #[tracing::instrument(skip(driver, params), name = "tool_delete_data", fields(db.name = %params.database_name, query.length = params.query.len()))]
 pub async fn handle_delete_data(
     driver: Arc<TypeDBDriver>,
@@ -361,6 +410,22 @@ pub async fn handle_delete_data(
 }
 
 /// Handler para a ferramenta `update_data`.
+///
+/// Executa uma operação de atualização de dados usando TypeQL no banco especificado.
+///
+/// # Parâmetros
+/// * `driver`: Uma referência `Arc` para o `TypeDBDriver` conectado
+/// * `params`: Parâmetros da operação, incluindo nome do banco e query de atualização
+///
+/// # Retorna
+/// `Result<CallToolResult, ErrorData>` confirmando a atualização ou detalhes de erro
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - Falhar ao abrir transação de escrita no banco especificado
+/// - A query de atualização TypeQL for inválida
+/// - Ocorrer erro durante a execução da atualização
+/// - Falhar ao fazer commit da transação
 #[tracing::instrument(skip(driver, params), name = "tool_update_data", fields(db.name = %params.database_name, query.length = params.query.len()))]
 pub async fn handle_update_data(
     driver: Arc<TypeDBDriver>,
@@ -410,6 +475,21 @@ pub async fn handle_update_data(
 }
 
 /// Handler para a ferramenta `validate_query`.
+///
+/// Valida uma consulta TypeQL sem executá-la, verificando sua sintaxe e semântica.
+///
+/// # Parâmetros
+/// * `driver`: Uma referência `Arc` para o `TypeDBDriver` conectado
+/// * `params`: Parâmetros da validação, incluindo nome do banco e query a validar
+///
+/// # Retorna
+/// `Result<CallToolResult, ErrorData>` indicando se a query é válida ou detalhes do erro
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - Falhar ao abrir transação no banco especificado
+/// - A consulta TypeQL for sintaticamente ou semanticamente inválida
+/// - Ocorrer erro durante a validação da consulta
 #[tracing::instrument(skip(driver, params), name = "tool_validate_query", fields(db.name = %params.database_name, query.length = params.query.len()))]
 pub async fn handle_validate_query(
     driver: Arc<TypeDBDriver>,

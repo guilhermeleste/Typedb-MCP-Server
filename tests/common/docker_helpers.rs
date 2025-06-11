@@ -67,7 +67,7 @@ impl DockerComposeEnv {
     /// Cria uma nova instância de `DockerComposeEnv`.
     ///
     /// Gera um nome de projeto Docker Compose único usando o `project_name_prefix`
-    /// fornecido, um contador atômico e uma porção de um UUIDv4 para garantir
+    /// fornecido, um contador atômico e uma porção de um `UUIDv4` para garantir
     /// alta probabilidade de unicidade, mesmo em execuções paralelas (embora
     /// os testes de integração geralmente sejam executados serialmente devido a portas de host).
     ///
@@ -92,13 +92,13 @@ impl DockerComposeEnv {
 
         // Monta o nome do projeto e garante que não exceda o limite de comprimento.
         let mut project_name =
-            format!("{}_{}_{:03}", sanitized_prefix, unique_id_uuid_short, unique_id_num);
+            format!("{sanitized_prefix}_{unique_id_uuid_short}_{unique_id_num:03}");
         const MAX_PROJECT_NAME_LEN: usize = 60; // Limite prático para nomes de projeto Docker
         if project_name.len() > MAX_PROJECT_NAME_LEN {
             project_name.truncate(MAX_PROJECT_NAME_LEN);
         }
         // Remove hífens ou underscores no final, se houver, após o truncamento.
-        project_name = project_name.trim_end_matches(|c| c == '-' || c == '_').to_string();
+        project_name = project_name.trim_end_matches(['-', '_']).to_string();
 
         info!(
             "Criando DockerComposeEnv para projeto: '{}' usando arquivo: '{}'",
@@ -108,7 +108,7 @@ impl DockerComposeEnv {
     }
 
     /// Retorna o nome do projeto Docker Compose associado a esta instância.
-    pub fn project_name(&self) -> &str {
+    #[must_use] pub fn project_name(&self) -> &str {
         &self.project_name
     }
 
@@ -123,7 +123,7 @@ impl DockerComposeEnv {
     /// * `tls_enabled_mcp`: Indica se o servidor MCP (e seu healthcheck no Dockerfile) deve operar
     ///   em modo TLS.
     /// * `typedb_address_for_mcp_opt`: Opcional. O endereço de rede (nome do serviço:porta)
-    ///   do TypeDB que o servidor MCP deve usar para se conectar.
+    ///   do `TypeDB` que o servidor MCP deve usar para se conectar.
     fn get_compose_env_vars(
         &self,
         config_filename_opt: Option<&str>,
@@ -134,7 +134,7 @@ impl DockerComposeEnv {
             // Se nenhum config_filename é passado (ex: para `down`), usa um default
             // para evitar que a variável `MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV` fique vazia.
             || "/app/test_configs/default.test.toml".to_string(),
-            |config_filename| format!("/app/test_configs/{}", config_filename),
+            |config_filename| format!("/app/test_configs/{config_filename}"),
         );
 
         // Este é o endereço que o SERVIDOR MCP (dentro do seu contêiner) usará
@@ -284,9 +284,9 @@ impl DockerComposeEnv {
         if !status.success() {
             // Em caso de falha, obter os logs acumulados para o erro.
             let stdout_log =
-                stdout_output_shared.lock().unwrap_or_else(|e| e.into_inner()).join("\n");
+                stdout_output_shared.lock().unwrap_or_else(std::sync::PoisonError::into_inner).join("\n");
             let stderr_log =
-                stderr_output_shared.lock().unwrap_or_else(|e| e.into_inner()).join("\n");
+                stderr_output_shared.lock().unwrap_or_else(std::sync::PoisonError::into_inner).join("\n");
             bail!(
                 "Comando docker compose '{:?} {:?}' falhou para projeto '{}' com status: {}.\nSTDOUT:\n{}\nSTDERR:\n{}",
                 global_args, subcommand_args, self.project_name(), status, stdout_log, stderr_log
@@ -309,7 +309,7 @@ impl DockerComposeEnv {
     ///   antes de retornar.
     /// * `tls_enabled_mcp`: Indica se o servidor MCP (e seu healthcheck Dockerfile) está
     ///   configurado para usar TLS. Passado como variável de ambiente para o Dockerfile.
-    /// * `typedb_address_for_mcp`: O endereço (nome_serviço:porta) do TypeDB que o servidor MCP
+    /// * `typedb_address_for_mcp`: O endereço (`nome_serviço:porta`) do `TypeDB` que o servidor MCP
     ///   (dentro do seu contêiner) deve usar para se conectar.
     pub fn up(
         &self,
@@ -436,7 +436,7 @@ impl DockerComposeEnv {
             .arg("ps")
             .arg("-a") // Lista todos os contêineres (rodando e parados)
             .arg("--filter")
-            .arg(&format!("label=com.docker.compose.project={}", self.project_name()))
+            .arg(format!("label=com.docker.compose.project={}", self.project_name()))
             .arg("--format")
             .arg("{{.ID}}") // Obtém apenas os IDs dos contêineres
             .output()
@@ -478,18 +478,18 @@ impl DockerComposeEnv {
                 )
             })?;
 
-            if !remove_output.status.success() {
+            if remove_output.status.success() {
+                info!(
+                    "Containers órfãos removidos com sucesso para projeto '{}'",
+                    self.project_name()
+                );
+            } else {
                 let stderr = String::from_utf8_lossy(&remove_output.stderr);
                 // Pode haver erros se um contêiner já foi removido por outro processo, então logamos como warning.
                 warn!(
                     "Potencial falha ao remover containers órfãos para projeto '{}': {}",
                     self.project_name(),
                     stderr
-                );
-            } else {
-                info!(
-                    "Containers órfãos removidos com sucesso para projeto '{}'",
-                    self.project_name()
                 );
             }
         }
@@ -508,7 +508,7 @@ impl DockerComposeEnv {
             .arg("network")
             .arg("ls")
             .arg("--filter")
-            .arg(&format!("label=com.docker.compose.project={}", self.project_name()))
+            .arg(format!("label=com.docker.compose.project={}", self.project_name()))
             .arg("--format")
             .arg("{{.ID}}") // Obtém IDs das redes
             .output()
@@ -549,13 +549,13 @@ impl DockerComposeEnv {
         })?;
 
 
-        if !remove_output.status.success() {
+        if remove_output.status.success() {
+            info!("Redes órfãs removidas com sucesso para projeto '{}'", self.project_name());
+        } else {
             let stderr = String::from_utf8_lossy(&remove_output.stderr);
             // É comum que a remoção de rede falhe se ainda houver endpoints (mesmo de contêineres parados),
             // então logamos como warning. A limpeza de contêineres deve ser feita antes.
             warn!("Algumas redes podem não ter sido removidas para projeto '{}' (podem ainda ter endpoints): {}", self.project_name(), stderr);
-        } else {
-            info!("Redes órfãs removidas com sucesso para projeto '{}'", self.project_name());
         }
         Ok(())
     }
@@ -642,7 +642,7 @@ impl DockerComposeEnv {
             let stderr = String::from_utf8_lossy(&output.stderr);
             // Tenta obter logs de todos os serviços para ajudar na depuração
             self.logs_all_services().unwrap_or_else(|e| {
-                error!("Erro adicional ao coletar logs de todos os serviços: {}", e)
+                error!("Erro adicional ao coletar logs de todos os serviços: {}", e);
             });
             bail!(
                 "'docker compose port {} {}' falhou (status {}): {}",
@@ -655,7 +655,7 @@ impl DockerComposeEnv {
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         if stdout.is_empty() {
             self.logs_all_services().unwrap_or_else(|e| {
-                error!("Erro adicional ao coletar logs de todos os serviços: {}", e)
+                error!("Erro adicional ao coletar logs de todos os serviços: {}", e);
             });
             bail!("Saída de 'docker compose port {} {}' vazia. O serviço está rodando e o perfil correto está ativo?", service_name, internal_port);
         }
@@ -664,7 +664,7 @@ impl DockerComposeEnv {
         stdout
             .rsplit_once(':')
             .and_then(|(_, p)| p.parse().ok())
-            .with_context(|| format!("Saída inesperada de 'docker compose port': '{}'", stdout))
+            .with_context(|| format!("Saída inesperada de 'docker compose port': '{stdout}'"))
     }
 
     /// Para um serviço específico dentro do ambiente Docker Compose.
@@ -796,7 +796,7 @@ impl DockerComposeEnv {
     ///
     /// Esta versão mantém compatibilidade com código existente que pode não especificar
     /// todos os novos parâmetros de `up`. Por padrão, usa `wait_for_health = true`,
-    /// `tls_enabled_mcp = false`, e o endereço TypeDB padrão.
+    /// `tls_enabled_mcp = false`, e o endereço `TypeDB` padrão.
     #[allow(dead_code)] // Usado por testes mais antigos ou como um default conveniente.
     pub fn up_compat(
         &self,
@@ -921,7 +921,7 @@ services:
             .context("Falha ao obter porta mapeada para alpine-dummy-service")?;
         // Como a porta do host é aleatória (definido como "80" no compose),
         // apenas verificamos se uma porta > 0 foi atribuída.
-        assert!(host_port > 0, "Porta mapeada para alpine-dummy-service incorreta: {}", host_port);
+        assert!(host_port > 0, "Porta mapeada para alpine-dummy-service incorreta: {host_port}");
         info!("Porta do host para alpine-dummy-service (interna :80) é {}", host_port);
 
         // O Drop de `env` chamará `down()` automaticamente no final do escopo.

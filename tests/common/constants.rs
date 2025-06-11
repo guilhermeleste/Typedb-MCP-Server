@@ -33,9 +33,9 @@ use std::time::Duration;
 
 /// Nome do serviço Docker para o Typedb-MCP-Server nos testes de integração.
 pub const MCP_SERVER_SERVICE_NAME: &str = "typedb-mcp-server-it";
-/// Nome do serviço Docker para a instância padrão do TypeDB Server (sem TLS).
+/// Nome do serviço Docker para a instância padrão do `TypeDB` Server (sem TLS).
 pub const TYPEDB_SERVICE_NAME: &str = "typedb-server-it";
-/// Nome do serviço Docker para a instância do TypeDB Server com TLS habilitado.
+/// Nome do serviço Docker para a instância do `TypeDB` Server com TLS habilitado.
 pub const TYPEDB_TLS_SERVICE_NAME: &str = "typedb-server-tls-it";
 /// Nome do serviço Docker para o Mock OAuth2/JWKS Server.
 pub const MOCK_OAUTH_SERVICE_NAME: &str = "mock-oauth2-server";
@@ -57,7 +57,7 @@ pub const MOCK_OAUTH_INTERNAL_PORT: u16 = 80;
 /// Porta INTERNA do contêiner para o Vault.
 pub const VAULT_INTERNAL_PORT: u16 = 8200;
 
-/// Porta gRPC INTERNA do contêiner para os serviços TypeDB Server.
+/// Porta gRPC INTERNA do contêiner para os serviços `TypeDB` Server.
 pub const TYPEDB_INTERNAL_PORT: u16 = 1729;
 
 // === Portas do HOST Mapeadas ===
@@ -75,9 +75,9 @@ pub const MCP_SERVER_HOST_METRICS_PORT: u16 = 9091;
 /// Porta no HOST mapeada para o Mock OAuth2/JWKS Server.
 pub const MOCK_OAUTH_HOST_PORT: u16 = 8089;
 
-/// Porta no HOST mapeada para o TypeDB Server padrão (sem TLS).
+/// Porta no HOST mapeada para o `TypeDB` Server padrão (sem TLS).
 pub const TYPEDB_HOST_PORT: u16 = 1729;
-/// Porta no HOST mapeada para o TypeDB Server com TLS.
+/// Porta no HOST mapeada para o `TypeDB` Server com TLS.
 pub const TYPEDB_TLS_HOST_PORT: u16 = 11730;
 
 // === Caminhos de Endpoint Padrão ===
@@ -100,14 +100,14 @@ pub const DEFAULT_DOCKER_COMPOSE_TEST_FILE: &str = "docker-compose.test.yml";
 /// Nome do arquivo de configuração TOML base/default para os testes.
 /// Esperado em `tests/test_configs/`.
 pub const DEFAULT_TEST_CONFIG_FILENAME: &str = "default.test.toml";
-/// Nome do arquivo de configuração TOML para testes com OAuth2 habilitado.
+/// Nome do arquivo de configuração TOML para testes com `OAuth2` habilitado.
 /// Esperado em `tests/test_configs/`.
 pub const OAUTH_ENABLED_TEST_CONFIG_FILENAME: &str = "oauth_enabled.test.toml";
 /// Nome do arquivo de configuração TOML para testes com TLS habilitado no servidor MCP.
 /// Esperado em `tests/test_configs/`.
 pub const SERVER_TLS_TEST_CONFIG_FILENAME: &str = "server_tls.test.toml";
 /// Nome do arquivo de configuração TOML para testes onde o servidor MCP
-/// conecta-se ao TypeDB usando TLS.
+/// conecta-se ao `TypeDB` usando TLS.
 /// Esperado em `tests/test_configs/`.
 pub const TYPEDB_TLS_CONNECTION_TEST_CONFIG_FILENAME: &str = "typedb_tls_connection.test.toml";
 
@@ -130,7 +130,7 @@ pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 /// Timeout padrão para healthchecks de prontidão do servidor MCP (`/readyz`).
 pub const DEFAULT_MCP_SERVER_READY_TIMEOUT: Duration = Duration::from_secs(60);
-/// Timeout padrão para healthchecks de serviços TypeDB.
+/// Timeout padrão para healthchecks de serviços `TypeDB`.
 pub const DEFAULT_TYPEDB_READY_TIMEOUT: Duration = Duration::from_secs(90);
 /// Timeout padrão para healthchecks do Mock OAuth Server.
 pub const DEFAULT_MOCK_AUTH_READY_TIMEOUT: Duration = Duration::from_secs(30);

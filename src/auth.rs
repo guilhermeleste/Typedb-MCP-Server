@@ -215,7 +215,7 @@ impl JwksCache {
             let last_successful_refresh_guard = self.last_successful_refresh.read().await;
             needs_initial_fetch = last_successful_refresh_guard.is_none();
             needs_refresh_due_to_interval = last_successful_refresh_guard
-                .map_or(true, |last_update_time| {
+                .is_none_or(|last_update_time| {
                     last_update_time.elapsed() > self.refresh_interval
                 });
         }
@@ -244,32 +244,26 @@ impl JwksCache {
             }
         }
 
-        Self::get_decoding_key_from_cache(&self.keys.read().await, kid).await
+        Self::get_decoding_key_from_cache(&self.keys.read().await, kid)
     }
 
     /// Helper interno para extrair a `DecodingKey` do `JwkSet` em cache.
-    async fn get_decoding_key_from_cache(
+    fn get_decoding_key_from_cache(
         keys_guard: &tokio::sync::RwLockReadGuard<'_, Option<JwkSet>>,
         kid: &str,
     ) -> Result<Option<DecodingKey>, AuthErrorDetail> {
-        match keys_guard.as_ref() {
-            Some(jwk_set) => match jwk_set.find(kid) {
-                Some(jwk) => DecodingKey::from_jwk(jwk)
-                    .map_err(|e| {
-                        AuthErrorDetail::TokenInvalid(format!(
-                            "JWK para kid '{kid}' (do cache) inválido: {e}"
-                        ))
-                    })
-                    .map(Some),
-                None => {
-                    trace!("Kid '{}' não encontrado no JwkSet atual do cache.", kid);
-                    Ok(None)
-                }
-            },
-            None => {
-                trace!("Cache JWKS está vazio. Não foi possível encontrar kid '{}'.", kid);
-                Ok(None)
-            }
+        if let Some(jwk_set) = keys_guard.as_ref() { if let Some(jwk) = jwk_set.find(kid) { DecodingKey::from_jwk(jwk)
+        .map_err(|e| {
+            AuthErrorDetail::TokenInvalid(format!(
+                "JWK para kid '{kid}' (do cache) inválido: {e}"
+            ))
+        })
+        .map(Some) } else {
+            trace!("Kid '{}' não encontrado no JwkSet atual do cache.", kid);
+            Ok(None)
+        } } else {
+            trace!("Cache JWKS está vazio. Não foi possível encontrar kid '{}'.", kid);
+            Ok(None)
         }
     }
 
@@ -305,7 +299,7 @@ impl JwksCache {
             trace!(
                 "JwksCache.check_health_for_readyz: Executando verificação ATIVA do JWKS URI (last_attempt_failed: {}, cache_age_exceeded_health_threshold: {}).",
                 last_attempt_failed_before_check,
-                last_successful_opt.map_or(true, |ls| now.duration_since(ls) > effective_health_check_threshold)
+                last_successful_opt.is_none_or(|ls| now.duration_since(ls) > effective_health_check_threshold)
             );
             if self.refresh_keys().await.is_err() {
                 warn!("JwksCache.check_health_for_readyz: Verificação ATIVA do JWKS URI falhou.");
@@ -338,6 +332,7 @@ impl JwksCache {
 ///
 /// Verifica a assinatura, expiração, `nbf` (Not Before), `iss` (Issuer) e `aud` (Audience)
 /// do token de acordo com as chaves públicas do `JwksCache` e as configurações `config::OAuth`.
+#[allow(clippy::too_many_lines)] // Função de validação JWT complexa, justifica o tamanho devido à lógica de segurança
 #[tracing::instrument(skip(token_str, jwks_cache, oauth_config), name = "validate_jwt_token")]
 async fn validate_and_decode_token(
     token_str: &str,

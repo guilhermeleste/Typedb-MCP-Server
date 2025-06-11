@@ -37,7 +37,6 @@ use reqwest::Client as ReqwestClient;
 use rmcp::service::{
     RoleServer, RunningService, ServerInitializeError, ServiceExt as RmcpServiceExt,
 };
-use rustc_version_runtime;
 use rustls::crypto::CryptoProvider;
 use std::{error::Error as StdError, net::SocketAddr, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
@@ -113,7 +112,7 @@ fn setup_metrics_recorder(
     info!("Descrições de métricas Prometheus registradas.");
 
     PrometheusBuilder::new().install_recorder().map_err(|e| {
-        let err_msg = format!("Não foi possível instalar o recorder de métricas Prometheus: {}", e);
+        let err_msg = format!("Não foi possível instalar o recorder de métricas Prometheus: {e}");
         error!("[METRICS_SETUP_ERROR] {}", err_msg);
         Box::new(std::io::Error::other(err_msg)) as Box<dyn StdError + Send + Sync>
     })
@@ -130,7 +129,7 @@ async fn initialize_core_services(
 
     let typedb_password_from_vault =
         std::fs::read_to_string(&password_file_path).with_context(|| {
-            format!("Não foi possível ler o arquivo de senha do TypeDB em '{}'", password_file_path)
+            format!("Não foi possível ler o arquivo de senha do TypeDB em '{password_file_path}'")
         })?;
 
 
@@ -179,8 +178,7 @@ async fn initialize_core_services(
         let http_client =
             ReqwestClient::builder().timeout(http_client_timeout).build().map_err(|e| {
                 Box::new(McpServerError::Internal(format!(
-                    "Falha ao construir HTTP client para JWKS: {}",
-                    e
+                    "Falha ao construir HTTP client para JWKS: {e}"
                 )))
             })?;
 
@@ -197,7 +195,7 @@ async fn initialize_core_services(
                 Some(cache)
             }
             Err(e) => {
-                let err_msg = format!("Falha crítica no refresh inicial do JWKS de {}: {}. O servidor não pode iniciar com OAuth habilitado sem acesso ao JWKS.", jwks_uri, e);
+                let err_msg = format!("Falha crítica no refresh inicial do JWKS de {jwks_uri}: {e}. O servidor não pode iniciar com OAuth habilitado sem acesso ao JWKS.");
                 error!("{}", err_msg);
                 return Err(Box::new(McpServerError::Auth(AuthErrorDetail::JwksFetchFailed(
                     err_msg,
@@ -346,7 +344,7 @@ async fn cleanup_resources(
 fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
     if CryptoProvider::get_default().is_none() {
         if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
-            eprintln!("[CRYPTO_PROVIDER_FATAL] Falha crítica ao instalar o provedor criptográfico Ring: {:?}. O servidor não pode continuar se TLS for usado.", e);
+            eprintln!("[CRYPTO_PROVIDER_FATAL] Falha crítica ao instalar o provedor criptográfico Ring: {e:?}. O servidor não pode continuar se TLS for usado.");
             std::process::exit(1);
         } else {
             println!("[CRYPTO_PROVIDER_SETUP] Provedor criptográfico Ring instalado como padrão para rustls.");
@@ -379,14 +377,13 @@ fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
                 if let Some(source) = config_err.source() {
                     error!("   Fonte do erro de configuração: {}", source);
                 }
-                panic!("Falha ao carregar configurações: {}", config_err);
+                panic!("Falha ao carregar configurações: {config_err}");
             }
         };
 
         if let Err(e) = setup_global_logging_and_tracing(&settings) {
             eprintln!(
-                "[SETUP_FATAL] Falha crítica ao configurar o sistema de logging/tracing global: {}. Observabilidade severamente comprometida.",
-                e
+                "[SETUP_FATAL] Falha crítica ao configurar o sistema de logging/tracing global: {e}. Observabilidade severamente comprometida."
             );
         }
 
@@ -406,7 +403,7 @@ fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
             .thread_name("typedb-mcp-worker")
             .build()?;
 
-        return rt.block_on(async_main(settings));
+        rt.block_on(async_main(settings))
     }
 }
 
@@ -577,7 +574,7 @@ async fn websocket_handler(
         .as_ref()
         .map_or_else(|| "<não_autenticado>".to_string(), |Extension(ctx)| ctx.user_id.clone());
 
-    tracing::Span::current().record("client.user_id", &tracing::field::display(&user_id_for_log));
+    tracing::Span::current().record("client.user_id", tracing::field::display(&user_id_for_log));
     info!("Nova tentativa de conexão WebSocket MCP.");
 
     if app_state.settings.oauth.enabled && maybe_auth_context.is_none() {
@@ -674,7 +671,7 @@ fn setup_signal_handler(token: CancellationToken) {
             let mut sigint = match signal(SignalKind::interrupt()) {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("[FATAL_ERROR] Falha ao instalar handler SIGINT: {}. Encerrando.", e);
+                    eprintln!("[FATAL_ERROR] Falha ao instalar handler SIGINT: {e}. Encerrando.");
                     std::process::exit(1);
                 }
             };
@@ -682,8 +679,7 @@ fn setup_signal_handler(token: CancellationToken) {
                 Ok(s) => s,
                 Err(e) => {
                     eprintln!(
-                        "[FATAL_ERROR] Falha ao instalar handler SIGTERM: {}. Encerrando.",
-                        e
+                        "[FATAL_ERROR] Falha ao instalar handler SIGTERM: {e}. Encerrando."
                     );
                     std::process::exit(1);
                 }
@@ -691,7 +687,7 @@ fn setup_signal_handler(token: CancellationToken) {
 
             tokio::select! {
                 biased;
-                _ = token.cancelled() => {
+                () = token.cancelled() => {
                     debug!("Handler de sinal: Token global já cancelado.");
                 },
                 _ = sigint.recv() => {

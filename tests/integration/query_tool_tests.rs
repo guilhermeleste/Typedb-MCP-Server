@@ -57,7 +57,7 @@ async fn setup_database_with_base_schema(
         create_result.err()
     );
 
-    let schema = r#"
+    let schema = r"
         define
             entity person,
                 owns name,
@@ -74,7 +74,7 @@ async fn setup_database_with_base_schema(
             attribute company-name, value string;
             attribute age, value integer;
             attribute salary, value double;
-    "#;
+    ";
     info!("Helper: Definindo esquema base para o banco: {}", db_name);
     let define_result = client
         .call_tool(
@@ -118,13 +118,12 @@ async fn test_insert_and_query_read_person() -> Result<()> {
         .call_tool("insert_data", Some(json!({ "databaseName": db_name, "query": insert_query })))
         .await
         .context("Falha na ferramenta insert_data")?;
-    assert_eq!(
-        insert_result.is_error.unwrap_or(false),
-        false,
+    assert!(
+        !insert_result.is_error.unwrap_or(false),
         "insert_data retornou is_error=true"
     );
 
-    let read_query = r#"match $p isa person, has name $n, has age $a; sort $n asc;"#;
+    let read_query = r"match $p isa person, has name $n, has age $a; sort $n asc;";
     info!("Teste: Consultando dados com query: {}", read_query);
     let read_result = client
         .call_tool("query_read", Some(json!({ "databaseName": db_name, "query": read_query })))
@@ -265,9 +264,8 @@ async fn test_update_attribute_value() -> Result<()> {
         .call_tool("update_data", Some(json!({ "databaseName": db_name, "query": update_query })))
         .await
         .context("Falha na ferramenta update_data")?;
-    assert_eq!(
-        update_result.is_error.unwrap_or(false),
-        false,
+    assert!(
+        !update_result.is_error.unwrap_or(false),
         "update_data retornou is_error=true"
     );
 
@@ -293,7 +291,7 @@ async fn test_update_attribute_value() -> Result<()> {
                         num
                     } else if let Some(obj) = value.as_object() {
                         // Fallback para formato antigo {"integer": 26}
-                        obj.get("integer").and_then(|v| v.as_i64()).unwrap_or(0)
+                        obj.get("integer").and_then(serde_json::Value::as_i64).unwrap_or(0)
                     } else {
                         0
                     };
@@ -312,7 +310,7 @@ async fn test_update_attribute_value() -> Result<()> {
             panic!("Array de resultado está vazio");
         }
     } else {
-        panic!("Resposta não é um array: {}", json_value);
+        panic!("Resposta não é um array: {json_value}");
     }
 
     delete_test_db(&mut client, &db_name).await;
@@ -348,8 +346,7 @@ async fn test_delete_entity_and_verify() -> Result<()> {
     // TypeDB 3.x pode retornar respostas mais detalhadas para operações de delete
     assert!(
         delete_text == "OK" || delete_text.starts_with("OK (com aviso:"),
-        "Resposta incorreta ao deletar entidade: {}",
-        delete_text
+        "Resposta incorreta ao deletar entidade: {delete_text}"
     );
 
     let read_query = r#"match $p isa person, has name "Dave";"#;
@@ -363,8 +360,7 @@ async fn test_delete_entity_and_verify() -> Result<()> {
 
     assert!(
         json_value_after_delete.is_empty(),
-        "Entidade 'Dave' não foi removida, resultado: {:?}",
-        json_value_after_delete
+        "Entidade 'Dave' não foi removida, resultado: {json_value_after_delete:?}"
     );
 
     delete_test_db(&mut client, &db_name).await;
@@ -393,7 +389,7 @@ async fn test_validate_query_syntax_ok_and_fail() -> Result<()> {
         )
         .await?;
     let text_ok = get_text_from_call_result(validate_ok_result);
-    assert_eq!(text_ok.trim().to_lowercase(), "valid", "Query válida retornou: {}", text_ok);
+    assert_eq!(text_ok.trim().to_lowercase(), "valid", "Query válida retornou: {text_ok}");
 
     let invalid_query_syntax = "match $p isa person get $p;";
     info!("Teste: Validando query com erro de sintaxe: {}", invalid_query_syntax);
@@ -406,8 +402,7 @@ async fn test_validate_query_syntax_ok_and_fail() -> Result<()> {
     let text_err = get_text_from_call_result(validate_err_result);
     assert!(
         text_err.to_lowercase().contains("error") || text_err.to_lowercase().contains("fail"),
-        "Mensagem para query inválida não indicou erro: '{}'",
-        text_err
+        "Mensagem para query inválida não indicou erro: '{text_err}'"
     );
 
     delete_test_db(&mut client, &db_name).await;

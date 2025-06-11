@@ -190,7 +190,7 @@ impl TestMcpClient {
     /// Conecta-se ao servidor MCP na URL especificada e realiza o handshake de inicialização MCP.
     ///
     /// # Arguments
-    /// * `server_ws_url`: A URL completa do endpoint WebSocket do servidor MCP (ex: "ws://localhost:8788/mcp/ws").
+    /// * `server_ws_url`: A URL completa do endpoint WebSocket do servidor MCP (ex: "<ws://localhost:8788/mcp/ws>").
     /// * `auth_token`: Opcional. Token JWT para autenticação Bearer.
     /// * `connect_timeout`: Duração do timeout para estabelecer a conexão WebSocket.
     /// * `default_request_timeout`: Timeout padrão para esperar respostas MCP do servidor após a conexão.
@@ -227,8 +227,8 @@ impl TestMcpClient {
     ) -> Result<Self, McpClientError> {
         let url = Url::parse(server_ws_url)?;
         let host_header = url.host_str().unwrap_or("localhost").to_string();
-        let port_suffix = url.port().map_or_else(String::new, |p| format!(":{}", p));
-        let effective_host_header = format!("{}{}", host_header, port_suffix);
+        let port_suffix = url.port().map_or_else(String::new, |p| format!(":{p}"));
+        let effective_host_header = format!("{host_header}{port_suffix}");
 
         let mut request_builder = HttpRequest::builder()
             .method("GET")
@@ -243,7 +243,7 @@ impl TestMcpClient {
             );
 
         if let Some(token) = auth_token {
-            let auth_value = format!("Bearer {}", token);
+            let auth_value = format!("Bearer {token}");
             match http::HeaderValue::from_str(&auth_value) {
                 Ok(header_val) => {
                     request_builder = request_builder.header(AUTHORIZATION, header_val);
@@ -327,7 +327,7 @@ impl TestMcpClient {
     ) -> Result<InitializeResult, McpClientError> {
         info!("TestMcpClient: Enviando requisição 'initialize' para o servidor.");
         let client_request_payload = ClientRequest::InitializeRequest(rmcp::model::Request {
-            method: InitializeResultMethod::default(),
+            method: InitializeResultMethod,
             params,
             extensions: Extensions::default(),
         });
@@ -338,8 +338,7 @@ impl TestMcpClient {
                     Ok(res)
                 } else {
                     Err(McpClientError::UnexpectedResponse(format!(
-                        "Esperado InitializeResult, obtido {:?}",
-                        server_result
+                        "Esperado InitializeResult, obtido {server_result:?}"
                     )))
                 }
             })
@@ -366,12 +365,12 @@ impl TestMcpClient {
     async fn send_initialized_notification(&mut self) -> Result<(), McpClientError> {
         let notification_payload =
             ClientNotification::InitializedNotification(NotificationNoParam {
-                method: InitializedNotificationMethod::default(),
+                method: InitializedNotificationMethod,
                 extensions: Extensions::default(),
             });
 
         let rpc_notification = JsonRpcNotification {
-            jsonrpc: JsonRpcVersion2_0::default(),
+            jsonrpc: JsonRpcVersion2_0,
             notification: notification_payload,
         };
         let client_message = ClientJsonRpcMessage::Notification(rpc_notification);
@@ -395,7 +394,7 @@ impl TestMcpClient {
     {
         let req_id = new_req_id();
         let rpc_request = JsonRpcRequest {
-            jsonrpc: JsonRpcVersion2_0::default(),
+            jsonrpc: JsonRpcVersion2_0,
             id: req_id.clone(),
             request: client_request_payload,
         };
@@ -451,10 +450,10 @@ impl TestMcpClient {
                         Ok(other_message_type) => {
                             let received_msg_id_for_log: Option<&RequestId> =
                                 other_message_type.message_id_for_logging();
-                            if received_msg_id_for_log.map_or(true, |id| id != &req_id) {
-                                trace!("TestMcpClient: Recebida mensagem (ID {:?}) não relacionada à requisição pendente (ID {:?}). Mensagem: {:?}", received_msg_id_for_log, req_id, other_message_type);
-                            } else {
+                            if received_msg_id_for_log == Some(&req_id) {
                                 warn!("TestMcpClient: Recebido tipo de mensagem inesperado ({:?}) enquanto esperava resposta para {:?}: {:?}", received_msg_id_for_log, req_id, other_message_type);
+                            } else {
+                                trace!("TestMcpClient: Recebida mensagem (ID {:?}) não relacionada à requisição pendente (ID {:?}). Mensagem: {:?}", received_msg_id_for_log, req_id, other_message_type);
                             }
                         }
                         Err(e) => {
@@ -502,7 +501,7 @@ impl TestMcpClient {
             arguments: arguments.and_then(|v| v.as_object().cloned()),
         };
         let client_request = ClientRequest::CallToolRequest(rmcp::model::Request {
-            method: CallToolRequestMethod::default(),
+            method: CallToolRequestMethod,
             params,
             extensions: Extensions::default(),
         });
@@ -512,8 +511,7 @@ impl TestMcpClient {
                 Ok(res)
             } else {
                 Err(McpClientError::UnexpectedResponse(format!(
-                    "Esperado CallToolResult, obtido {:?}",
-                    server_result
+                    "Esperado CallToolResult, obtido {server_result:?}"
                 )))
             }
         })
@@ -529,7 +527,7 @@ impl TestMcpClient {
         params: Option<PaginatedRequestParam>,
     ) -> Result<ListToolsResult, McpClientError> {
         let client_request = ClientRequest::ListToolsRequest(rmcp::model::RequestOptionalParam {
-            method: ListToolsRequestMethod::default(),
+            method: ListToolsRequestMethod,
             params,
             extensions: Extensions::default(),
         });
@@ -538,8 +536,7 @@ impl TestMcpClient {
                 Ok(res)
             } else {
                 Err(McpClientError::UnexpectedResponse(format!(
-                    "Esperado ListToolsResult, obtido {:?}",
-                    server_result
+                    "Esperado ListToolsResult, obtido {server_result:?}"
                 )))
             }
         })
@@ -554,9 +551,9 @@ impl TestMcpClient {
         &mut self,
         uri: impl Into<String>,
     ) -> Result<ReadResourceResult, McpClientError> {
-        let params = ReadResourceRequestParam { uri: uri.into().into() };
+        let params = ReadResourceRequestParam { uri: uri.into() };
         let client_request = ClientRequest::ReadResourceRequest(rmcp::model::Request {
-            method: ReadResourceRequestMethod::default(),
+            method: ReadResourceRequestMethod,
             params,
             extensions: Extensions::default(),
         });
@@ -565,8 +562,7 @@ impl TestMcpClient {
                 Ok(res)
             } else {
                 Err(McpClientError::UnexpectedResponse(format!(
-                    "Esperado ReadResourceResult, obtido {:?}",
-                    server_result
+                    "Esperado ReadResourceResult, obtido {server_result:?}"
                 )))
             }
         })
@@ -583,7 +579,7 @@ impl TestMcpClient {
     ) -> Result<ListResourcesResult, McpClientError> {
         let client_request =
             ClientRequest::ListResourcesRequest(rmcp::model::RequestOptionalParam {
-                method: ListResourcesRequestMethod::default(),
+                method: ListResourcesRequestMethod,
                 params,
                 extensions: Extensions::default(),
             });
@@ -592,8 +588,7 @@ impl TestMcpClient {
                 Ok(res)
             } else {
                 Err(McpClientError::UnexpectedResponse(format!(
-                    "Esperado ListResourcesResult, obtido {:?}",
-                    server_result
+                    "Esperado ListResourcesResult, obtido {server_result:?}"
                 )))
             }
         })
@@ -610,7 +605,7 @@ impl TestMcpClient {
     ) -> Result<ListResourceTemplatesResult, McpClientError> {
         let client_request =
             ClientRequest::ListResourceTemplatesRequest(rmcp::model::RequestOptionalParam {
-                method: ListResourceTemplatesRequestMethod::default(),
+                method: ListResourceTemplatesRequestMethod,
                 params,
                 extensions: Extensions::default(),
             });
@@ -619,8 +614,7 @@ impl TestMcpClient {
                 Ok(res)
             } else {
                 Err(McpClientError::UnexpectedResponse(format!(
-                    "Esperado ListResourceTemplatesResult, obtido {:?}",
-                    server_result
+                    "Esperado ListResourceTemplatesResult, obtido {server_result:?}"
                 )))
             }
         })
@@ -641,13 +635,13 @@ impl TestMcpClient {
             CancelledNotificationParam { request_id: request_id_to_cancel.clone(), reason };
         let notification_payload =
             ClientNotification::CancelledNotification(rmcp::model::Notification {
-                method: CancelledNotificationMethod::default(),
+                method: CancelledNotificationMethod,
                 params,
                 extensions: Extensions::default(),
             });
 
         let rpc_notification = JsonRpcNotification {
-            jsonrpc: JsonRpcVersion2_0::default(),
+            jsonrpc: JsonRpcVersion2_0,
             notification: notification_payload,
         };
         let client_message = ClientJsonRpcMessage::Notification(rpc_notification);

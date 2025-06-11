@@ -68,7 +68,7 @@ async fn wait_for_readyz_status(
 
                 let body_text_for_log = match &body_bytes_result {
                     Ok(b) => String::from_utf8_lossy(b).to_string(),
-                    Err(e) => format!("<corpo não pôde ser lido: {}>", e),
+                    Err(e) => format!("<corpo não pôde ser lido: {e}>"),
                 };
 
                 let expected_status_code = if expected_overall_status.eq_ignore_ascii_case("UP") {
@@ -93,7 +93,7 @@ async fn wait_for_readyz_status(
                             if json_body
                                 .get("status")
                                 .and_then(|s| s.as_str())
-                                .map_or(false, |s| s.eq_ignore_ascii_case(expected_overall_status))
+                                .is_some_and(|s| s.eq_ignore_ascii_case(expected_overall_status))
                             {
                                 info!(
                                     "Estado esperado '{}' alcançado para /readyz.",
@@ -317,19 +317,16 @@ async fn test_metrics_endpoint_returns_prometheus_format() -> Result<()> {
         .unwrap_or("");
     assert!(
         content_type.starts_with("text/plain"),
-        "Content-Type de /metrics inesperado: '{}'",
-        content_type
+        "Content-Type de /metrics inesperado: '{content_type}'"
     );
 
     let body = resp.text().await?;
     debug!("/metrics body (primeiras 500 chars): {:.500}", body);
 
-    let expected_info_metric = format!("{}{}", METRIC_PREFIX, SERVER_INFO_GAUGE);
+    let expected_info_metric = format!("{METRIC_PREFIX}{SERVER_INFO_GAUGE}");
     assert!(
         body.contains(&expected_info_metric),
-        "A métrica de informação ('{}') não foi encontrada no corpo da resposta /metrics. Corpo recebido:\n{}",
-        expected_info_metric,
-        body
+        "A métrica de informação ('{expected_info_metric}') não foi encontrada no corpo da resposta /metrics. Corpo recebido:\n{body}"
     );
 
     info!("Endpoint /metrics acessível e contém métricas esperadas.");

@@ -119,7 +119,7 @@ async fn test_websocket_inactive_client_is_disconnected_by_server() -> Result<()
     let mut disconnected_by_server = false;
     tokio::select! {
         biased;
-        _ = tokio::time::sleep(inactivity_timeout) => {
+        () = tokio::time::sleep(inactivity_timeout) => {
             info!("Timeout de {:?} do teste atingido. O servidor não desconectou o cliente inativo.", inactivity_timeout);
              warn!("O servidor MCP pode não ter um timeout de inatividade configurado para WebSockets.");
         }
@@ -259,7 +259,7 @@ async fn test_server_recovers_after_typedb_temporary_outage() -> Result<()> {
             );
             get_text_from_call_result(res)
         }
-        Err(McpClientError::WebSocket(_)) | Err(McpClientError::ConnectionClosed) => {
+        Err(McpClientError::WebSocket(_) | McpClientError::ConnectionClosed) => {
             info!("Conexão WS original foi fechada. Tentando reconectar novo cliente...");
             let mut new_client = test_env
                 .mcp_client_with_auth(Some(

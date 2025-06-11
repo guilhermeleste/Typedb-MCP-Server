@@ -168,7 +168,7 @@ async fn test_sequential_environment_cleanup() -> Result<()> {
         info!("🔄 Criando TestEnvironment #{}", i + 1);
 
         let test_env = TestEnvironment::setup(
-            &format!("cleanup_seq_{}", i),
+            &format!("cleanup_seq_{i}"),
             constants::DEFAULT_TEST_CONFIG_FILENAME,
         )
         .await?;
@@ -252,7 +252,7 @@ async fn test_cleanup_with_service_connection_failure() -> Result<()> {
 
 // === HELPER FUNCTIONS ===
 
-/// Helper que simula um pânico durante uso do TestEnvironment.
+/// Helper que simula um pânico durante uso do `TestEnvironment`.
 async fn helper_test_environment_with_panic() -> Result<()> {
     info!("🚀 Configurando TestEnvironment que vai entrar em pânico...");
 
@@ -276,7 +276,7 @@ async fn helper_verify_no_orphaned_containers(project_prefix: &str) {
             "ps",
             "-a",
             "--filter",
-            &format!("name={}", project_prefix),
+            &format!("name={project_prefix}"),
             "--format",
             "{{.Names}}",
         ])
@@ -310,7 +310,7 @@ async fn helper_verify_no_orphaned_containers(project_prefix: &str) {
             "network",
             "ls",
             "--filter",
-            &format!("name={}", project_prefix),
+            &format!("name={project_prefix}"),
             "--format",
             "{{.Name}}",
         ])

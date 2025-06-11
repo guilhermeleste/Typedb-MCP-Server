@@ -270,6 +270,13 @@ fn parse_schema_uri(uri_str: &str) -> Result<(String, String), ErrorData> {
 ///
 /// # Retorna
 /// `Ok(String)` com o conteúdo do esquema TypeQL, ou `Err(ErrorData)` se ocorrer um erro.
+///
+/// # Errors
+/// Retorna `ErrorData` se:
+/// - A URI do esquema for inválida ou malformada
+/// - O banco de dados especificado não existir
+/// - Ocorrer erro na conexão ou consulta ao TypeDB
+/// - A sessão TypeDB falhar ao ser aberta
 #[tracing::instrument(skip(driver), name = "read_dynamic_schema_resource", fields(uri = %uri_str))]
 pub async fn read_dynamic_schema_resource(
     driver: Arc<TypeDBDriver>,

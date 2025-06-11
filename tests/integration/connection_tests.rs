@@ -71,8 +71,7 @@ async fn test_websocket_connection_fails_to_wrong_path() -> Result<()> {
     };
 
     let bad_ws_url = format!(
-        "{}://localhost:{}/wrong/mcp/path", // Caminho intencionalmente errado
-        scheme_ws, host_port_str
+        "{scheme_ws}://localhost:{host_port_str}/wrong/mcp/path"
     );
 
     info!(
@@ -106,7 +105,7 @@ async fn test_websocket_connection_fails_to_wrong_path() -> Result<()> {
     // Para inspecionar o erro sem consumi-lo para o log, e depois para o match:
     let err_for_log = match &client_result {
         Ok(_) => "Sucesso inesperado".to_string(),
-        Err(e) => format!("{:?}", e),
+        Err(e) => format!("{e:?}"),
     };
     info!("Conexão com path WS inválido falhou como esperado: {}", err_for_log);
 
@@ -124,7 +123,7 @@ async fn test_websocket_connection_fails_to_wrong_path() -> Result<()> {
             // ou um erro TLS/TCP pode ocorrer antes que uma resposta HTTP 404 seja formada.
         }
         Err(other_err) => {
-            panic!("Tipo de erro inesperado para path WS inválido: {:?}", other_err);
+            panic!("Tipo de erro inesperado para path WS inválido: {other_err:?}");
         }
         Ok(_) => {
             panic!("Conexão com path WS inválido deveria ter falhado, mas obteve Ok.");
@@ -169,34 +168,28 @@ async fn test_server_tls_connection_succeeds_with_wss() -> Result<()> {
                 }
                 Err(ref list_tools_error) => {
                     // Tratar especificamente UnexpectedEof conforme documentação rustls
-                    match list_tools_error {
-                        McpClientError::WebSocket(ws_err) => match ws_err {
-                            tokio_tungstenite::tungstenite::Error::Io(io_err) => {
-                                if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
-                                    warn!("⚠️  list_tools retornou UnexpectedEof - conexão fechada sem close_notify");
-                                    warn!("📖 Conforme documentação rustls, este erro pode ser tratado como EOF normal");
-                                    warn!("🔍 Possível causa: aplicação usa length framing e conexão foi fechada adequadamente");
-                                    info!("✅ Tratando UnexpectedEof como sucesso condicional para este teste");
-                                } else {
-                                    error!(
-                                        "❌ list_tools falhou com erro IO inesperado: {:?}",
-                                        io_err
-                                    );
-                                    panic!("Erro IO inesperado em list_tools: {:?}", io_err);
-                                }
-                            }
-                            _ => {
-                                error!("❌ list_tools falhou com erro WebSocket: {:?}", ws_err);
-                                panic!("Erro WebSocket inesperado em list_tools: {:?}", ws_err);
-                            }
-                        },
-                        _ => {
+                    if let McpClientError::WebSocket(ws_err) = list_tools_error { if let tokio_tungstenite::tungstenite::Error::Io(io_err) = ws_err {
+                        if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
+                            warn!("⚠️  list_tools retornou UnexpectedEof - conexão fechada sem close_notify");
+                            warn!("📖 Conforme documentação rustls, este erro pode ser tratado como EOF normal");
+                            warn!("🔍 Possível causa: aplicação usa length framing e conexão foi fechada adequadamente");
+                            info!("✅ Tratando UnexpectedEof como sucesso condicional para este teste");
+                        } else {
                             error!(
-                                "❌ list_tools falhou com erro inesperado: {:?}",
-                                list_tools_error
+                                "❌ list_tools falhou com erro IO inesperado: {:?}",
+                                io_err
                             );
-                            panic!("Erro inesperado em list_tools: {:?}", list_tools_error);
+                            panic!("Erro IO inesperado em list_tools: {io_err:?}");
                         }
+                    } else {
+                        error!("❌ list_tools falhou com erro WebSocket: {:?}", ws_err);
+                        panic!("Erro WebSocket inesperado em list_tools: {ws_err:?}");
+                    } } else {
+                        error!(
+                            "❌ list_tools falhou com erro inesperado: {:?}",
+                            list_tools_error
+                        );
+                        panic!("Erro inesperado em list_tools: {list_tools_error:?}");
                     }
                 }
             }
@@ -205,7 +198,7 @@ async fn test_server_tls_connection_succeeds_with_wss() -> Result<()> {
             error!("❌ Conexão WSS falhou: {:?}", connection_error);
             warn!("💡 Verifique se a CA do mkcert (tests/test_certs/rootCA.pem) é confiável pelo sistema");
             warn!("💡 Ou se o cliente WebSocket está configurado para aceitar certificados autoassinados");
-            panic!("Conexão WSS falhou: {:?}", connection_error);
+            panic!("Conexão WSS falhou: {connection_error:?}");
         }
     }
     Ok(())
@@ -343,7 +336,7 @@ async fn test_oauth_connection_fails_with_invalid_token_signature() -> Result<()
 
     let err_for_log = match &client_result {
         Ok(_) => "Sucesso inesperado".to_string(),
-        Err(e) => format!("{:?}", e),
+        Err(e) => format!("{e:?}"),
     };
     info!("Conexão OAuth com token de assinatura inválida falhou como esperado: {}", err_for_log);
 
@@ -356,7 +349,7 @@ async fn test_oauth_connection_fails_with_invalid_token_signature() -> Result<()
             );
         }
         Err(other_err) => {
-            panic!("Tipo de erro inesperado para token inválido: {:?}", other_err);
+            panic!("Tipo de erro inesperado para token inválido: {other_err:?}");
         }
         Ok(_) => {
             panic!("Conexão com token de assinatura inválida deveria ter falhado, mas obteve Ok.");
@@ -403,7 +396,7 @@ async fn test_oauth_connection_fails_without_token_when_required() -> Result<()>
     assert!(client_result.is_err(), "Conexão sem token quando OAuth é obrigatório deveria falhar.");
     let err_for_log = match &client_result {
         Ok(_) => "Sucesso inesperado".to_string(),
-        Err(e) => format!("{:?}", e),
+        Err(e) => format!("{e:?}"),
     };
     info!("Conexão OAuth sem token falhou como esperado: {}", err_for_log);
 
@@ -411,12 +404,11 @@ async fn test_oauth_connection_fails_without_token_when_required() -> Result<()>
         Err(McpClientError::HandshakeFailed(status, _)) => {
             assert!(
                 status == http::StatusCode::UNAUTHORIZED || status == http::StatusCode::BAD_REQUEST,
-                "Esperado status 401 ou 400 para token ausente, obtido: {}",
-                status
+                "Esperado status 401 ou 400 para token ausente, obtido: {status}"
             );
         }
         Err(other_err) => {
-            panic!("Tipo de erro inesperado para token ausente: {:?}", other_err);
+            panic!("Tipo de erro inesperado para token ausente: {other_err:?}");
         }
         Ok(_) => {
             panic!(

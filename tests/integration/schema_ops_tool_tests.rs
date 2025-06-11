@@ -79,14 +79,12 @@ async fn test_define_simple_entity_succeeds_and_is_retrievable() -> Result<()> {
     let retrieved_schema_text = get_text_from_call_result(get_schema_result);
     assert!(
         retrieved_schema_text.contains("entity person"),
-        "Schema retornado não contém 'entity person'. Recebido: {}",
-        retrieved_schema_text
+        "Schema retornado não contém 'entity person'. Recebido: {retrieved_schema_text}"
     );
     assert!(
         retrieved_schema_text.contains("attribute name")
             && retrieved_schema_text.contains("value string"),
-        "Schema retornado não contém 'attribute name' e 'value string'. Recebido: {}",
-        retrieved_schema_text
+        "Schema retornado não contém 'attribute name' e 'value string'. Recebido: {retrieved_schema_text}"
     );
 
     delete_test_db(&mut client, &db_name).await;
@@ -131,11 +129,10 @@ async fn test_define_schema_with_invalid_typeql_fails_gracefully() -> Result<()>
                 message.to_lowercase().contains("query")
                     || message.to_lowercase().contains("schema")
                     || message.to_lowercase().contains("syntax"),
-                "Mensagem de erro não indicou problema com a query/schema: {}",
-                message
+                "Mensagem de erro não indicou problema com a query/schema: {message}"
             );
         }
-        other => panic!("Tipo de erro inesperado: {:?}", other),
+        other => panic!("Tipo de erro inesperado: {other:?}"),
     }
 
     delete_test_db(&mut client, &db_name).await;
@@ -174,7 +171,7 @@ async fn test_define_schema_on_nonexistent_db_fails() -> Result<()> {
             );
             // O código pode ser INTERNAL_ERROR ou outro, dependendo de como o driver TypeDB reporta.
         }
-        other => panic!("Tipo de erro inesperado: {:?}", other),
+        other => panic!("Tipo de erro inesperado: {other:?}"),
     }
     Ok(())
 }
@@ -219,8 +216,7 @@ async fn test_undefine_existing_type_succeeds() -> Result<()> {
     assert!(retrieved_schema_text.contains("entity animal"));
     assert!(
         !retrieved_schema_text.contains("animal owns name;"),
-        "Atributo 'name' não foi removido de 'animal'. Schema: {}",
-        retrieved_schema_text
+        "Atributo 'name' não foi removido de 'animal'. Schema: {retrieved_schema_text}"
     );
 
     delete_test_db(&mut client, &db_name).await;
@@ -241,11 +237,11 @@ async fn test_get_schema_returns_defined_types_and_full_schema() -> Result<()> {
         .await?;
 
     create_test_db(&mut client, &db_name).await?;
-    let schema_definition = r#"
+    let schema_definition = r"
         define
             entity person, owns name;
             attribute name, value string;
-    "#;
+    ";
     client
         .call_tool(
             "define_schema",

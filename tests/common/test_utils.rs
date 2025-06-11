@@ -38,7 +38,7 @@ use super::docker_helpers::DockerComposeEnv;
 ///
 /// # Arguments
 /// * `prefix`: Um prefixo descritivo para o nome do banco de dados.
-pub fn unique_db_name(prefix: &str) -> String {
+#[must_use] pub fn unique_db_name(prefix: &str) -> String {
     format!("{}_{}", prefix, Uuid::new_v4().as_simple())
 }
 
@@ -54,7 +54,7 @@ pub async fn create_test_db(client: &mut TestMcpClient, db_name: &str) -> Result
     info!("Helper Comum: Criando banco de dados de teste: '{}'", db_name);
     let result =
         client.call_tool("create_database", Some(json!({ "name": db_name }))).await.with_context(
-            || format!("Helper Comum: Falha ao chamar create_database para '{}'", db_name),
+            || format!("Helper Comum: Falha ao chamar create_database para '{db_name}'"),
         )?;
 
     let response_text = super::mcp_utils::get_text_from_call_result(result);
@@ -105,7 +105,7 @@ pub async fn delete_test_db(client: &mut TestMcpClient, db_name: &str) {
 /// * `client`: Uma referência mutável para um `TestMcpClient`.
 /// * `db_name`: O nome do banco de dados onde o esquema será definido.
 pub async fn define_test_db_schema(client: &mut TestMcpClient, db_name: &str) -> Result<()> {
-    let schema = r#"
+    let schema = r"
         define
             entity person,
                 owns name,
@@ -124,7 +124,7 @@ pub async fn define_test_db_schema(client: &mut TestMcpClient, db_name: &str) ->
             attribute salary, value double;
             attribute note, value string;
             attribute timestamp, value datetime;
-    "#;
+    ";
     info!("Helper Comum: Definindo esquema base para o banco: '{}'", db_name);
     let define_result = client
         .call_tool(
@@ -133,7 +133,7 @@ pub async fn define_test_db_schema(client: &mut TestMcpClient, db_name: &str) ->
         )
         .await
         .with_context(|| {
-            format!("Helper Comum: Falha ao definir esquema base para '{}'", db_name)
+            format!("Helper Comum: Falha ao definir esquema base para '{db_name}'")
         })?;
 
     let response_text = super::mcp_utils::get_text_from_call_result(define_result);
@@ -149,21 +149,21 @@ pub async fn define_test_db_schema(client: &mut TestMcpClient, db_name: &str) ->
 }
 
 /// Aguarda até que o endpoint `/readyz` do Typedb-MCP-Server indique que o servidor
-/// e suas dependências críticas (TypeDB e JWKS, se aplicável) estão prontos.
+/// e suas dependências críticas (`TypeDB` e JWKS, se aplicável) estão prontos.
 ///
 /// # Arguments
 /// * `docker_env_ref`: Referência ao `DockerComposeEnv` para logging em caso de timeout.
-/// * `mcp_http_base_url`: A URL base HTTP ou HTTPS do servidor MCP (ex: "http://localhost:8788").
+/// * `mcp_http_base_url`: A URL base HTTP ou HTTPS do servidor MCP (ex: "<http://localhost:8788>").
 /// * `is_mcp_server_tls`: `true` se o servidor MCP estiver usando TLS (HTTPS).
 /// * `expect_oauth_jwks_up`: `true` se o teste espera que o componente JWKS no `/readyz` esteja "UP".
-///                           Se `false`, espera que esteja "NOT_CONFIGURED" (indicando OAuth desabilitado).
+///                           Se `false`, espera que esteja "`NOT_CONFIGURED`" (indicando OAuth desabilitado).
 /// * `_expect_typedb_tls_connection`: (Atualmente não usado ativamente na lógica de checagem do /readyz)
-///                                   Flag indicando se o MCP Server está configurado para usar TLS com o TypeDB.
+///                                   Flag indicando se o MCP Server está configurado para usar TLS com o `TypeDB`.
 /// * `timeout_duration`: A duração máxima de espera.
 ///
 /// # Returns
 /// `Result<serde_json::Value>` contendo o corpo JSON da resposta `/readyz` bem-sucedida,
-/// ou um erro se o timeout_duration for atingido ou ocorrer outra falha.
+/// ou um erro se o `timeout_duration` for atingido ou ocorrer outra falha.
 pub async fn wait_for_mcp_server_ready_from_test_env(
     docker_env_ref: &DockerComposeEnv,
     mcp_http_base_url: &str,
@@ -213,7 +213,7 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
 
                 let body_text_for_log = match &body_bytes_result {
                     Ok(b) => String::from_utf8_lossy(b).to_string(),
-                    Err(e) => format!("<corpo não pôde ser lido: {}>", e),
+                    Err(e) => format!("<corpo não pôde ser lido: {e}>"),
                 };
 
                 if status_code != reqwest::StatusCode::OK {
@@ -286,6 +286,52 @@ pub async fn wait_for_mcp_server_ready_from_test_env(
     }
 }
 
+/// Aguarda que o endpoint de métricas esteja disponível e respondendo.
+///
+/// Realiza polling ativo tentando conectar ao endpoint até que esteja disponível
+/// ou até o timeout ser atingido.
+///
+/// # Arguments
+/// * `url`: URL completa do endpoint de métricas (ex: "<http://localhost:9091/metrics>")
+/// * `timeout_secs`: Timeout em segundos para aguardar o endpoint
+///
+/// # Returns
+/// * `Ok(())` se o endpoint estiver disponível
+/// * `Err` se timeout ou falha na conexão
+///
+/// # Example
+/// ```rust
+/// helper_wait_for_metrics_endpoint("http://localhost:9091/metrics", 10).await?;
+/// ```
+pub async fn helper_wait_for_metrics_endpoint(url: &str, timeout_secs: u64) -> Result<()> {
+    let timeout_duration = Duration::from_secs(timeout_secs);
+    let start_time = Instant::now();
+    let retry_interval = Duration::from_millis(100);
+
+    info!("Aguardando endpoint de métricas estar disponível: {}", url);
+
+    loop {
+        if start_time.elapsed() >= timeout_duration {
+            bail!("Timeout aguardando endpoint de métricas {} ({}s)", url, timeout_secs);
+        }
+
+        match reqwest::get(url).await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    info!("Endpoint de métricas disponível: {} ({})", url, response.status());
+                    return Ok(());
+                }
+                debug!("Endpoint retornou status não-sucesso: {}", response.status());
+            }
+            Err(err) => {
+                trace!("Tentativa de conexão falhou: {}", err);
+            }
+        }
+
+        tokio::time::sleep(retry_interval).await;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,52 +378,5 @@ mod tests {
                     // map_err desnecessário se o tipo de erro já for anyhow::Error
                 })
             };
-    }
-}
-
-/// Aguarda que o endpoint de métricas esteja disponível e respondendo.
-///
-/// Realiza polling ativo tentando conectar ao endpoint até que esteja disponível
-/// ou até o timeout ser atingido.
-///
-/// # Arguments
-/// * `url`: URL completa do endpoint de métricas (ex: "http://localhost:9091/metrics")
-/// * `timeout_secs`: Timeout em segundos para aguardar o endpoint
-///
-/// # Returns
-/// * `Ok(())` se o endpoint estiver disponível
-/// * `Err` se timeout ou falha na conexão
-///
-/// # Example
-/// ```rust
-/// helper_wait_for_metrics_endpoint("http://localhost:9091/metrics", 10).await?;
-/// ```
-pub async fn helper_wait_for_metrics_endpoint(url: &str, timeout_secs: u64) -> Result<()> {
-    let timeout_duration = Duration::from_secs(timeout_secs);
-    let start_time = Instant::now();
-    let retry_interval = Duration::from_millis(100);
-
-    info!("Aguardando endpoint de métricas estar disponível: {}", url);
-
-    loop {
-        if start_time.elapsed() >= timeout_duration {
-            bail!("Timeout aguardando endpoint de métricas {} ({}s)", url, timeout_secs);
-        }
-
-        match reqwest::get(url).await {
-            Ok(response) => {
-                if response.status().is_success() {
-                    info!("Endpoint de métricas disponível: {} ({})", url, response.status());
-                    return Ok(());
-                } else {
-                    debug!("Endpoint retornou status não-sucesso: {}", response.status());
-                }
-            }
-            Err(err) => {
-                trace!("Tentativa de conexão falhou: {}", err);
-            }
-        }
-
-        tokio::time::sleep(retry_interval).await;
     }
 }

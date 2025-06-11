@@ -367,15 +367,12 @@ mod tests {
                 Some(ca_file_path_str),
             ))
         });
-        match result {
-            Ok(connect_result) => {
-                assert!(connect_result.is_err(),
-                    "A conexão deveria falhar se o servidor não estiver disponível ou o CA for inválido para ele, mas a configuração das opções TLS deveria ter sido tentada.");
-            }
-            Err(_) => {
-                // Pânico esperado devido à dependência (gRPC worker/rustls).
-                // O importante é que não há unwrap() no nosso código de produção.
-            }
+        if let Ok(connect_result) = result {
+            assert!(connect_result.is_err(),
+                "A conexão deveria falhar se o servidor não estiver disponível ou o CA for inválido para ele, mas a configuração das opções TLS deveria ter sido tentada.");
+        } else {
+            // Pânico esperado devido à dependência (gRPC worker/rustls).
+            // O importante é que não há unwrap() no nosso código de produção.
         }
         Ok(())
     }

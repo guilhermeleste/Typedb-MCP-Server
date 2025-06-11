@@ -101,7 +101,7 @@ pub use jsonwebtoken::Algorithm as JwtAuthAlgorithm;
 /// * Se `alg` for `JwtAuthAlgorithm::RS256` e `TEST_RSA_PRIVATE_KEY_PEM` não for uma chave PEM RSA válida.
 /// * Se `alg` for um algoritmo não suportado por este helper (atualmente suporta RS256 e HS256).
 /// * Se a codificação do token falhar por outros motivos.
-pub fn generate_test_jwt(claims: TestClaims, alg: JwtAuthAlgorithm) -> String {
+#[must_use] pub fn generate_test_jwt(claims: TestClaims, alg: JwtAuthAlgorithm) -> String {
     let mut header = Header::new(alg);
     // O Key ID (kid) é crucial para que o servidor consiga encontrar a chave pública correta no JWKS.
     // Este valor deve corresponder ao 'kid' no `tests/resources/mock_jwks.json`.
@@ -111,7 +111,7 @@ pub fn generate_test_jwt(claims: TestClaims, alg: JwtAuthAlgorithm) -> String {
         JwtAuthAlgorithm::RS256 => EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes())
             .expect("Falha ao carregar chave RSA privada de teste de 'tests/common/test_keys/private_key.pem'. Verifique o arquivo e seu conteúdo."),
         JwtAuthAlgorithm::HS256 => EncodingKey::from_secret(TEST_HS256_SECRET.as_bytes()),
-        _ => panic!("Algoritmo de assinatura de teste não suportado por este helper: {:?}. Suportados: RS256, HS256.", alg),
+        _ => panic!("Algoritmo de assinatura de teste não suportado por este helper: {alg:?}. Suportados: RS256, HS256."),
     };
 
     encode(&header, &claims, &encoding_key).expect("Falha ao codificar token JWT de teste.")
@@ -119,7 +119,7 @@ pub fn generate_test_jwt(claims: TestClaims, alg: JwtAuthAlgorithm) -> String {
 
 /// Retorna o timestamp atual em segundos desde a época Unix (Unix epoch).
 /// Usado para definir os campos `exp`, `iat`, `nbf` nos claims do JWT.
-pub fn current_timestamp_secs() -> usize {
+#[must_use] pub fn current_timestamp_secs() -> usize {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Falha ao obter timestamp: tempo do sistema retrocedeu.")

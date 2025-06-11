@@ -141,7 +141,7 @@ async fn test_read_static_resource_query_types() -> Result<()> {
     let result = client
         .read_resource(resource_uri)
         .await
-        .context(format!("Falha ao ler recurso '{}'", resource_uri))?;
+        .context(format!("Falha ao ler recurso '{resource_uri}'"))?;
 
     assert_eq!(result.contents.len(), 1, "Esperado um único item de conteúdo.");
     match &result.contents[0] {
@@ -151,7 +151,7 @@ async fn test_read_static_resource_query_types() -> Result<()> {
             assert!(text.contains("Guia Rápido dos Tipos de Consulta TypeQL"));
             assert!(text.contains("DEFINE:"));
         }
-        other => panic!("Tipo de conteúdo inesperado para recurso estático: {:?}", other),
+        other => panic!("Tipo de conteúdo inesperado para recurso estático: {other:?}"),
     }
     info!("Recurso estático '{}' lido com sucesso.", resource_uri);
     Ok(())
@@ -177,7 +177,7 @@ async fn test_read_invalid_static_resource_uri_fails_gracefully() -> Result<()> 
             assert_eq!(code.0, McpErrorCode::RESOURCE_NOT_FOUND.0);
             assert!(message.contains(invalid_uri));
         }
-        other => panic!("Tipo de erro inesperado para URI inválida: {:?}", other),
+        other => panic!("Tipo de erro inesperado para URI inválida: {other:?}"),
     }
     info!("Falha ao ler URI de recurso estático inválida, como esperado.");
     Ok(())
@@ -223,7 +223,7 @@ async fn test_read_dynamic_schema_resource_full_and_types() -> Result<()> {
         .context(format!("Falha ao definir schema para '{}'", &db_name))?;
 
     // 1. Testar type=full (ou default)
-    let full_schema_uri = format!("schema://current/{}?type=full", db_name);
+    let full_schema_uri = format!("schema://current/{db_name}?type=full");
     info!("Teste: Lendo schema dinâmico completo: {}", full_schema_uri);
     let result_full = client.read_resource(&full_schema_uri).await?;
     assert_eq!(result_full.contents.len(), 1);
@@ -248,7 +248,7 @@ async fn test_read_dynamic_schema_resource_full_and_types() -> Result<()> {
     }
 
     // 2. Testar type=types
-    let types_schema_uri = format!("schema://current/{}?type=types", db_name);
+    let types_schema_uri = format!("schema://current/{db_name}?type=types");
     info!("Teste: Lendo apenas tipos do schema dinâmico: {}", types_schema_uri);
     let result_types = client.read_resource(&types_schema_uri).await?;
     assert_eq!(result_types.contents.len(), 1);
@@ -271,7 +271,7 @@ async fn test_read_dynamic_schema_resource_full_and_types() -> Result<()> {
     }
 
     // 3. Testar com parâmetro de tipo inválido (deve usar default 'full')
-    let invalid_type_schema_uri = format!("schema://current/{}?type=invalid", db_name);
+    let invalid_type_schema_uri = format!("schema://current/{db_name}?type=invalid");
     info!("Teste: Lendo schema dinâmico com tipo inválido: {}", invalid_type_schema_uri);
     let result_invalid_type = client.read_resource(&invalid_type_schema_uri).await?;
     assert_eq!(result_invalid_type.contents.len(), 1);
@@ -298,7 +298,7 @@ async fn test_read_dynamic_schema_for_nonexistent_db_fails() -> Result<()> {
             .await?;
     let mut client = test_env.mcp_client_with_auth(None).await?;
     let non_existent_db_name = unique_db_name("non_existent_schema");
-    let uri = format!("schema://current/{}", non_existent_db_name);
+    let uri = format!("schema://current/{non_existent_db_name}");
 
     info!("Teste: Tentando ler schema de banco de dados inexistente '{}'", uri);
     let result_err = client
@@ -314,7 +314,7 @@ async fn test_read_dynamic_schema_for_nonexistent_db_fails() -> Result<()> {
                     || message.to_lowercase().contains("database not found")
             );
         }
-        other => panic!("Tipo de erro inesperado: {:?}", other),
+        other => panic!("Tipo de erro inesperado: {other:?}"),
     }
     info!("Falha ao ler schema de banco inexistente, como esperado.");
     Ok(())

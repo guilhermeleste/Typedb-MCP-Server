@@ -31,7 +31,7 @@ use rmcp::model::{CallToolResult, RawContent};
 /// # Panics
 /// - Se `call_result.content` estiver vazio.
 /// - Se o primeiro item em `call_result.content` não for `RawContent::Text`.
-pub fn get_text_from_call_result(call_result: CallToolResult) -> String {
+#[must_use] pub fn get_text_from_call_result(call_result: CallToolResult) -> String {
     assert!(!call_result.content.is_empty(), "A resposta da ferramenta MCP não pode estar vazia.");
     let content_item = &call_result.content[0];
     match &content_item.raw {

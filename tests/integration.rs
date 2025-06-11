@@ -32,13 +32,13 @@
 //!
 //! A organização geral da pasta `tests/` é:
 //! └── tests/
-//!     ├── common/                 # Utilitários de teste (client, auth, docker, mcp_utils)
+//!     ├── common/                 # Utilitários de teste (client, auth, docker, `mcp_utils`)
 //!     │   └── mod.rs
 //!     │   └── ... (outros arquivos .rs)
 //!     ├── integration.rs          # Este arquivo, o ponto de entrada do crate de teste.
 //!     └── integration/            # Módulos contendo os testes de integração.
-//!         ├── connection_tests.rs
-//!         ├── db_admin_tool_tests.rs
+//!         ├── `connection_tests.rs`
+//!         ├── `db_admin_tool_tests.rs`
 //!         └── ... (outros arquivos *_tests.rs)
 //!
 //! Dentro dos módulos de teste (ex: `db_admin_tool_tests`), os utilitários

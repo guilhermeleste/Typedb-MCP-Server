@@ -50,7 +50,7 @@ pub fn is_port_available(port: u16) -> Result<bool> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let port_pattern = format!(":{}\\s", port);
+    let port_pattern = format!(":{port}\\s");
     let is_available = !stdout.contains(&port_pattern);
 
     debug!("Verificação de porta {}: {}", port, if is_available { "disponível" } else { "em uso" });
@@ -60,7 +60,7 @@ pub fn is_port_available(port: u16) -> Result<bool> {
 /// Lista todos os containers Docker que podem estar relacionados aos testes MCP.
 ///
 /// # Retorna
-/// Lista de (container_id, image, status, ports) para containers relacionados a testes
+/// Lista de (`container_id`, image, status, ports) para containers relacionados a testes
 pub fn list_test_containers() -> Result<Vec<(String, String, String, String)>> {
     let output = Command::new("docker")
         .args(["ps", "-a", "--format", "{{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"])
@@ -129,7 +129,7 @@ pub fn cleanup_orphaned_test_containers(force: bool) -> Result<usize> {
             let stop_output = Command::new("docker")
                 .args(["stop", &container_id])
                 .output()
-                .context(format!("Falha ao parar container {}", container_id))?;
+                .context(format!("Falha ao parar container {container_id}"))?;
 
             if !stop_output.status.success() {
                 warn!(
@@ -146,7 +146,7 @@ pub fn cleanup_orphaned_test_containers(force: bool) -> Result<usize> {
         let rm_output = Command::new("docker")
             .args(["rm", &container_id])
             .output()
-            .context(format!("Falha ao remover container {}", container_id))?;
+            .context(format!("Falha ao remover container {container_id}"))?;
 
         if rm_output.status.success() {
             info!("Container {} removido com sucesso", container_id);
@@ -220,15 +220,12 @@ pub fn robust_cleanup_and_verify() -> Result<()> {
 pub fn ensure_clean_test_environment() -> Result<()> {
     debug!("Verificando ambiente limpo antes do teste");
 
-    match verify_critical_ports_available() {
-        Ok(()) => {
-            debug!("Ambiente já está limpo, prosseguindo com teste");
-            Ok(())
-        }
-        Err(_) => {
-            warn!("Ambiente não está limpo, executando cleanup automático");
-            robust_cleanup_and_verify()
-        }
+    if let Ok(()) = verify_critical_ports_available() {
+        debug!("Ambiente já está limpo, prosseguindo com teste");
+        Ok(())
+    } else {
+        warn!("Ambiente não está limpo, executando cleanup automático");
+        robust_cleanup_and_verify()
     }
 }
 

@@ -48,7 +48,7 @@ use uuid::Uuid; // Para gerar nomes de banco de dados únicos
 /// * `suffix`: Um sufixo descritivo para adicionar ao nome do banco.
 ///
 /// # Retorna
-/// Uma `String` contendo o nome único do banco de dados (ex: "test_db_admin_meuteste_uuid").
+/// Uma `String` contendo o nome único do banco de dados (ex: "`test_db_admin_meuteste_uuid`").
 fn unique_db_name(suffix: &str) -> String {
     format!("test_db_admin_{}_{}", suffix, Uuid::new_v4().as_simple())
 }
@@ -74,7 +74,7 @@ async fn create_test_db(client: &mut crate::common::client::TestMcpClient, db_na
     let response_text = get_text_from_call_result(
         result.expect("create_database deveria ter sucesso baseado no assert")
     );
-    assert_eq!(response_text, "OK", "Resposta inesperada ao criar banco de teste '{}'", db_name);
+    assert_eq!(response_text, "OK", "Resposta inesperada ao criar banco de teste '{db_name}'");
     info!("Helper de teste: Banco de dados de teste '{}' criado com sucesso.", db_name);
 }
 
@@ -135,7 +135,7 @@ async fn test_create_database_succeeds_with_valid_name() -> Result<()> {
     let result = client
         .call_tool("create_database", Some(json!({ "name": db_name })))
         .await
-        .with_context(|| format!("Falha ao chamar create_database para '{}'", db_name))?;
+        .with_context(|| format!("Falha ao chamar create_database para '{db_name}'"))?;
 
     let text_content = get_text_from_call_result(result);
     assert_eq!(text_content, "OK", "Resposta incorreta ao criar banco de dados.");
@@ -145,12 +145,11 @@ async fn test_create_database_succeeds_with_valid_name() -> Result<()> {
     let exists_result = client
         .call_tool("database_exists", Some(json!({ "name": db_name })))
         .await
-        .with_context(|| format!("Falha ao chamar database_exists para '{}'", db_name))?;
+        .with_context(|| format!("Falha ao chamar database_exists para '{db_name}'"))?;
     let exists_text = get_text_from_call_result(exists_result);
     assert_eq!(
         exists_text, "true",
-        "Banco de dados criado ('{}') não foi encontrado por database_exists.",
-        db_name
+        "Banco de dados criado ('{db_name}') não foi encontrado por database_exists."
     );
     info!("Verificação database_exists para '{}' retornou 'true'.", db_name);
 
@@ -189,15 +188,12 @@ async fn test_create_existing_database_fails_gracefully() -> Result<()> {
             assert_eq!(
                 code.0,
                 McpErrorCode::INTERNAL_ERROR.0,
-                "Código de erro inesperado para banco duplicado. Mensagem: {}, Data: {:?}",
-                message,
-                data
+                "Código de erro inesperado para banco duplicado. Mensagem: {message}, Data: {data:?}"
             );
             assert!(
                 message.to_lowercase().contains("banco de dados")
                     && message.to_lowercase().contains("já existe"),
-                "Mensagem de erro não indicou que o banco de dados já existe: {}",
-                message
+                "Mensagem de erro não indicou que o banco de dados já existe: {message}"
             );
             // Verifica o campo 'data' para o tipo de erro específico.
             let data_val = data.expect("O campo 'data' não deveria ser None para este erro.");
@@ -214,7 +210,7 @@ async fn test_create_existing_database_fails_gracefully() -> Result<()> {
             info!("Erro para banco duplicado ('{}') verificado corretamente.", db_name);
         }
         other_err => {
-            panic!("Tipo de erro inesperado ao criar banco de dados duplicado: {:?}", other_err)
+            panic!("Tipo de erro inesperado ao criar banco de dados duplicado: {other_err:?}")
         }
     }
 
@@ -265,20 +261,15 @@ async fn test_list_databases_empty_and_with_content() -> Result<()> {
     // A lista pode conter mais do que apenas estes dois.
     assert!(
         dbs_with_content.len() >= 2,
-        "Número incorreto de bancos listados (esperado pelo menos 2, os criados neste teste): {:?}",
-        dbs_with_content
+        "Número incorreto de bancos listados (esperado pelo menos 2, os criados neste teste): {dbs_with_content:?}"
     );
     assert!(
         dbs_with_content.contains(&db_name1),
-        "Banco de dados '{}' não encontrado na lista: {:?}",
-        db_name1,
-        dbs_with_content
+        "Banco de dados '{db_name1}' não encontrado na lista: {dbs_with_content:?}"
     );
     assert!(
         dbs_with_content.contains(&db_name2),
-        "Banco de dados '{}' não encontrado na lista: {:?}",
-        db_name2,
-        dbs_with_content
+        "Banco de dados '{db_name2}' não encontrado na lista: {dbs_with_content:?}"
     );
     info!("Bancos de dados criados ('{}', '{}') foram listados com sucesso.", db_name1, db_name2);
 
@@ -306,7 +297,7 @@ async fn test_database_exists_functionality() -> Result<()> {
         .call_tool("database_exists", Some(json!({ "name": db_name_non_existing })))
         .await
         .with_context(|| {
-            format!("Falha ao chamar database_exists para '{}'", db_name_non_existing)
+            format!("Falha ao chamar database_exists para '{db_name_non_existing}'")
         })?;
     let text_false = get_text_from_call_result(result_false);
     assert_eq!(
@@ -321,7 +312,7 @@ async fn test_database_exists_functionality() -> Result<()> {
     let result_true = client
         .call_tool("database_exists", Some(json!({ "name": db_name_existing })))
         .await
-        .with_context(|| format!("Falha ao chamar database_exists para '{}'", db_name_existing))?;
+        .with_context(|| format!("Falha ao chamar database_exists para '{db_name_existing}'"))?;
     let text_true = get_text_from_call_result(result_true);
     assert_eq!(
         text_true, "true",
@@ -363,7 +354,7 @@ async fn test_delete_database_succeeds_and_removes_db() -> Result<()> {
     let delete_result = client
         .call_tool("delete_database", Some(json!({ "name": db_name })))
         .await
-        .with_context(|| format!("Falha ao chamar delete_database para '{}'", db_name))?;
+        .with_context(|| format!("Falha ao chamar delete_database para '{db_name}'"))?;
     let delete_text = get_text_from_call_result(delete_result);
     assert_eq!(delete_text, "OK", "Resposta incorreta ao deletar banco de dados.");
     info!("Banco de dados '{}' deletado com sucesso (resposta 'OK' recebida).", db_name);
@@ -375,8 +366,7 @@ async fn test_delete_database_succeeds_and_removes_db() -> Result<()> {
     let exists_after_text = get_text_from_call_result(exists_after_result);
     assert_eq!(
         exists_after_text, "false",
-        "Banco de dados ('{}') não foi removido após delete_database.",
-        db_name
+        "Banco de dados ('{db_name}') não foi removido após delete_database."
     );
     info!("Verificação database_exists para '{}' retornou 'false' após deleção.", db_name);
     info!("Teste test_delete_database_succeeds_and_removes_db concluído.");
@@ -409,8 +399,7 @@ async fn test_delete_non_existent_database_fails_gracefully() -> Result<()> {
             assert_eq!(
                 code.0,
                 McpErrorCode::INTERNAL_ERROR.0, // Ou outro código se o driver for mais específico
-                "Código de erro inesperado para deleção de banco de dados inexistente. Mensagem: {}",
-                message
+                "Código de erro inesperado para deleção de banco de dados inexistente. Mensagem: {message}"
             );
             // A mensagem deve indicar que o banco não foi encontrado ou não existe.
             assert!(
@@ -418,8 +407,7 @@ async fn test_delete_non_existent_database_fails_gracefully() -> Result<()> {
                     && (message.to_lowercase().contains("not found")
                         || message.to_lowercase().contains("does not exist")
                         || message.to_lowercase().contains("no such database")), // Cobrir variações
-                "Mensagem de erro não indicou que o banco de dados não existe: {}",
-                message
+                "Mensagem de erro não indicou que o banco de dados não existe: {message}"
             );
             info!(
                 "Erro para deleção de banco inexistente ('{}') verificado corretamente.",
@@ -427,7 +415,7 @@ async fn test_delete_non_existent_database_fails_gracefully() -> Result<()> {
             );
         }
         other_err => {
-            panic!("Tipo de erro inesperado ao deletar banco de dados inexistente: {:?}", other_err)
+            panic!("Tipo de erro inesperado ao deletar banco de dados inexistente: {other_err:?}")
         }
     }
     info!("Teste test_delete_non_existent_database_fails_gracefully concluído.");

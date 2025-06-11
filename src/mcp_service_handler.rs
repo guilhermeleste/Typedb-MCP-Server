@@ -346,6 +346,7 @@ impl ServerHandler for McpServiceHandler {
     /// * `request_param`: Os parâmetros da requisição `tools/call`.
     /// * `_context`: O contexto da requisição `rmcp`. Embora presente na assinatura do trait,
     ///   o `ClientAuthContext` é agora acessado via `self.auth_context` nesta implementação.
+    #[allow(clippy::used_underscore_binding)] // _context requerido pela interface do trait, mas ClientAuthContext vem de self.auth_context
     async fn call_tool(
         &self,
         request_param: CallToolRequestParam,
