@@ -401,6 +401,15 @@ impl Settings {
     /// 1. Valores padrão da struct (via `#[serde(default = "...")]` ou `Default::default()`).
     /// 2. Valores do arquivo de configuração TOML.
     /// 3. Valores de variáveis de ambiente (lidos explicitamente neste bloco de pós-processamento).
+    ///
+    /// # Errors
+    ///
+    /// Retorna `ConfigError` se:
+    /// - O arquivo de configuração TOML não puder ser lido ou for inválido
+    /// - Variáveis de ambiente obrigatórias estiverem ausentes ou inválidas  
+    /// - Valores de configuração falharem na validação (ex: portas inválidas, URLs malformadas)
+    /// - Parsing de duração ou outros tipos falhar
+    #[allow(clippy::too_many_lines)]
     pub fn new() -> Result<Self, ConfigError> {
         let config_file_path =
             env::var("MCP_CONFIG_PATH").unwrap_or_else(|_| DEFAULT_CONFIG_FILENAME.to_string());
@@ -616,8 +625,7 @@ impl Settings {
                 if raw_interval_to_parse != DEFAULT_JWKS_REFRESH_INTERVAL_STR {
                     tracing::error!("[CONFIG_ERROR] Falha ao parsear jwksRefreshInterval (valor: '{}'): {}. Usando default da struct se disponível ou falhando.", raw_interval_to_parse, e);
                     return Err(ConfigError::Message(format!(
-                        "Falha ao parsear 'oauth.jwksRefreshInterval' (valor ENV/TOML: '{}'): {}",
-                        raw_interval_to_parse, e
+                        "Falha ao parsear 'oauth.jwksRefreshInterval' (valor ENV/TOML: '{raw_interval_to_parse}'): {e}"
                     )));
                 }
                 // Se falhou ao parsear o default programático (improvável), ou se o valor era o default,
@@ -786,12 +794,12 @@ fn overwrite_from_env_option_vec_string(
         } else {
             let parsed: Vec<String> =
                 val.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-            if !parsed.is_empty() {
-                tracing::info!("[ENV_OVERRIDE] Campo '{}' via ENV: {:?}", field_name, parsed);
-                *target_field = Some(parsed);
-            } else {
+            if parsed.is_empty() {
                 *target_field = None; // Se após o parse o Vec for vazio (ex: ENV era ",,"), considera None
                 tracing::info!("[ENV_OVERRIDE] Campo '{}' via ENV: None (de string com apenas vírgulas/espaços)", field_name);
+            } else {
+                tracing::info!("[ENV_OVERRIDE] Campo '{}' via ENV: {:?}", field_name, parsed);
+                *target_field = Some(parsed);
             }
         }
     }
@@ -807,17 +815,17 @@ fn overwrite_from_env_vec_string(
 ) {
     if let Ok(val) = env::var(env_key_upper).or_else(|_| env::var(env_key_camel)) {
         let field_name = env_key_upper.to_lowercase().replace("__", ".");
-        if !val.is_empty() {
+        if val.is_empty() {
+            tracing::info!("[ENV_OVERRIDE_INFO] ENV para '{}' estava vazia. Mantendo valor de TOML/default: {:?}", field_name, target_field);
+        } else {
             let parsed: Vec<String> =
                 val.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-            if !parsed.is_empty() {
+            if parsed.is_empty() {
+                tracing::info!("[ENV_OVERRIDE_INFO] ENV para '{}' (valor: '{}') resultou em Vec vazio após parse. Mantendo valor de TOML/default: {:?}", field_name, val, target_field);
+            } else {
                 tracing::info!("[ENV_OVERRIDE] Campo '{}' via ENV: {:?}", field_name, parsed);
                 *target_field = parsed;
-            } else {
-                tracing::info!("[ENV_OVERRIDE_INFO] ENV para '{}' (valor: '{}') resultou em Vec vazio após parse. Mantendo valor de TOML/default: {:?}", field_name, val, target_field);
             }
-        } else {
-            tracing::info!("[ENV_OVERRIDE_INFO] ENV para '{}' estava vazia. Mantendo valor de TOML/default: {:?}", field_name, target_field);
         }
     }
 }
@@ -831,7 +839,7 @@ mod tests {
     fn create_temp_toml_config(content: &str) -> tempfile::NamedTempFile {
         use std::io::Write;
         let mut file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
-        write!(file, "{}", content).expect("Failed to write to temp file");
+        write!(file, "{content}").expect("Failed to write to temp file");
         file.flush().expect("Failed to flush temp file");
         file
     }
@@ -926,9 +934,9 @@ mod tests {
 
         assert_eq!(settings.typedb.address, default_typedb_address());
         assert_eq!(settings.typedb.username, Some(default_typedb_username()));
-        assert_eq!(settings.typedb.tls_enabled, false);
+        assert!(!settings.typedb.tls_enabled);
         assert_eq!(settings.server.bind_address, default_server_bind_address());
-        assert_eq!(settings.oauth.enabled, false);
+        assert!(!settings.oauth.enabled);
         assert_eq!(settings.oauth.jwks_refresh_interval, Some(Duration::from_secs(3600)));
         assert_eq!(
             settings.oauth.jwks_refresh_interval_raw,
@@ -937,7 +945,7 @@ mod tests {
         assert_eq!(settings.logging.rust_log, default_logging_rust_log());
         assert_eq!(settings.cors.allowed_origins, default_cors_allowed_origins());
         assert_eq!(settings.rate_limit.enabled, default_rate_limit_enabled());
-        assert_eq!(settings.tracing.enabled, false);
+        assert!(!settings.tracing.enabled);
     }
 
     #[test]
@@ -1058,7 +1066,7 @@ mod tests {
 
     /// Helper para remover uma ENV var, ignorando se ela não existir.
     fn env_remove_var_silently(key: &str) {
-        let _ = env::remove_var(key);
+        env::remove_var(key);
     }
 
     #[test]
@@ -1095,7 +1103,7 @@ mod tests {
 
         assert_eq!(settings.typedb.address, "specific.typedb.host:1729");
         assert_eq!(settings.typedb.username, Some(default_typedb_username()));
-        assert_eq!(settings.typedb.tls_enabled, false);
+        assert!(!settings.typedb.tls_enabled);
         assert_eq!(settings.server.bind_address, default_server_bind_address());
     }
 

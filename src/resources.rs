@@ -207,13 +207,13 @@ fn parse_schema_uri(uri_str: &str) -> Result<(String, String), ErrorData> {
             let h1 = chars.peek().copied();
             let h2 = {
                 if h1.is_some() {
-                    chars.nth(0)
+                    chars.next()
                 } else {
                     None
                 }
             };
-            if !(h1.map(|x| x.is_ascii_hexdigit()).unwrap_or(false)
-                && h2.map(|x| x.is_ascii_hexdigit()).unwrap_or(false))
+            if !(h1.is_some_and(|x| x.is_ascii_hexdigit())
+                && h2.is_some_and(|x| x.is_ascii_hexdigit()))
             {
                 return Err(ErrorData {
                     code: ErrorCode::INVALID_PARAMS,

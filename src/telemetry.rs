@@ -48,7 +48,8 @@ use opentelemetry_semantic_conventions::resource as semconv_resource;
 /// forem configurados com sucesso. Retorna `Err` se o tracing estiver desabilitado
 /// ou se ocorrer um erro na configuração.
 ///
-/// # Erros
+/// # Errors
+/// 
 /// Pode retornar `sdktrace::TraceError` se houver problemas ao configurar o pipeline OTLP.
 #[tracing::instrument(skip(config), name = "init_opentelemetry_tracing_pipeline")]
 pub fn init_tracing_pipeline(config: &config::TracingConfig) -> Result<(), sdktrace::TraceError> {

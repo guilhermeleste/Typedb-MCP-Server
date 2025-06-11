@@ -69,7 +69,7 @@ use tracing::{debug, error, info, trace, warn};
 pub struct ClientAuthContext {
     /// Identificador do usuário (geralmente o claim `sub` do token JWT).
     pub user_id: String,
-    /// Conjunto de escopos OAuth2 concedidos ao cliente, parseados do claim `scope`.
+    /// Conjunto de escopos `OAuth2` concedidos ao cliente, parseados do claim `scope`.
     pub scopes: HashSet<String>,
     /// O token JWT bruto original, como uma string, para possível referência futura.
     pub raw_token: String,
@@ -134,6 +134,13 @@ impl JwksCache {
     /// Esta função é chamada internamente quando as chaves estão desatualizadas,
     /// nunca foram carregadas, ou uma chave específica não é encontrada.
     /// Atualiza `last_successful_refresh` e `last_refresh_attempt_failed` de acordo.
+    ///
+    /// # Errors
+    ///
+    /// Retorna `AuthErrorDetail` se:
+    /// - Falha na requisição HTTP para o endpoint JWKS
+    /// - Resposta HTTP com status de erro
+    /// - Corpo da resposta não for um JSON válido ou JWKS inválido
     #[tracing::instrument(skip(self), name = "jwks_cache_refresh_keys")]
     pub async fn refresh_keys(&self) -> Result<(), AuthErrorDetail> {
         info!("Tentando atualizar chaves JWKS de: {}", self.jwks_uri);
@@ -148,8 +155,7 @@ impl JwksCache {
                     warn!("Falha ao buscar JWKS: Status {}, Corpo: {}", status, err_body);
                     *self.last_refresh_attempt_failed.write().await = true;
                     return Err(AuthErrorDetail::JwksFetchFailed(format!(
-                        "Status {} ao buscar JWKS: {}",
-                        status, err_body
+                        "Status {status} ao buscar JWKS: {err_body}"
                     )));
                 }
 
@@ -169,14 +175,14 @@ impl JwksCache {
                     Err(e) => {
                         error!("JWKS JSON inválido recebido de {}: {}", self.jwks_uri, e);
                         *self.last_refresh_attempt_failed.write().await = true;
-                        Err(AuthErrorDetail::JwksFetchFailed(format!("JWKS JSON inválido: {}", e)))
+                        Err(AuthErrorDetail::JwksFetchFailed(format!("JWKS JSON inválido: {e}")))
                     }
                 }
             }
             Err(e) => {
                 error!("Erro na requisição HTTP ao buscar JWKS de {}: {}", self.jwks_uri, e);
                 *self.last_refresh_attempt_failed.write().await = true;
-                Err(AuthErrorDetail::JwksFetchFailed(format!("Erro HTTP ao buscar JWKS: {}", e)))
+                Err(AuthErrorDetail::JwksFetchFailed(format!("Erro HTTP ao buscar JWKS: {e}")))
             }
         }
     }
@@ -186,6 +192,13 @@ impl JwksCache {
     /// Se o cache estiver potencialmente desatualizado (com base no `refresh_interval`) ou
     /// a chave com o `kid` não for encontrada no cache atual, esta função tentará
     /// atualizar as chaves do `jwks_uri` antes de tentar encontrar a chave novamente.
+    ///
+    /// # Errors
+    ///
+    /// Retorna `AuthErrorDetail` se:
+    /// - Falha ao atualizar chaves do endpoint JWKS
+    /// - JWK encontrada é inválida ou não pode ser convertida para DecodingKey
+    /// - Erro interno no processamento das chaves
     ///
     /// # Retorna
     /// `Ok(Some(DecodingKey))` se a chave for encontrada e válida.
@@ -244,8 +257,7 @@ impl JwksCache {
                 Some(jwk) => DecodingKey::from_jwk(jwk)
                     .map_err(|e| {
                         AuthErrorDetail::TokenInvalid(format!(
-                            "JWK para kid '{}' (do cache) inválido: {}",
-                            kid, e
+                            "JWK para kid '{kid}' (do cache) inválido: {e}"
                         ))
                     })
                     .map(Some),
@@ -265,6 +277,10 @@ impl JwksCache {
     ///
     /// Tenta um refresh se o cache estiver potencialmente obsoleto ou se o último refresh falhou.
     /// Retorna `false` se o refresh ativo falhar ou se nunca houve sucesso.
+    ///
+    /// # Panics
+    ///
+    /// Pode dar panic se `last_successful_opt` for `None` em contextos onde é esperado que seja `Some`.
     #[tracing::instrument(skip(self), name = "jwks_cache_check_health_for_readyz")]
     pub async fn check_health_for_readyz(&self) -> bool {
         let now = Instant::now();
@@ -301,12 +317,12 @@ impl JwksCache {
         let current_last_successful_opt = *self.last_successful_refresh.read().await;
         let current_last_attempt_failed = *self.last_refresh_attempt_failed.read().await;
 
-        if current_last_successful_opt.is_some() {
+        if let Some(last_successful) = current_last_successful_opt {
             if current_last_attempt_failed {
                 warn!("JwksCache: Saúde DOWN para /readyz. A última tentativa de refresh do JWKS falhou.");
                 false
             } else {
-                info!("JwksCache: Saúde UP para /readyz. Último refresh bem-sucedido em {:?} atrás e nenhuma falha de refresh ativa registrada.", current_last_successful_opt.unwrap().elapsed());
+                info!("JwksCache: Saúde UP para /readyz. Último refresh bem-sucedido em {:?} atrás e nenhuma falha de refresh ativa registrada.", last_successful.elapsed());
                 true
             }
         } else {
@@ -329,7 +345,7 @@ async fn validate_and_decode_token(
     oauth_config: &config::OAuth,
 ) -> Result<TokenData<Claims>, AuthErrorDetail> {
     let header: JwtValidationHeader = decode_header(token_str)
-        .map_err(|e| AuthErrorDetail::TokenInvalid(format!("Header do token inválido: {}", e)))?;
+        .map_err(|e| AuthErrorDetail::TokenInvalid(format!("Header do token inválido: {e}")))?;
 
     let kid = header.kid.as_deref().ok_or_else(|| {
         warn!("Token JWT não possui o campo 'kid' no header.");
@@ -381,8 +397,7 @@ async fn validate_and_decode_token(
                 AuthErrorDetail::TokenInvalid("Token ainda não é válido (nbf)".to_string())
             }
             _ => AuthErrorDetail::TokenInvalid(format!(
-                "Erro de validação JWT não especificado: {}",
-                e
+                "Erro de validação JWT não especificado: {e}"
             )),
         })?;
 
@@ -448,6 +463,10 @@ async fn validate_and_decode_token(
 /// insere um `ClientAuthContext` nas extensões da requisição Axum para uso por handlers posteriores.
 /// Se a autenticação falhar, retorna um erro HTTP apropriado (400, 401, 403, ou 500).
 /// Se OAuth2 estiver desabilitado, permite que a requisição prossiga sem modificação.
+///
+/// # Errors
+///
+/// Retorna `StatusCode` em caso de falha na autenticação ou validação do token.
 #[tracing::instrument(skip_all, name = "oauth_middleware")]
 pub async fn oauth_middleware(
     State(state_tuple): State<(Arc<JwksCache>, Arc<config::OAuth>)>,
@@ -614,7 +633,10 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
 
     // Função helper para obter timestamp atual
     fn current_timestamp_for_test() -> usize {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as usize
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("SystemTime antes de UNIX_EPOCH é impossível")
+            .as_secs() as usize
     }
 
     #[tokio::test]
@@ -677,10 +699,10 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
 
         let request = axum::http::Request::builder()
             .uri("/")
-            .header("Authorization", format!("Bearer {}", token))
+            .header("Authorization", format!("Bearer {token}"))
             .body(Body::empty())
-            .unwrap();
-        let response = app.oneshot(request).await.unwrap();
+            .expect("Falha ao construir request de teste - dados válidos");
+        let response = app.oneshot(request).await.expect("Falha na execução do request de teste");
         assert_eq!(
             response.status(),
             StatusCode::OK,
@@ -743,10 +765,9 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
         match decoding_key_result {
             Ok(Some(_key)) => {} // Sucesso, chave encontrada
             Ok(None) => panic!(
-                "Chave não encontrada para kid '{}' após refresh bem-sucedido",
-                TEST_UNIT_KID_RS256
+                "Chave não encontrada para kid '{TEST_UNIT_KID_RS256}' após refresh bem-sucedido"
             ),
-            Err(e) => panic!("Erro ao obter chave para kid '{}': {:?}", TEST_UNIT_KID_RS256, e),
+            Err(e) => panic!("Erro ao obter chave para kid '{TEST_UNIT_KID_RS256}': {e:?}"),
         }
 
         let decoding_key_result_unknown = cache.get_decoding_key_for_kid("unknown-kid").await;
@@ -755,7 +776,7 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
             Ok(Some(_)) => {
                 panic!("Chave encontrada para kid desconhecido ('unknown-kid'), esperado None")
             }
-            Err(e) => panic!("Erro ao obter chave para KID desconhecido ('unknown-kid'): {:?}", e),
+            Err(e) => panic!("Erro ao obter chave para KID desconhecido ('unknown-kid'): {e:?}"),
         }
     }
 
@@ -779,7 +800,7 @@ ezJCKjG5c2dOsKn0rAhlBzZg\n\
         if let Err(AuthErrorDetail::JwksFetchFailed(msg)) = refresh_result {
             assert!(msg.contains("Status 500"), "Mensagem de erro não continha 'Status 500'");
         } else {
-            panic!("Tipo de erro inesperado para falha no refresh: {:?}", refresh_result);
+            panic!("Tipo de erro inesperado para falha no refresh: {refresh_result:?}");
         }
         assert!(
             !cache.check_health_for_readyz().await,

@@ -438,7 +438,7 @@ async fn test_query_data_operations_require_correct_scopes_oauth() -> Result<()>
         .call_tool("insert_data", Some(json!({ "databaseName": db_name, "query": insert_query })))
         .await;
     assert!(result_insert_no_scope.is_err());
-    if let McpClientError::McpErrorResponse { code, .. } = result_insert_no_scope.unwrap_err() {
+    if let McpClientError::McpErrorResponse { code, .. } = result_insert_no_scope.expect_err("insert_data deveria falhar baseado no assert") {
         assert_eq!(code.0, McpErrorCode(-32001).0);
     } else {
         panic!("Esperado McpErrorResponse de autorização para insert_data");
@@ -463,7 +463,7 @@ async fn test_query_data_operations_require_correct_scopes_oauth() -> Result<()>
         .call_tool("query_read", Some(json!({ "databaseName": db_name, "query": read_query })))
         .await;
     assert!(result_read_no_scope.is_err());
-    if let McpClientError::McpErrorResponse { code, .. } = result_read_no_scope.unwrap_err() {
+    if let McpClientError::McpErrorResponse { code, .. } = result_read_no_scope.expect_err("query_read deveria falhar baseado no assert") {
         assert_eq!(code.0, McpErrorCode(-32001).0);
     } else {
         panic!("Esperado McpErrorResponse de autorização para query_read");

@@ -193,6 +193,7 @@ pub fn typedb_error_to_mcp_error_data(err: &TypeDBError, tool_name: &str) -> Err
 ///
 /// # Retorna
 /// Uma `ErrorData` configurada de acordo com o `McpServerError`.
+#[allow(clippy::too_many_lines)]
 pub fn app_error_to_mcp_error_data(err: &McpServerError, tool_name_opt: Option<&str>) -> ErrorData {
     let tool_name = tool_name_opt.unwrap_or("<desconhecido>");
 

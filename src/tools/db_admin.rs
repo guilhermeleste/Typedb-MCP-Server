@@ -260,7 +260,7 @@ mod tests {
         assert!(successful_mcp_result.is_ok());
         if let Ok(result_content) = successful_mcp_result {
             assert_eq!(result_content.content.len(), 1);
-            assert_eq!(result_content.content[0].as_text().unwrap().text, "OK");
+            assert_eq!(result_content.content[0].as_text().expect("Conteúdo deve ser texto").text, "OK");
             assert!(!result_content.is_error.unwrap_or(false));
         } else {
             panic!("Esperado Ok, mas obteve Err.");
@@ -292,8 +292,7 @@ mod tests {
         let expected_mcp_error_data = ErrorData {
             code: ErrorCode::INTERNAL_ERROR, // Código alterado para INTERNAL_ERROR
             message: Cow::Owned(format!(
-                "Falha ao criar banco: O banco de dados '{}' já existe.",
-                db_name
+                "Falha ao criar banco: O banco de dados '{db_name}' já existe."
             )),
             data: Some(json!({
                 "type": "DatabaseAlreadyExists",
@@ -324,7 +323,7 @@ mod tests {
         let successful_mcp_result: Result<CallToolResult, ErrorData> =
             Ok(CallToolResult::success(vec![Content::text("true")]));
         assert!(successful_mcp_result.is_ok());
-        assert_eq!(successful_mcp_result.unwrap().content[0].as_text().unwrap().text, "true");
+        assert_eq!(successful_mcp_result.expect("Resultado deve ser Ok").content[0].as_text().expect("Conteúdo deve ser texto").text, "true");
     }
 
     #[tokio::test]
@@ -332,7 +331,7 @@ mod tests {
         let successful_mcp_result: Result<CallToolResult, ErrorData> =
             Ok(CallToolResult::success(vec![Content::text("false")]));
         assert!(successful_mcp_result.is_ok());
-        assert_eq!(successful_mcp_result.unwrap().content[0].as_text().unwrap().text, "false");
+        assert_eq!(successful_mcp_result.expect("Resultado deve ser Ok").content[0].as_text().expect("Conteúdo deve ser texto").text, "false");
     }
 
     // Testes para handle_list_databases
@@ -344,7 +343,7 @@ mod tests {
             Ok(CallToolResult::success(vec![Content::text(json_names.clone())]));
 
         assert!(successful_mcp_result.is_ok());
-        assert_eq!(successful_mcp_result.unwrap().content[0].as_text().unwrap().text, json_names);
+        assert_eq!(successful_mcp_result.expect("Resultado deve ser Ok").content[0].as_text().expect("Conteúdo deve ser texto").text, json_names);
     }
 
     #[tokio::test]
@@ -361,7 +360,7 @@ mod tests {
         if let Err(err_data) = handler_output {
             assert_eq!(err_data.code, ErrorCode::INTERNAL_ERROR);
             assert!(err_data.message.contains("Falha simulada"));
-            assert_eq!(err_data.data.as_ref().unwrap()["type"], "SerializationError");
+            assert_eq!(err_data.data.as_ref().expect("Campo data não pode ser None")["type"], "SerializationError");
         } else {
             panic!("Esperado Err, mas obteve Ok.");
         }
@@ -373,7 +372,7 @@ mod tests {
         let successful_mcp_result: Result<CallToolResult, ErrorData> =
             Ok(CallToolResult::success(vec![Content::text("OK")]));
         assert!(successful_mcp_result.is_ok());
-        assert_eq!(successful_mcp_result.unwrap().content[0].as_text().unwrap().text, "OK");
+        assert_eq!(successful_mcp_result.expect("Resultado deve ser Ok").content[0].as_text().expect("Conteúdo deve ser texto").text, "OK");
     }
 
     #[tokio::test]

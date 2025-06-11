@@ -257,7 +257,7 @@ async fn test_server_tls_connection_fails_with_ws() -> Result<()> {
     assert!(client_result.is_err(), "Conexão WS para porta HTTPS do servidor deveria falhar.");
     info!(
         "Conexão WS para porta HTTPS falhou como esperado: {:?}",
-        client_result.err().unwrap() // unwrap aqui é seguro devido ao assert! acima
+        client_result.expect_err("client_result deveria ser Err baseado no assert acima")
     );
     Ok(())
 }

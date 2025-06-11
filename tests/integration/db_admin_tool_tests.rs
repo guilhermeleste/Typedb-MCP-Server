@@ -71,7 +71,9 @@ async fn create_test_db(client: &mut crate::common::client::TestMcpClient, db_na
         db_name,
         result.err()
     );
-    let response_text = get_text_from_call_result(result.unwrap());
+    let response_text = get_text_from_call_result(
+        result.expect("create_database deveria ter sucesso baseado no assert")
+    );
     assert_eq!(response_text, "OK", "Resposta inesperada ao criar banco de teste '{}'", db_name);
     info!("Helper de teste: Banco de dados de teste '{}' criado com sucesso.", db_name);
 }
@@ -451,7 +453,7 @@ async fn test_db_admin_operations_require_correct_scopes() -> Result<()> {
     let res_create_no_perms =
         client_no_perms.call_tool("create_database", Some(json!({"name": db_name}))).await;
     assert!(res_create_no_perms.is_err(), "create_database sem escopo deveria falhar.");
-    if let McpClientError::McpErrorResponse { code, .. } = res_create_no_perms.unwrap_err() {
+    if let McpClientError::McpErrorResponse { code, .. } = res_create_no_perms.expect_err("create_database deveria falhar baseado no assert") {
         assert_eq!(code.0, McpErrorCode(-32001).0, "Esperado erro de Autorização Falhou.");
     // -32001: Authorization Failed
     } else {
@@ -472,7 +474,7 @@ async fn test_db_admin_operations_require_correct_scopes() -> Result<()> {
         res_delete_manage_perms.is_err(),
         "delete_database com escopo manage_databases deveria falhar."
     );
-    if let McpClientError::McpErrorResponse { code, .. } = res_delete_manage_perms.unwrap_err() {
+    if let McpClientError::McpErrorResponse { code, .. } = res_delete_manage_perms.expect_err("delete_database deveria falhar baseado no assert") {
         assert_eq!(
             code.0,
             McpErrorCode(-32001).0,

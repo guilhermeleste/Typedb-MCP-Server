@@ -127,7 +127,7 @@ async fn test_mcp_server_fails_to_connect_to_typedb_tls_with_wrong_ca() -> Resul
     .await;
 
     if test_env_result.is_ok() {
-        let test_env = test_env_result.unwrap();
+        let test_env = test_env_result.expect("test_env_result deveria ser Ok baseado no if");
         // Se o setup passou, o /readyz do MCP pode estar UP, mas o componente TypeDB deve estar DOWN.
         let readyz_url =
             format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
@@ -208,7 +208,7 @@ async fn test_mcp_server_fails_if_typedb_is_not_tls_but_mcp_expects_tls() -> Res
         TestEnvironment::setup("mcp_expect_tls_typedb_plain", config_filename_expect_tls).await;
 
     if test_env_result.is_ok() {
-        let test_env = test_env_result.unwrap();
+        let test_env = test_env_result.expect("test_env_result deveria ser Ok baseado no if");
         let readyz_url =
             format!("{}{}", test_env.mcp_http_base_url, constants::MCP_SERVER_DEFAULT_READYZ_PATH);
         let client = reqwest::Client::builder()

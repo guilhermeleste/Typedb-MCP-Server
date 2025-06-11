@@ -233,7 +233,8 @@ mod tests {
         };
 
         let token = generate_test_jwt(expired_claims, JwtAuthAlgorithm::RS256);
-        let decoding_key = DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY_PEM.as_bytes()).unwrap();
+        let decoding_key = DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY_PEM.as_bytes())
+            .expect("Falha ao carregar chave RSA de teste");
         let validation = Validation::new(JwtAuthAlgorithm::RS256);
         // Não definir issuer/audience aqui para focar apenas na expiração,
         // mas em um cenário real, eles seriam validados.
@@ -242,7 +243,7 @@ mod tests {
 
         let result = decode::<TestClaims>(&token, &decoding_key, &validation);
         assert!(result.is_err(), "Token expirado deveria falhar na validação.");
-        assert_eq!(result.unwrap_err().kind(), &jsonwebtoken::errors::ErrorKind::ExpiredSignature);
+        assert_eq!(result.expect_err("Token deveria estar expirado").kind(), &jsonwebtoken::errors::ErrorKind::ExpiredSignature);
     }
 
     #[test]
@@ -261,13 +262,14 @@ mod tests {
         };
 
         let token = generate_test_jwt(nbf_claims, JwtAuthAlgorithm::RS256);
-        let decoding_key = DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY_PEM.as_bytes()).unwrap();
+        let decoding_key = DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY_PEM.as_bytes())
+            .expect("Falha ao carregar chave RSA de teste");
         let mut validation = Validation::new(JwtAuthAlgorithm::RS256);
         validation.validate_nbf = true; // Importante para testar NBF
 
         let result = decode::<TestClaims>(&token, &decoding_key, &validation);
         assert!(result.is_err(), "Token com NBF no futuro deveria falhar na validação.");
-        assert_eq!(result.unwrap_err().kind(), &jsonwebtoken::errors::ErrorKind::ImmatureSignature);
+        assert_eq!(result.expect_err("Token deveria estar imaturo").kind(), &jsonwebtoken::errors::ErrorKind::ImmatureSignature);
     }
 
     #[test]
@@ -286,13 +288,14 @@ mod tests {
         };
 
         let token = generate_test_jwt(claims, JwtAuthAlgorithm::RS256);
-        let decoding_key = DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY_PEM.as_bytes()).unwrap();
+        let decoding_key = DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY_PEM.as_bytes())
+            .expect("Falha ao carregar chave RSA de teste");
         let mut validation = Validation::new(JwtAuthAlgorithm::RS256);
         validation.set_issuer(&[constants::TEST_JWT_ISSUER]); // Servidor espera este issuer
 
         let result = decode::<TestClaims>(&token, &decoding_key, &validation);
         assert!(result.is_err(), "Token com issuer inválido deveria falhar na validação.");
-        assert_eq!(result.unwrap_err().kind(), &jsonwebtoken::errors::ErrorKind::InvalidIssuer);
+        assert_eq!(result.expect_err("Token deveria ter issuer inválido").kind(), &jsonwebtoken::errors::ErrorKind::InvalidIssuer);
     }
 
     #[test]
@@ -311,13 +314,14 @@ mod tests {
         };
 
         let token = generate_test_jwt(claims, JwtAuthAlgorithm::RS256);
-        let decoding_key = DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY_PEM.as_bytes()).unwrap();
+        let decoding_key = DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY_PEM.as_bytes())
+            .expect("Falha ao carregar chave RSA de teste");
         let mut validation = Validation::new(JwtAuthAlgorithm::RS256);
         validation.set_audience(&[constants::TEST_JWT_AUDIENCE]); // Servidor espera este audience
 
         let result = decode::<TestClaims>(&token, &decoding_key, &validation);
         assert!(result.is_err(), "Token com audience inválido deveria falhar na validação.");
-        assert_eq!(result.unwrap_err().kind(), &jsonwebtoken::errors::ErrorKind::InvalidAudience);
+        assert_eq!(result.expect_err("Token deveria ter audience inválido").kind(), &jsonwebtoken::errors::ErrorKind::InvalidAudience);
     }
 
     #[test]

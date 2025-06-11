@@ -93,7 +93,7 @@ DIRETRIZES: Especifique `database_name`. Cuidado com `delete_database`. Autentic
 /// Estrutura principal que implementa `ServerHandler` e mantém o estado do servidor MCP
 /// para uma conexão WebSocket específica.
 ///
-/// Contém referências compartilhadas ao driver TypeDB e às configurações da aplicação,
+/// Contém referências compartilhadas ao driver `TypeDB` e às configurações da aplicação,
 /// além de um contexto de autenticação opcional para a conexão atual.
 #[derive(Clone, Debug)]
 pub struct McpServiceHandler {
@@ -105,7 +105,7 @@ pub struct McpServiceHandler {
     /// Esta estrutura é compartilhada e imutável após a criação do handler.
     tool_required_scopes: Arc<HashMap<String, Vec<String>>>,
     /// Contexto de autenticação do cliente para esta conexão específica.
-    /// `None` se OAuth2 estiver desabilitado ou se a autenticação falhou ou não foi fornecida.
+    /// `None` se `OAuth2` estiver desabilitado ou se a autenticação falhou ou não foi fornecida.
     auth_context: Option<Arc<ClientAuthContext>>,
 }
 
@@ -134,7 +134,7 @@ impl McpServiceHandler {
     /// * `driver`: Um `Arc<TypeDBDriver>` compartilhado para interagir com o `TypeDB`.
     /// * `settings`: Um `Arc<Settings>` compartilhado contendo as configurações da aplicação.
     /// * `auth_context`: Opcional `Arc<ClientAuthContext>` para esta conexão.
-    ///   Será `Some` se OAuth2 estiver habilitado e o cliente tiver se autenticado com sucesso.
+    ///   Será `Some` se `OAuth2` estiver habilitado e o cliente tiver se autenticado com sucesso.
     #[must_use]
     pub fn new_for_connection(
         driver: Arc<TypeDBDriver>,
@@ -171,7 +171,7 @@ impl McpServiceHandler {
 
     /// Construtor usado para criar uma instância "template" do `McpServiceHandler`,
     /// tipicamente para fins onde um `auth_context` específico da conexão ainda não está disponível
-    /// (ex: obtenção de ServerInfo antes da conexão estar totalmente estabelecida).
+    /// (ex: obtenção de `ServerInfo` antes da conexão estar totalmente estabelecida).
     ///
     /// Para lidar com requisições MCP de uma conexão ativa, use `new_for_connection`.
     #[must_use]
@@ -339,7 +339,7 @@ impl ServerHandler for McpServiceHandler {
 
     /// Processa uma chamada de ferramenta MCP (`tools/call`) de um cliente.
     ///
-    /// Realiza a verificação de escopos OAuth2 se aplicável e, em seguida,
+    /// Realiza a verificação de escopos `OAuth2` se aplicável e, em seguida,
     /// despacha a chamada para o handler da ferramenta apropriada usando o `ToolBox`.
     ///
     /// # Parâmetros

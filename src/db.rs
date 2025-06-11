@@ -53,6 +53,15 @@ use typedb_driver::{Credentials, DriverOptions, Error as TypeDBError, TypeDBDriv
 /// * `Ok(TypeDBDriver)` se a conexão for bem-sucedida.
 /// * `Err(TypeDBError)` se ocorrer qualquer erro durante a configuração ou tentativa de conexão.
 ///
+/// # Errors
+///
+/// Retorna `TypeDBError` se:
+/// * Falha na autenticação com credenciais inválidas
+/// * Erro de rede ou servidor TypeDB inacessível
+/// * Configuração TLS inválida (certificado não encontrado ou corrompido)
+/// * Timeout de conexão excedido
+/// * Formato de endereço inválido
+///
 /// # Exemplos
 ///
 /// Conexão sem TLS:

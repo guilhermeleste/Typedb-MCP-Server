@@ -319,7 +319,7 @@ async fn test_schema_operations_require_correct_scope_oauth() -> Result<()> {
         )
         .await;
     assert!(res_define_no_scope.is_err());
-    if let McpClientError::McpErrorResponse { code, .. } = res_define_no_scope.unwrap_err() {
+    if let McpClientError::McpErrorResponse { code, .. } = res_define_no_scope.expect_err("define_schema deveria falhar baseado no assert") {
         assert_eq!(code.0, McpErrorCode(-32001).0); // Authorization Failed
     } else {
         panic!("Esperado McpErrorResponse de autorização para define_schema");
@@ -330,7 +330,7 @@ async fn test_schema_operations_require_correct_scope_oauth() -> Result<()> {
         .call_tool("get_schema", Some(json!({"databaseName": db_name})))
         .await;
     assert!(res_get_no_scope.is_err());
-    if let McpClientError::McpErrorResponse { code, .. } = res_get_no_scope.unwrap_err() {
+    if let McpClientError::McpErrorResponse { code, .. } = res_get_no_scope.expect_err("get_schema deveria falhar baseado no assert") {
         assert_eq!(code.0, McpErrorCode(-32001).0);
     } else {
         panic!("Esperado McpErrorResponse de autorização para get_schema");

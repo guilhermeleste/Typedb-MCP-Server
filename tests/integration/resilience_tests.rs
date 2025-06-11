@@ -173,7 +173,9 @@ async fn test_server_recovers_after_typedb_temporary_outage() -> Result<()> {
         "list_databases falhou antes da simulação de falha: {:?}",
         list_dbs_result_before.err()
     );
-    let dbs_before_text = get_text_from_call_result(list_dbs_result_before.unwrap());
+    let dbs_before_text = get_text_from_call_result(
+        list_dbs_result_before.expect("list_databases deveria ter sucesso baseado no assert")
+    );
     let dbs_before: Vec<String> = serde_json::from_str(&dbs_before_text)?;
     assert!(dbs_before.contains(&db_name.to_string()));
 

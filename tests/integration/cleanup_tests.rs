@@ -57,8 +57,11 @@ async fn test_cleanup_on_panic_in_test() {
         panic::AssertUnwindSafe(async { helper_test_environment_with_panic().await });
 
     // Executar a função que vai entrar em pânico
-    let result =
-        panic::catch_unwind(|| tokio::runtime::Runtime::new().unwrap().block_on(panic_result));
+    let result = panic::catch_unwind(|| {
+        tokio::runtime::Runtime::new()
+            .expect("Falha ao criar runtime Tokio")
+            .block_on(panic_result)
+    });
 
     // Verificar que houve pânico
     assert!(result.is_err(), "O teste deveria ter entrado em pânico");
@@ -225,7 +228,7 @@ async fn test_cleanup_with_service_connection_failure() -> Result<()> {
             let client_result = test_env.mcp_client_with_auth(Some("invalid::scope::format")).await;
 
             if client_result.is_err() {
-                warn!("⚠️  Falha de conexão esperada: {}", client_result.unwrap_err());
+                warn!("⚠️  Falha de conexão esperada: {}", client_result.expect_err("client_result deveria ser Err baseado no if"));
             }
 
             // O Drop será chamado automaticamente

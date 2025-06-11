@@ -875,7 +875,10 @@ services:
     async fn test_docker_compose_env_new_generates_unique_project_name() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init(); // Para logs de teste
         let dummy_compose_file = create_minimal_compose_file_for_helper_tests()?;
-        let compose_path_str = dummy_compose_file.path().to_str().unwrap().to_string();
+        let compose_path_str = dummy_compose_file.path()
+            .to_str()
+            .expect("Falha ao converter path do compose para string")
+            .to_string();
 
         let env1 = DockerComposeEnv::new(&compose_path_str, "test_prefix");
         let env2 = DockerComposeEnv::new(&compose_path_str, "test_prefix");
@@ -893,7 +896,10 @@ services:
     async fn test_docker_compose_env_up_down_cycle_with_minimal_service() -> Result<()> {
         let _ = tracing_subscriber::fmt().with_test_writer().try_init();
         let dummy_compose_file = create_minimal_compose_file_for_helper_tests()?;
-        let compose_path_str = dummy_compose_file.path().to_str().unwrap().to_string();
+        let compose_path_str = dummy_compose_file.path()
+            .to_str()
+            .expect("Falha ao converter path do compose para string")
+            .to_string();
 
         info!("Iniciando teste test_docker_compose_env_up_down_cycle_with_minimal_service");
         let env = DockerComposeEnv::new(&compose_path_str, "hlp_cycle_min");
