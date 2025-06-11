@@ -321,10 +321,10 @@ async fn run_axum_server(
 }
 
 /// Realiza a limpeza de recursos antes do servidor terminar.
-async fn cleanup_resources(
-    typedb_driver: Arc<TypeDBDriver>,
+fn cleanup_resources(
+    typedb_driver: &Arc<TypeDBDriver>,
     settings: &Arc<Settings>,
-) -> Result<(), Box<dyn StdError + Send + Sync>> {
+) {
     info!("Graceful shutdown: Iniciando limpeza de recursos...");
 
     if let Err(e) = typedb_driver.force_close() {
@@ -337,10 +337,10 @@ async fn cleanup_resources(
         telemetry::shutdown_tracer_provider();
     }
     info!("Typedb-MCP-Server desligado graciosamente.");
-    Ok(())
 }
 
 /// Ponto de entrada síncrono da aplicação.
+#[allow(clippy::print_stdout, clippy::print_stderr)] // Bootstrap logging antes do sistema de tracing estar configurado
 fn main() -> Result<(), Box<dyn StdError + Send + Sync>> {
     if CryptoProvider::get_default().is_none() {
         if let Err(e) = rustls::crypto::ring::default_provider().install_default() {
@@ -479,7 +479,7 @@ async fn async_main(settings: Arc<Settings>) -> Result<(), Box<dyn StdError + Se
     global_shutdown_token.cancelled().await;
     info!("Sinal de desligamento global recebido, procedendo com a limpeza de recursos...");
 
-    cleanup_resources(typedb_driver, &settings).await?;
+    cleanup_resources(&typedb_driver, &settings);
 
     info!("async_main concluído com sucesso.");
     Ok(())
@@ -663,6 +663,7 @@ async fn websocket_handler(
 }
 
 /// Configura handlers de sinal (SIGINT, SIGTERM) para iniciar o graceful shutdown.
+#[allow(clippy::print_stderr)] // Error logging crítico antes de exit, apropriado para falhas fatais de setup
 fn setup_signal_handler(token: CancellationToken) {
     tokio::spawn(async move {
         #[cfg(unix)]
