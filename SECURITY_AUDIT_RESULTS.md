@@ -25,24 +25,28 @@
 ## 📁 NEW DEVELOPER ONBOARDING FILES
 
 ### Example Files Created
+
 - `test-secrets/role_id.txt.example` - Shows Vault AppRole ID format
 - `test-secrets/secret_id.txt.example` - Shows Vault Secret ID format
 - `test-secrets/typedb_password.txt.example` - Shows TypeDB password format
 
 ### Documentation Added
+
 - `test-secrets/README.md` - Complete setup instructions for Vault credentials
 - `tests/common/test_keys/README.md` - Instructions for generating test keys
 
 ## 🛡️ SECURITY PATTERNS PROTECTED
 
 ### File Extensions
-```
+
+```text
 *.key, *.pem, *.crt, *.p12, *.pfx, *.jks, *.keystore, *.truststore, *.pkcs12
 *.jwt, *.token
 ```
 
 ### File Name Patterns
-```
+
+```text
 *secret*, *password*, *credential*, *token*, *private*
 *api*key*, *access*token*, *refresh*token*
 *oauth*secret*, *docker*secret*
@@ -50,7 +54,8 @@ role_id, secret_id, vault-token*
 ```
 
 ### Protected Directories
-```
+
+```text
 /test-secrets/, /dev-secrets/, /local-secrets/, /vault-secrets/
 /certs/generated/, /certs/generated-dev/, /certs/local/
 /tests/test_certs/, /tests/common/test_keys/
@@ -60,12 +65,14 @@ role_id, secret_id, vault-token*
 ## ✅ VALIDATION RESULTS
 
 ### Files Removed from Git Tracking
+
 - ✅ 5 sensitive files successfully removed
 - ✅ No sensitive content remains in tracked files
 - ✅ Example files created for developer onboarding
 - ✅ Documentation provided for setup procedures
 
 ### .gitignore Testing
+
 - ✅ New sensitive files automatically ignored
 - ✅ Example files properly tracked
 - ✅ Configuration files properly handled
@@ -76,6 +83,7 @@ role_id, secret_id, vault-token*
 New developers should:
 
 1. **Copy example files to real files:**
+
    ```bash
    cp test-secrets/role_id.txt.example test-secrets/role_id.txt
    cp test-secrets/secret_id.txt.example test-secrets/secret_id.txt
@@ -83,6 +91,7 @@ New developers should:
    ```
 
 2. **Generate test keys:**
+
    ```bash
    cd tests/common/test_keys/
    openssl genrsa -out private_key.pem 2048
@@ -90,6 +99,7 @@ New developers should:
    ```
 
 3. **Run vault setup script:**
+
    ```bash
    ./scripts/init-vault-test.sh
    ```

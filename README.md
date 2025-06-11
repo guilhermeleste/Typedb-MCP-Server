@@ -16,16 +16,20 @@ Este projeto visa fornecer uma ponte robusta e eficiente entre clientes que util
   - [Começando](#começando)
     - [Pré-requisitos](#pré-requisitos)
     - [Instalação](#instalação)
-      - [Usando Docker (Produção)](#usando-docker-produo)
+      - [Usando Docker (Produção)](#usando-docker-produção)
       - [Desenvolvimento Local](#desenvolvimento-local)
       - [A partir do Código-Fonte](#a-partir-do-código-fonte)
     - [Configuração Essencial](#configuração-essencial)
+  - [🔧 Configuração](#-configuração)
+    - [Arquitetura de Configuração (Vault-First)](#arquitetura-de-configuração-vault-first)
+    - [Principais Variáveis de Ambiente](#principais-variáveis-de-ambiente)
     - [Execução](#execução)
   - [Endpoints Principais](#endpoints-principais)
   - [Segurança](#segurança)
   - [Observabilidade](#observabilidade)
   - [Extensibilidade](#extensibilidade)
   - [Documentação Completa](#documentação-completa)
+  - [Testes de Integração](#testes-de-integração)
   - [Contribuição](#contribuição)
   - [Licença](#licença)
   - [Agradecimentos](#agradecimentos)
@@ -92,7 +96,6 @@ Para desenvolvimento local sem a complexidade do Vault, utilize `docker-compose.
 docker compose up -d --build
 ```
 
-
 O compose monta esse arquivo como um Docker Secret dentro do contêiner e a aplicação o lê através da variável `TYPEDB_PASSWORD_FILE=/run/secrets/db_password`.
 
 #### A partir do Código-Fonte
@@ -128,26 +131,40 @@ Variáveis de ambiente têm precedência sobre as configurações do arquivo TOM
 - **`.env.example`**: Este arquivo serve como um template e documentação para as variáveis de ambiente suportadas. Copie-o para `.env`.
 - **`.env`**: Crie este arquivo na raiz do projeto (copiando de `.env.example`) e preencha com seus valores locais. **Este arquivo não deve ser versionado se contiver segredos.**
 
-**Variáveis de Ambiente Chave:**
+## 🔧 Configuração
 
-- `TYPEDB_PASSWORD_FILE`: Caminho do arquivo contendo a senha do TypeDB. Em produção esse arquivo é gerado pelo Vault Agent; em desenvolvimento é montado via Docker Secret.
+### Arquitetura de Configuração (Vault-First)
 
+O Typedb-MCP-Server utiliza uma **arquitetura Vault-first** para gerenciamento de configurações:
 
-    ```bash
-    export TYPEDB_PASSWORD_FILE="/caminho/para/senha.txt"
-    # Ou defina em seu arquivo .env:
-    # TYPEDB_PASSWORD_FILE=/caminho/para/senha.txt
-    ```
+1. **🔐 Vault**: Gerencia todos os secrets sensíveis (senhas, tokens, chaves)
+2. **📄 Arquivos TOML**: Configurações estruturadas da aplicação  
+3. **🌍 Variáveis .env**: Sobrescritas para desenvolvimento (apenas não-sensíveis)
+4. **⚙️ Defaults**: Valores padrão seguros na aplicação
 
-    **Importante:** Nunca coloque a senha diretamente no arquivo TOML nem versione o arquivo de senha.
+**Para documentação completa**: [CONFIGURATION_ARCHITECTURE.md](CONFIGURATION_ARCHITECTURE.md)
 
-- `MCP_CONFIG_PATH`: Permite especificar um caminho alternativo para o arquivo de configuração TOML.
+### Principais Variáveis de Ambiente
 
-    ```bash
-    export MCP_CONFIG_PATH="config/custom_config.toml"
-    # Ou defina em seu arquivo .env:
-    # MCP_CONFIG_PATH=config/custom_config.toml
-    ```
+**Configuração de Arquivos:**
+
+- `MCP_CONFIG_PATH`: Caminho alternativo para arquivo de configuração TOML
+- `TYPEDB_PASSWORD_FILE`: Caminho do arquivo de senha (renderizado pelo Vault Agent)
+
+**Logging e Debug:**
+
+- `RUST_LOG`: Nível de log (`info`, `debug`, `trace`)
+
+**Sobrescritas de Configuração (prefixo `MCP_`):**
+
+```bash
+# Exemplos de sobrescritas para desenvolvimento
+export MCP_TYPEDB__ADDRESS="localhost:1729"
+export MCP_AUTH__OAUTH_ENABLED=false
+export MCP_SERVER__TLS_ENABLED=false
+```
+
+**⚠️ IMPORTANTE**: Arquivos `.env` NÃO devem conter secrets. Use apenas para configurações não-sensíveis.
 
 - `RUST_LOG`: Controla o nível de log.
 
@@ -244,7 +261,6 @@ Principais seções:
 ## Testes de Integração
 
 Os testes de integração utilizam `docker compose` para subir instâncias do TypeDB e do servidor com configurações de exemplo. Para executá-los é necessário ter o **Docker** instalado **e o daemon em execução**.
-
 
 Arquivos de exemplo contendo credenciais do Vault são fornecidos em `test-secrets/`. Eles são montados nos containers durante os testes e podem ser sobrescritos conforme necessário.
 
