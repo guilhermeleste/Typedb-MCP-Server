@@ -720,6 +720,13 @@ impl Settings {
     /// Força recarregamento da configuração (ignora cache).
     /// 
     /// **Uso**: Apenas em testes ou quando configuração muda em runtime
+    /// 
+    /// # Errors
+    /// 
+    /// Retorna `ConfigError` se:
+    /// - O arquivo de configuração não puder ser lido ou for inválido
+    /// - Variáveis de ambiente obrigatórias estiverem ausentes
+    /// - Valores de configuração falharem na validação
     pub fn reload() -> Result<Settings, ConfigError> {
         let settings = Self::load_from_sources()?;
         // Note: Não podemos atualizar OnceLock após inicialização
@@ -772,166 +779,188 @@ impl Settings {
     
     /// Aplica overrides de variáveis de ambiente de forma otimizada
     fn apply_env_overrides(settings: &mut Settings) {
-        // Server overrides
+        Self::apply_server_env_overrides(&mut settings.server);
+        Self::apply_typedb_env_overrides(&mut settings.typedb);
+        Self::apply_oauth_env_overrides(&mut settings.oauth);
+        Self::apply_cors_env_overrides(&mut settings.cors);
+        Self::apply_rate_limit_env_overrides(&mut settings.rate_limit);
+        Self::apply_tracing_env_overrides(&mut settings.tracing);
+        Self::apply_logging_env_overrides(&mut settings.logging);
+    }
+    
+    /// Aplica overrides de environment para configurações do server
+    fn apply_server_env_overrides(server: &mut Server) {
         overwrite_from_env_string(
-            &mut settings.server.bind_address,
+            &mut server.bind_address,
             "MCP_SERVER__BIND_ADDRESS",
             "MCP_SERVER__bindAddress",
         );
         overwrite_from_env_bool(
-            &mut settings.server.tls_enabled,
+            &mut server.tls_enabled,
             "MCP_SERVER__TLS_ENABLED",
             "MCP_SERVER__tlsEnabled",
         );
         overwrite_from_env_option_string(
-            &mut settings.server.tls_cert_path,
+            &mut server.tls_cert_path,
             "MCP_SERVER__TLS_CERT_PATH",
             "MCP_SERVER__tlsCertPath",
         );
         overwrite_from_env_option_string(
-            &mut settings.server.tls_key_path,
+            &mut server.tls_key_path,
             "MCP_SERVER__TLS_KEY_PATH",
             "MCP_SERVER__tlsKeyPath",
         );
         overwrite_from_env_option_usize(
-            &mut settings.server.worker_threads,
+            &mut server.worker_threads,
             "MCP_SERVER__WORKER_THREADS",
             "MCP_SERVER__workerThreads",
         );
         overwrite_from_env_option_string(
-            &mut settings.server.metrics_bind_address,
+            &mut server.metrics_bind_address,
             "MCP_SERVER__METRICS_BIND_ADDRESS",
             "MCP_SERVER__metricsBindAddress",
         );
         overwrite_from_env_option_string(
-            &mut settings.server.mcp_websocket_path,
+            &mut server.mcp_websocket_path,
             "MCP_SERVER__MCP_WEBSOCKET_PATH",
             "MCP_SERVER__mcpWebsocketPath",
         );
         overwrite_from_env_option_string(
-            &mut settings.server.metrics_path,
+            &mut server.metrics_path,
             "MCP_SERVER__METRICS_PATH",
             "MCP_SERVER__metricsPath",
         );
-
-        // TypeDB overrides
+    }
+    
+    /// Aplica overrides de environment para configurações do `TypeDB`
+    fn apply_typedb_env_overrides(typedb: &mut TypeDB) {
         overwrite_from_env_string(
-            &mut settings.typedb.address,
+            &mut typedb.address,
             "MCP_TYPEDB__ADDRESS",
             "MCP_TYPEDB__address",
         );
         overwrite_from_env_option_string(
-            &mut settings.typedb.username,
+            &mut typedb.username,
             "MCP_TYPEDB__USERNAME",
             "MCP_TYPEDB__username",
         );
         overwrite_from_env_bool(
-            &mut settings.typedb.tls_enabled,
+            &mut typedb.tls_enabled,
             "MCP_TYPEDB__TLS_ENABLED",
             "MCP_TYPEDB__tlsEnabled",
         );
         overwrite_from_env_option_string(
-            &mut settings.typedb.tls_ca_path,
+            &mut typedb.tls_ca_path,
             "MCP_TYPEDB__TLS_CA_PATH",
             "MCP_TYPEDB__tlsCaPath",
         );
-
-        // OAuth overrides
+    }
+    
+    /// Aplica overrides de environment para configurações OAuth
+    fn apply_oauth_env_overrides(oauth: &mut OAuth) {
         overwrite_from_env_bool(
-            &mut settings.oauth.enabled,
+            &mut oauth.enabled,
             "MCP_OAUTH__ENABLED",
             "MCP_OAUTH__enabled",
         );
         overwrite_from_env_option_string(
-            &mut settings.oauth.jwks_uri,
+            &mut oauth.jwks_uri,
             "MCP_OAUTH__JWKS_URI",
             "MCP_OAUTH__jwksUri",
         );
         overwrite_from_env_option_vec_string(
-            &mut settings.oauth.issuer,
+            &mut oauth.issuer,
             "MCP_OAUTH__ISSUER",
             "MCP_OAUTH__issuer",
         );
         overwrite_from_env_option_vec_string(
-            &mut settings.oauth.audience,
+            &mut oauth.audience,
             "MCP_OAUTH__AUDIENCE",
             "MCP_OAUTH__audience",
         );
         overwrite_from_env_option_string(
-            &mut settings.oauth.jwks_refresh_interval_raw,
+            &mut oauth.jwks_refresh_interval_raw,
             "MCP_OAUTH__JWKS_REFRESH_INTERVAL",
             "MCP_OAUTH__jwksRefreshInterval",
         );
         overwrite_from_env_option_u64(
-            &mut settings.oauth.jwks_request_timeout_seconds,
+            &mut oauth.jwks_request_timeout_seconds,
             "MCP_OAUTH__JWKS_REQUEST_TIMEOUT_SECONDS",
             "MCP_OAUTH__jwksRequestTimeoutSeconds",
         );
         overwrite_from_env_option_vec_string(
-            &mut settings.oauth.required_scopes,
+            &mut oauth.required_scopes,
             "MCP_OAUTH__REQUIRED_SCOPES",
             "MCP_OAUTH__requiredScopes",
         );
+    }
 
-        // Logging overrides
-        overwrite_from_env_string(
-            &mut settings.logging.rust_log,
-            "MCP_LOGGING__RUST_LOG",
-            "MCP_LOGGING__rustLog",
-        );
-        
-        // CORS overrides
+    /// Aplica overrides de environment para configurações de CORS
+    fn apply_cors_env_overrides(cors: &mut Cors) {
         overwrite_from_env_vec_string(
-            &mut settings.cors.allowed_origins,
+            &mut cors.allowed_origins,
             "MCP_CORS__ALLOWED_ORIGINS",
             "MCP_CORS__allowedOrigins",
         );
-        
-        // Rate Limit overrides
+    }
+
+    /// Aplica overrides de environment para configurações de Rate Limit
+    fn apply_rate_limit_env_overrides(rate_limit: &mut RateLimit) {
         overwrite_from_env_bool(
-            &mut settings.rate_limit.enabled,
+            &mut rate_limit.enabled,
             "MCP_RATE_LIMIT__ENABLED",
             "MCP_RATE_LIMIT__enabled",
         );
         overwrite_from_env_option_u64(
-            &mut settings.rate_limit.requests_per_second,
+            &mut rate_limit.requests_per_second,
             "MCP_RATE_LIMIT__REQUESTS_PER_SECOND",
             "MCP_RATE_LIMIT__requestsPerSecond",
         );
         overwrite_from_env_option_u32(
-            &mut settings.rate_limit.burst_size,
+            &mut rate_limit.burst_size,
             "MCP_RATE_LIMIT__BURST_SIZE",
             "MCP_RATE_LIMIT__burstSize",
         );
+    }
 
-        // Tracing overrides
+    /// Aplica overrides de environment para configurações de Tracing
+    fn apply_tracing_env_overrides(tracing: &mut TracingConfig) {
         overwrite_from_env_bool(
-            &mut settings.tracing.enabled,
+            &mut tracing.enabled,
             "MCP_TRACING__ENABLED",
             "MCP_TRACING__enabled",
         );
         overwrite_from_env_option_string(
-            &mut settings.tracing.exporter_otlp_endpoint,
+            &mut tracing.exporter_otlp_endpoint,
             "MCP_TRACING__EXPORTER_OTLP_ENDPOINT",
             "MCP_TRACING__exporterOtlpEndpoint",
         );
         overwrite_from_env_string(
-            &mut settings.tracing.service_name,
+            &mut tracing.service_name,
             "MCP_TRACING__SERVICE_NAME",
             "MCP_TRACING__serviceName",
         );
         overwrite_from_env_string(
-            &mut settings.tracing.sampler,
+            &mut tracing.sampler,
             "MCP_TRACING__SAMPLER",
             "MCP_TRACING__sampler",
         );
         overwrite_from_env_string(
-            &mut settings.tracing.sampler_arg,
+            &mut tracing.sampler_arg,
             "MCP_TRACING__SAMPLER_ARG",
             "MCP_TRACING__samplerArg",
         );
     }
-    
+
+    /// Aplica overrides de environment para configurações de Logging  
+    fn apply_logging_env_overrides(logging: &mut Logging) {
+        overwrite_from_env_string(
+            &mut logging.rust_log,
+            "MCP_LOGGING__RUST_LOG",
+            "MCP_LOGGING__rustLog",
+        );
+    }
+
     /// Aplica valores default de forma otimizada
     fn apply_defaults(settings: &mut Settings) {
         // Processamento final de jwks_refresh_interval_raw -> jwks_refresh_interval (Duration)
@@ -952,10 +981,10 @@ impl Settings {
                         Some(DEFAULT_JWKS_REFRESH_INTERVAL_STR.to_string());
                 }
             }
-            Err(_e) => {
+            Err(e) => {
                 if raw_interval_to_parse != DEFAULT_JWKS_REFRESH_INTERVAL_STR {
                     #[cfg(debug_assertions)]
-                    tracing::error!("Falha ao parsear jwksRefreshInterval (valor: '{}'): {}. Usando default.", raw_interval_to_parse, _e);
+                    tracing::error!("Falha ao parsear jwksRefreshInterval (valor: '{}'): {}. Usando default.", raw_interval_to_parse, e);
                 }
                 if settings.oauth.jwks_refresh_interval.is_none() {
                     settings.oauth.jwks_refresh_interval = Some(Duration::from_secs(3600));
@@ -987,8 +1016,8 @@ impl Settings {
 }
 
 /// Funções Helper para Pós-Processamento de ENVs ---
-// (Mantidas como na sua versão anterior, com logs adicionados)
-
+/// (Mantidas como na sua versão anterior, com logs adicionados)
+///
 /// Tenta ler uma variável de ambiente (primeiro `env_key_upper`, depois `env_key_camel`)
 /// e, se encontrada, sobrescreve `target_field`. Loga a ação.
 fn overwrite_from_env_string(target_field: &mut String, env_key_upper: &str, env_key_camel: &str) {
