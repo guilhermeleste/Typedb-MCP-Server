@@ -60,6 +60,7 @@ fn default_server_bind_address() -> String {
 // REMOVIDO: default_oauth_jwks_refresh_interval_raw() - será tratado no pós-processamento
 fn default_oauth_jwks_request_timeout_seconds() -> u64 {
     30
+
 }
 const DEFAULT_JWKS_REFRESH_INTERVAL_STR: &str = "1h"; // Default programático
 
@@ -82,6 +83,7 @@ fn default_rate_limit_requests_per_second() -> u64 {
 }
 fn default_rate_limit_burst_size() -> u32 {
     200
+
 }
 
 // Para TracingConfig
@@ -151,6 +153,7 @@ pub struct TypeDB {
     /// Nome de usuário para autenticação com `TypeDB`. Opcional.
     /// Variável de Ambiente: `MCP_TYPEDB__USERNAME` ou `MCP_TYPEDB__username`.
     #[serde(default)]
+
     pub username: Option<String>,
     /// Habilita TLS para a conexão com `TypeDB`.
     /// Variável de Ambiente: `MCP_TYPEDB__TLS_ENABLED` ou `MCP_TYPEDB__tlsEnabled`.
@@ -264,6 +267,7 @@ pub struct OAuth {
     /// Timeout para a requisição HTTP ao buscar o JWKS, em segundos.
     /// Variável de Ambiente: `MCP_OAUTH__JWKS_REQUEST_TIMEOUT_SECONDS` ou `MCP_OAUTH__jwksRequestTimeoutSeconds`.
     #[serde(default)]
+
     pub jwks_request_timeout_seconds: Option<u64>,
     /// Escopos `OAuth2` que o token DEVE conter para acesso geral ao servidor.
     /// ENV: `MCP_OAUTH__REQUIRED_SCOPES="mcp:access,other:scope"` (ou `MCP_OAUTH__requiredScopes`).
@@ -337,6 +341,7 @@ pub struct RateLimit {
     /// Número de requisições permitidas em um burst, por IP.
     /// Variável de Ambiente: `MCP_RATE_LIMIT__BURST_SIZE` ou `MCP_RATE_LIMIT__burstSize`.
     #[serde(default)]
+
     pub burst_size: Option<u32>,
 }
 
