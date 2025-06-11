@@ -22,8 +22,9 @@ COPY docker-entrypoint.sh vault-agent-config.hcl ./
 COPY templates/ ./templates/
 RUN chmod +x docker-entrypoint.sh
 
-# Criar usuário não-root
+# Criar usuário não-root e diretório para Vault Agent
 RUN groupadd --system appuser && useradd --system --gid appuser appuser
+RUN mkdir -p /vault/secrets && chown -R appuser:appuser /vault
 USER appuser
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

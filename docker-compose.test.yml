@@ -22,7 +22,7 @@ services:
       - ./tests/test_certs:/app/test_certs:ro
     environment:
       - MCP_CONFIG_PATH=${MCP_CONFIG_PATH_FOR_TEST_CONTAINER_HOST_ENV:-/app/test_configs/default.test.toml}
-      - TYPEDB_PASSWORD_FILE=/run/secrets/typedb_password_test
+      - VAULT_ADDR=http://vault-it:8200
       - MCP_TYPEDB__ADDRESS=${MCP_TYPEDB__ADDRESS:-typedb-server-it:1729}
       - RUST_LOG=${RUST_LOG_MCP:-trace,typedb_mcp_server=trace}
       - TLS_ENABLED=${TLS_ENABLED:-false}
@@ -34,14 +34,13 @@ services:
       - source: mcp_approle_secret_id
         target: /run/secrets/mcp_approle_secret_id
         mode: 0400
-      - source: typedb_password_test_secret
-        target: typedb_password_test
-        mode: 0400
     
 
     
     depends_on:
       typedb-server-it:
+         condition: service_healthy
+      vault-it:
          condition: service_healthy
     networks:
       - typedb_mcp_test_network
@@ -113,20 +112,38 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  vault:
-    profiles: ["vault_integration"]
-    image: vault:latest
+  # Vault Server para testes de integração (modo dev)
+  vault-it:
+    profiles: ["typedb_default", "typedb_tls", "oauth_mock", "vault_integration"]
+    image: hashicorp/vault:latest
     container_name: ${COMPOSE_PROJECT_NAME}-vault
     ports:
-      - "8200"
+      - "8200:8200"
     environment:
-      - VAULT_DEV_ROOT_TOKEN_ID=root-token-for-tests
-    command: server -dev
+      - VAULT_DEV_ROOT_TOKEN_ID=test-root-token
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+      - VAULT_ADDR=http://0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - ./scripts/init-vault-test.sh:/vault/init-vault-test.sh:ro
+      - ./test-secrets:/vault/test-secrets
+    command: >
+      sh -c "
+        vault server -dev -dev-root-token-id=test-root-token -dev-listen-address=0.0.0.0:8200 &
+        VAULT_PID=$$!
+        sleep 5
+        export VAULT_ADDR=http://localhost:8200
+        export VAULT_TOKEN=test-root-token
+        sh /vault/init-vault-test.sh
+        wait $$VAULT_PID
+      "
     healthcheck:
-      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
-      interval: 5s
-      timeout: 2s
-      retries: 10
+      test: ["CMD", "vault", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - typedb_mcp_test_network
 
@@ -146,5 +163,3 @@ secrets:
     file: ./test-secrets/role_id.txt
   mcp_approle_secret_id:
     file: ./test-secrets/secret_id.txt
-  typedb_password_test_secret:
-    file: ./test-secrets/typedb_password.txt

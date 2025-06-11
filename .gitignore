@@ -1,4 +1,14 @@
-# Diretórios e arquivos de build
+# =============================================================================
+# Typedb-MCP-Server .gitignore - Comprehensive Security Configuration
+# =============================================================================
+# This file ensures NO sensitive data (credentials, keys, certificates, 
+# secrets, tokens, passwords) are committed to git. For onboarding new 
+# developers, corresponding .example files are provided.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Build Artifacts and Binaries
+# -----------------------------------------------------------------------------
 /target/
 **/*.rlib
 **/*.d
@@ -9,7 +19,9 @@
 **/*.exe
 Cargo.lock
 
-# Arquivos temporários e de ambiente
+# -----------------------------------------------------------------------------
+# Temporary Files and Editor Artifacts
+# -----------------------------------------------------------------------------
 *.log
 *.tmp
 *.swp
@@ -19,69 +31,154 @@ Cargo.lock
 *.orig
 *.rej
 *.DS_Store
-# Ignora todos os arquivos .env exceto .env.example
+*~
+
+# -----------------------------------------------------------------------------
+# SECURITY: Environment Variables and Sensitive Configuration
+# -----------------------------------------------------------------------------
+# Ignora todos os arquivos .env exceto templates/examples
 .env
 .env.*
 !.env.example
+!.env.template
 
-# Configuração local e arquivos de exemplo
+# Configuração local e arquivos sensíveis
 config.toml
 config.local.toml
 *.local.toml
-*.example.toml
-*.example.env
-# Mantém .example.toml, mas ignora outros .toml que possam ser cópias locais
-# config.example.toml # Já coberto por *.example.toml
+local-config.toml
+production.toml
+staging.toml
+*config*.local.toml
 
-# Arquivos de configuração sensíveis
-# typedb_mcp_server_config.toml # Deve ser ignorado se contiver segredos e não for um template
+# CRITICAL: Qualquer arquivo com 'secret', 'password', ou 'credential' no nome
+*secret*
+*password*
+*credential*
+*token*
+*auth-config*
+!*.example.*
+!*.template.*
 
-# Certificados e chaves privadas
-/certs/
-/certs/*
+# -----------------------------------------------------------------------------
+# SECURITY: Vault and Secret Management Files
+# -----------------------------------------------------------------------------
+# Vault AppRole credentials (NEVER commit these)
+role_id
+role_id.txt
+secret_id
+secret_id.txt
+
+# Vault token files
+.vault-token
+vault-token*
+vault_token*
+
+# Secret directories (entire directories)
+/test-secrets/
+/dev-secrets/
+/local-secrets/
+/vault-secrets/
+/local-dev-secrets/
+/secrets/
+
+# Vault configuration with real credentials
+vault-config.hcl
+vault-agent.hcl
+!vault-agent-config.hcl
+!*example*
+!*template*
+
+# -----------------------------------------------------------------------------
+# SECURITY: Certificates, Keys and Cryptographic Materials
+# -----------------------------------------------------------------------------
+# Private keys (ALL patterns)
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+*.pkcs12
+
+# Certificates (generated/dev/test)
+*.crt
+*.cer
+*.der
+*.csr
+
+# Certificate directories (protect generated certs)
+/certs/generated/
+/certs/generated-dev/
+/certs/local/
+/certs/dev/
+/certs/test/
+
+# ALLOW: Example certificates (for reference only)
 !/certs/example-certs/
-!/certs/example-certs/*
+!/certs/example-certs/**
 
-# Diretórios de IDE/editor
+# Test certificates and keys (dev/test environments)
+/tests/test_certs/
+/tests/common/test_keys/
+/tests/**/certs/
+/tests/**/keys/
+
+# ALLOW: Keep example/template files for onboarding
+!*.example.key
+!*.example.pem
+!*.example.crt
+!**/example-*
+!**/template-*
+
+# -----------------------------------------------------------------------------
+# IDE and Editor Configurations
+# -----------------------------------------------------------------------------
 /.vscode/
 /.idea/
+/.github/
+/.repomix/
 *.code-workspace
+/.docker-cache/
+*.sublime-workspace
+*.sublime-project
 
-# Arquivos de testes e mocks
+# -----------------------------------------------------------------------------
+# Test Artifacts and Development
+# -----------------------------------------------------------------------------
+# Test output and temporary files
 /tests/**/output/
 /tests/**/tmp/
 /tests/**/mock/
 
-# Certificados de teste
-/tests/test_certs
+# Test configuration with sensitive data
+/tests/**/test-config.toml
+tests/test_configs/*.local.toml
 
-# Diretório de informações de projeto
-/project_info
-
-# Diretório de anotações e pensamentos
-/thinking/
-
-# Arquivos de cobertura de testes
+# Coverage and benchmark results
 /coverage/
 *.lcov
-
-# Arquivos de benchmark
 /bench/
 
-# Arquivos de documentação gerada
+# -----------------------------------------------------------------------------
+# Documentation and Generated Content
+# -----------------------------------------------------------------------------
 /target/doc/
+/project_info/
+/thinking/
 
-# Arquivos de backup do editor
-*~
-
-# Arquivos de lock de dependências duplicados
+# -----------------------------------------------------------------------------
+# Development and Deployment Artifacts
+# -----------------------------------------------------------------------------
+# Lock files and backups
 Cargo.lock.bak
+*.lock
 
-# Arquivos de build do C/C++ (caso haja)
+# Build artifacts (C/C++)
 *.obj
 *.a
 *.lib
-*.dll
 *.exp
 *.pdb
 *.idb
@@ -91,81 +188,119 @@ Cargo.lock.bak
 *.sdf
 *.opensdf
 *.tlog
-*.log
 *.vspscc
 *.vssscc
 *.scc
 
-# Arquivos de cache do Rust
+# Cache directories
 /.cargo/
 /.rustup/
-
-# Arquivos de cache do Python (caso use scripts auxiliares)
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
-# Arquivos de lock de dependências de testes
-/tests/**/Cargo.lock
-
-# Arquivos de saída de integração contínua
+# CI/CD and deployment
 /ci-artifacts/
-
-# Arquivos de saída de scripts
 /scripts/output/
+/deploy/
+/production/
+/staging/
+/development/
+/integration/
 
-# Arquivos de dump/debug
+# -----------------------------------------------------------------------------
+# Debug and Core Dumps
+# -----------------------------------------------------------------------------
 *.core
 *.dump
 *.stackdump
 
-# Arquivos de configuração de linter/formatter locais
-clippy.toml
-rustfmt.toml
-
-# Arquivos de configuração de CI/CD locais
-/.github/
-/.github/workflows/*.bak
-
-# Arquivos de configuração de deploy
-/deploy/
-
-# Arquivos de configuração de banco de dados temporários
+# -----------------------------------------------------------------------------
+# Database Files (may contain sensitive data)
+# -----------------------------------------------------------------------------
 *.sqlite
 *.db
 *.db-journal
 
-# Arquivos de lock de dependências de IDE
-/.idea/
-
-# Arquivos de lock de dependências de VSCode
-/.vscode/
-
-# Arquivos de lock de dependências de JetBrains
-/.idea/
-
-# Arquivos de lock de dependências de outros editores
-*.sublime-workspace
-*.sublime-project
-
-# Arquivos de lock de dependências de outros sistemas
-*.lock
-
-# Arquivos de configuração de testes
-/tests/**/test-config.toml
-
-# Arquivos de configuração de integração
-/integration/
-
-# Arquivos de configuração de produção
-/production/
-
-# Arquivos de configuração de staging
-/staging/
-
-# Arquivos de configuração de desenvolvimento
-/development/
-
+# -----------------------------------------------------------------------------
+# Vendor and Dependencies
+# -----------------------------------------------------------------------------
 /vendor/
-local-dev-secrets/
+
+# -----------------------------------------------------------------------------
+# SECURITY: Additional Protection Patterns
+# -----------------------------------------------------------------------------
+# JWT files and tokens
+*.jwt
+*.token
+*jwt*
+*oauth*secret*
+
+# API keys and tokens in any format
+*api*key*
+*access*token*
+*refresh*token*
+
+# Docker secrets (if accidentally copied locally)
+*docker*secret*
+*compose*secret*
+
+# Backup files that might contain sensitive data
+*.backup
+*.bkp
+*backup*
+
+# Any file with 'private' in the name (except examples)
+*private*
+!*.example.*
+!**/example-*
+
+# SSH and other authentication files
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+known_hosts
+authorized_keys
+.ssh/
+
+# -----------------------------------------------------------------------------
+# EXCEPTIONS: Files That Should Be Tracked
+# -----------------------------------------------------------------------------
+# Always track example/template files for onboarding
+!*.example
+!*.template
+!example-*
+!template-*
+!**/examples/
+!**/templates/
+
+# Track specific config files that are templates
+!config.example.toml
+!config.dev.toml
+!config.test.toml
+!.env.example
+
+# Track test configurations that don't contain secrets
+!tests/test_configs/default.test.toml
+!tests/test_configs/oauth_enabled.test.toml
+!tests/test_configs/server_tls.test.toml
+!tests/test_configs/typedb_*.test.toml
+
+# Track mock/example data files
+!mock_*.json
+!**/mock/**
+!**/mocks/**
+
+# Track documentation and reference materials
+!docs/
+!README*
+!CONTRIBUTING*
+!LICENSE*
+!CODE_OF_CONDUCT*
+
+# Allow specific tool configurations that are not sensitive
+!clippy.toml
+!rustfmt.toml  
+!rust-toolchain.toml

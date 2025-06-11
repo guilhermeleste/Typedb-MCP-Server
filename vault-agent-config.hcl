@@ -2,8 +2,8 @@ exit_after_auth = true
 pid_file = "/tmp/agent_pid"
 
 vault {
-  # O endereço será fornecido pela variável de ambiente VAULT_ADDR
-  address = getenv("VAULT_ADDR")
+  # O endereço do Vault para ambiente de teste
+  address = "http://vault-test:8200"
 }
 
 auto_auth {
