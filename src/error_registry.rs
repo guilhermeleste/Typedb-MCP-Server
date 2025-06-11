@@ -612,10 +612,10 @@ impl ErrorRegistry {
 
         // Persiste análise
         let analysis_file = self.get_change_analysis_file_path()?;
-        let mut analyses = self.load_change_analyses()?;
-        analyses.push(analysis);
+        let mut existing_analyses = self.load_change_analyses()?;
+        existing_analyses.push(analysis);
 
-        std::fs::write(&analysis_file, serde_yaml::to_string(&analyses)?)?;
+        std::fs::write(&analysis_file, serde_yaml::to_string(&existing_analyses)?)?;
 
         Ok(())
     }

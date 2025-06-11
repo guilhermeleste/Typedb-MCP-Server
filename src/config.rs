@@ -47,8 +47,11 @@ const ENV_SEPARATOR: &str = "__";
 fn default_typedb_address() -> String {
     "localhost:1729".to_string()
 }
-fn default_typedb_username() -> Option<String> {
-    Some("admin".to_string())
+fn default_typedb_username() -> String {
+    "admin".to_string()
+}
+fn default_typedb_username_option() -> Option<String> {
+    Some(default_typedb_username())
 }
 
 // Para Server
@@ -58,8 +61,11 @@ fn default_server_bind_address() -> String {
 
 // Para OAuth
 // REMOVIDO: default_oauth_jwks_refresh_interval_raw() - será tratado no pós-processamento
-fn default_oauth_jwks_request_timeout_seconds() -> Option<u64> {
-    Some(30)
+fn default_oauth_jwks_request_timeout_seconds() -> u64 {
+    30
+}
+fn default_oauth_jwks_request_timeout_seconds_option() -> Option<u64> {
+    Some(default_oauth_jwks_request_timeout_seconds())
 }
 const DEFAULT_JWKS_REFRESH_INTERVAL_STR: &str = "1h"; // Default programático
 
@@ -77,11 +83,17 @@ fn default_cors_allowed_origins() -> Vec<String> {
 const fn default_rate_limit_enabled() -> bool {
     true
 }
-fn default_rate_limit_requests_per_second() -> Option<u64> {
-    Some(100)
+fn default_rate_limit_requests_per_second() -> u64 {
+    100
 }
-fn default_rate_limit_burst_size() -> Option<u32> {
-    Some(200)
+fn default_rate_limit_requests_per_second_option() -> Option<u64> {
+    Some(default_rate_limit_requests_per_second())
+}
+fn default_rate_limit_burst_size() -> u32 {
+    200
+}
+fn default_rate_limit_burst_size_option() -> Option<u32> {
+    Some(default_rate_limit_burst_size())
 }
 
 // Para TracingConfig
@@ -102,7 +114,7 @@ fn default_tracing_sampler_arg() -> String {
 /// Cada campo aqui representa uma seção no arquivo TOML.
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
-    /// Configurações relacionadas à conexão com o servidor TypeDB.
+    /// Configurações relacionadas à conexão com o servidor `TypeDB`.
     /// Corresponde à seção `[typedb]` no TOML.
     #[serde(default = "default_typedb_settings")]
     pub typedb: TypeDB,
@@ -112,7 +124,7 @@ pub struct Settings {
     #[serde(default = "default_server_settings")]
     pub server: Server,
 
-    /// Configurações de autenticação OAuth2 para clientes MCP.
+    /// Configurações de autenticação `OAuth2` para clientes MCP.
     /// Corresponde à seção `[oauth]` no TOML.
     #[serde(default = "default_oauth_settings")]
     pub oauth: OAuth,
@@ -138,26 +150,26 @@ pub struct Settings {
     pub tracing: TracingConfig,
 }
 
-/// Configurações para a conexão com o servidor TypeDB.
+/// Configurações para a conexão com o servidor `TypeDB`.
 ///
 /// Chaves TOML esperadas em `camelCase` (ex: `address`, `tlsEnabled`).
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct TypeDB {
-    /// Endereço (host:porta) do servidor TypeDB.
+    /// Endereço (host:porta) do servidor `TypeDB`.
     /// Variável de Ambiente: `MCP_TYPEDB__ADDRESS` ou `MCP_TYPEDB__address`.
     #[serde(default = "default_typedb_address")]
     pub address: String,
-    /// Nome de usuário para autenticação com TypeDB. Opcional.
+    /// Nome de usuário para autenticação com `TypeDB`. Opcional.
     /// Variável de Ambiente: `MCP_TYPEDB__USERNAME` ou `MCP_TYPEDB__username`.
-    #[serde(default = "default_typedb_username")]
+    #[serde(default = "default_typedb_username_option")]
     pub username: Option<String>,
-    /// Habilita TLS para a conexão com TypeDB.
+    /// Habilita TLS para a conexão com `TypeDB`.
     /// Variável de Ambiente: `MCP_TYPEDB__TLS_ENABLED` ou `MCP_TYPEDB__tlsEnabled`.
     #[serde(default)]
     pub tls_enabled: bool,
-    /// Caminho para o arquivo PEM do certificado CA raiz para TypeDB TLS.
-    /// Obrigatório se `tls_enabled` for true e o servidor TypeDB usar um CA não padrão.
+    /// Caminho para o arquivo PEM do certificado CA raiz para `TypeDB` TLS.
+    /// Obrigatório se `tls_enabled` for true e o servidor `TypeDB` usar um CA não padrão.
     /// Variável de Ambiente: `MCP_TYPEDB__TLS_CA_PATH` ou `MCP_TYPEDB__tlsCaPath`.
     #[serde(default)]
     pub tls_ca_path: Option<String>,
@@ -168,7 +180,7 @@ pub struct TypeDB {
 fn default_typedb_settings() -> TypeDB {
     TypeDB {
         address: default_typedb_address(),
-        username: default_typedb_username(),
+        username: Some(default_typedb_username()),
         tls_enabled: false,
         tls_ca_path: None,
     }
@@ -230,13 +242,13 @@ fn default_server_settings() -> Server {
     }
 }
 
-/// Configurações de autenticação OAuth2 para clientes MCP.
+/// Configurações de autenticação `OAuth2` para clientes MCP.
 ///
 /// Chaves TOML esperadas em `camelCase` (ex: `jwksUri`, `requiredScopes`).
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OAuth {
-    /// Habilita a autenticação OAuth2.
+    /// Habilita a autenticação `OAuth2`.
     /// Variável de Ambiente: `MCP_OAUTH__ENABLED` ou `MCP_OAUTH__enabled`.
     #[serde(default)]
     pub enabled: bool,
@@ -263,9 +275,9 @@ pub struct OAuth {
     pub jwks_refresh_interval_raw: Option<String>,
     /// Timeout para a requisição HTTP ao buscar o JWKS, em segundos.
     /// Variável de Ambiente: `MCP_OAUTH__JWKS_REQUEST_TIMEOUT_SECONDS` ou `MCP_OAUTH__jwksRequestTimeoutSeconds`.
-    #[serde(default = "default_oauth_jwks_request_timeout_seconds")]
+    #[serde(default = "default_oauth_jwks_request_timeout_seconds_option")]
     pub jwks_request_timeout_seconds: Option<u64>,
-    /// Escopos OAuth2 que o token DEVE conter para acesso geral ao servidor.
+    /// Escopos `OAuth2` que o token DEVE conter para acesso geral ao servidor.
     /// ENV: `MCP_OAUTH__REQUIRED_SCOPES="mcp:access,other:scope"` (ou `MCP_OAUTH__requiredScopes`).
     #[serde(default)]
     pub required_scopes: Option<Vec<String>>,
@@ -280,7 +292,7 @@ fn default_oauth_settings() -> OAuth {
         audience: None,
         jwks_refresh_interval: Some(Duration::from_secs(3600)), // Default programático para Duration
         jwks_refresh_interval_raw: None,                        // Será None se não vier de TOML/ENV
-        jwks_request_timeout_seconds: default_oauth_jwks_request_timeout_seconds(),
+        jwks_request_timeout_seconds: Some(default_oauth_jwks_request_timeout_seconds()),
         required_scopes: None,
     }
 }
@@ -332,11 +344,11 @@ pub struct RateLimit {
     pub enabled: bool,
     /// Número de requisições permitidas por segundo, por IP.
     /// Variável de Ambiente: `MCP_RATE_LIMIT__REQUESTS_PER_SECOND` ou `MCP_RATE_LIMIT__requestsPerSecond`.
-    #[serde(default = "default_rate_limit_requests_per_second")]
+    #[serde(default = "default_rate_limit_requests_per_second_option")]
     pub requests_per_second: Option<u64>,
     /// Número de requisições permitidas em um burst, por IP.
     /// Variável de Ambiente: `MCP_RATE_LIMIT__BURST_SIZE` ou `MCP_RATE_LIMIT__burstSize`.
-    #[serde(default = "default_rate_limit_burst_size")]
+    #[serde(default = "default_rate_limit_burst_size_option")]
     pub burst_size: Option<u32>,
 }
 
@@ -344,8 +356,8 @@ pub struct RateLimit {
 fn default_rate_limit_settings() -> RateLimit {
     RateLimit {
         enabled: default_rate_limit_enabled(),
-        requests_per_second: default_rate_limit_requests_per_second(),
-        burst_size: default_rate_limit_burst_size(),
+        requests_per_second: Some(default_rate_limit_requests_per_second()),
+        burst_size: Some(default_rate_limit_burst_size()),
     }
 }
 
@@ -360,7 +372,7 @@ pub struct TracingConfig {
     #[serde(default)]
     pub enabled: bool,
     /// Endpoint do coletor OTLP (gRPC). Obrigatório se `enabled` for true.
-    /// Ex: "http://localhost:4317".
+    /// Ex: `<http://localhost:4317>`.
     /// Variável de Ambiente: `MCP_TRACING__EXPORTER_OTLP_ENDPOINT` ou `MCP_TRACING__exporterOtlpEndpoint`.
     #[serde(default)]
     pub exporter_otlp_endpoint: Option<String>,
@@ -368,12 +380,12 @@ pub struct TracingConfig {
     /// Variável de Ambiente: `MCP_TRACING__SERVICE_NAME` ou `MCP_TRACING__serviceName`.
     #[serde(default = "default_tracing_service_name")]
     pub service_name: String,
-    /// Estratégia de amostragem para traces. Valores comuns: "always_on", "always_off", "traceidratio".
+    /// Estratégia de amostragem para traces. Valores comuns: `"always_on"`, `"always_off"`, `"traceidratio"`.
     /// Variável de Ambiente: `MCP_TRACING__SAMPLER` ou `MCP_TRACING__sampler`.
     #[serde(default = "default_tracing_sampler")]
     pub sampler: String,
     /// Argumento para o sampler. Ex: "0.1" para traceidratio (10% de traces).
-    /// Para "always_on" ou "always_off", geralmente "1.0" ou não é usado.
+    /// Para `"always_on"` ou `"always_off"`, geralmente `"1.0"` ou não é usado.
     /// Variável de Ambiente: `MCP_TRACING__SAMPLER_ARG` ou `MCP_TRACING__samplerArg`.
     #[serde(default = "default_tracing_sampler_arg")]
     pub sampler_arg: String,
@@ -905,7 +917,7 @@ mod tests {
         let settings = Settings::new().expect("Falha ao carregar configurações default");
 
         assert_eq!(settings.typedb.address, default_typedb_address());
-        assert_eq!(settings.typedb.username, default_typedb_username());
+        assert_eq!(settings.typedb.username, Some(default_typedb_username()));
         assert_eq!(settings.typedb.tls_enabled, false);
         assert_eq!(settings.server.bind_address, default_server_bind_address());
         assert_eq!(settings.oauth.enabled, false);
@@ -1074,7 +1086,7 @@ mod tests {
         let settings = Settings::new().expect("Falha ao carregar config parcial");
 
         assert_eq!(settings.typedb.address, "specific.typedb.host:1729");
-        assert_eq!(settings.typedb.username, default_typedb_username());
+        assert_eq!(settings.typedb.username, Some(default_typedb_username()));
         assert_eq!(settings.typedb.tls_enabled, false);
         assert_eq!(settings.server.bind_address, default_server_bind_address());
     }
@@ -1099,10 +1111,10 @@ mod tests {
     #[serial]
     fn test_jwks_refresh_interval_uses_struct_default_if_absent_in_toml_and_env() {
         let _env_cleaner = EnvCleaner::new();
-        let toml_content = r#"
+        let toml_content = r"
             [oauth]
             enabled = false 
-        "#;
+        ";
         let temp_file = create_temp_toml_config(toml_content);
         env::set_var("MCP_CONFIG_PATH", temp_file.path());
 
