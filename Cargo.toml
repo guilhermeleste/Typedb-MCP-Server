@@ -62,6 +62,7 @@ anyhow = "1.0.98"
 [dev-dependencies]
 assert-json-diff = "2.0.2"
 chrono = "0.4.41"
+criterion = { version = "0.5", features = ["async_tokio", "html_reports"] }
 rand = "0.9.1"
 reqwest = { version = "0.12.15", default-features = false, features = ["blocking", "json"] }
 tempfile = "3.20.0"
@@ -72,6 +73,7 @@ url = "2.5.4"
 base64 = "0.22.1"
 anyhow = "1.0.98"
 bytes = "1.10.1"
+toml = "0.8"
 
 
 [profile.dev]
@@ -155,3 +157,8 @@ print_stdout = "warn"
 print_stderr = "warn"
 # cyclomatic_complexity = "warn" # Usar cognitive_complexity em clippy.toml
 # too_many_arguments = "warn" # Configurado via threshold em clippy.toml
+
+# Benchmarks configuration
+[[bench]]
+name = "performance_benchmarks"
+harness = false  # Disable default harness, criterion has its own
