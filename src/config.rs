@@ -50,9 +50,6 @@ fn default_typedb_address() -> String {
 fn default_typedb_username() -> String {
     "admin".to_string()
 }
-fn default_typedb_username_option() -> Option<String> {
-    Some(default_typedb_username())
-}
 
 // Para Server
 fn default_server_bind_address() -> String {
@@ -63,9 +60,7 @@ fn default_server_bind_address() -> String {
 // REMOVIDO: default_oauth_jwks_refresh_interval_raw() - será tratado no pós-processamento
 fn default_oauth_jwks_request_timeout_seconds() -> u64 {
     30
-}
-fn default_oauth_jwks_request_timeout_seconds_option() -> Option<u64> {
-    Some(default_oauth_jwks_request_timeout_seconds())
+
 }
 const DEFAULT_JWKS_REFRESH_INTERVAL_STR: &str = "1h"; // Default programático
 
@@ -86,14 +81,9 @@ const fn default_rate_limit_enabled() -> bool {
 fn default_rate_limit_requests_per_second() -> u64 {
     100
 }
-fn default_rate_limit_requests_per_second_option() -> Option<u64> {
-    Some(default_rate_limit_requests_per_second())
-}
 fn default_rate_limit_burst_size() -> u32 {
     200
-}
-fn default_rate_limit_burst_size_option() -> Option<u32> {
-    Some(default_rate_limit_burst_size())
+
 }
 
 // Para TracingConfig
@@ -162,7 +152,8 @@ pub struct TypeDB {
     pub address: String,
     /// Nome de usuário para autenticação com `TypeDB`. Opcional.
     /// Variável de Ambiente: `MCP_TYPEDB__USERNAME` ou `MCP_TYPEDB__username`.
-    #[serde(default = "default_typedb_username_option")]
+    #[serde(default)]
+
     pub username: Option<String>,
     /// Habilita TLS para a conexão com `TypeDB`.
     /// Variável de Ambiente: `MCP_TYPEDB__TLS_ENABLED` ou `MCP_TYPEDB__tlsEnabled`.
@@ -275,7 +266,8 @@ pub struct OAuth {
     pub jwks_refresh_interval_raw: Option<String>,
     /// Timeout para a requisição HTTP ao buscar o JWKS, em segundos.
     /// Variável de Ambiente: `MCP_OAUTH__JWKS_REQUEST_TIMEOUT_SECONDS` ou `MCP_OAUTH__jwksRequestTimeoutSeconds`.
-    #[serde(default = "default_oauth_jwks_request_timeout_seconds_option")]
+    #[serde(default)]
+
     pub jwks_request_timeout_seconds: Option<u64>,
     /// Escopos `OAuth2` que o token DEVE conter para acesso geral ao servidor.
     /// ENV: `MCP_OAUTH__REQUIRED_SCOPES="mcp:access,other:scope"` (ou `MCP_OAUTH__requiredScopes`).
@@ -344,11 +336,12 @@ pub struct RateLimit {
     pub enabled: bool,
     /// Número de requisições permitidas por segundo, por IP.
     /// Variável de Ambiente: `MCP_RATE_LIMIT__REQUESTS_PER_SECOND` ou `MCP_RATE_LIMIT__requestsPerSecond`.
-    #[serde(default = "default_rate_limit_requests_per_second_option")]
+    #[serde(default)]
     pub requests_per_second: Option<u64>,
     /// Número de requisições permitidas em um burst, por IP.
     /// Variável de Ambiente: `MCP_RATE_LIMIT__BURST_SIZE` ou `MCP_RATE_LIMIT__burstSize`.
-    #[serde(default = "default_rate_limit_burst_size_option")]
+    #[serde(default)]
+
     pub burst_size: Option<u32>,
 }
 
@@ -644,6 +637,21 @@ impl Settings {
         if settings.oauth.jwks_refresh_interval_raw.is_none() {
             settings.oauth.jwks_refresh_interval_raw =
                 Some(DEFAULT_JWKS_REFRESH_INTERVAL_STR.to_string());
+        }
+
+        if settings.typedb.username.is_none() {
+            settings.typedb.username = Some(default_typedb_username());
+        }
+        if settings.oauth.jwks_request_timeout_seconds.is_none() {
+            settings.oauth.jwks_request_timeout_seconds =
+                Some(default_oauth_jwks_request_timeout_seconds());
+        }
+        if settings.rate_limit.requests_per_second.is_none() {
+            settings.rate_limit.requests_per_second =
+                Some(default_rate_limit_requests_per_second());
+        }
+        if settings.rate_limit.burst_size.is_none() {
+            settings.rate_limit.burst_size = Some(default_rate_limit_burst_size());
         }
 
         tracing::info!("Configurações carregadas e pós-processadas com sucesso (com overrides de ENV explícitos).");
