@@ -21,6 +21,7 @@ import websockets
 from websockets.client import WebSocketClientProtocol
 from websockets.exceptions import InvalidStatusCode
 
+
 from agno.tools import Toolkit
 # CORREÇÃO: Importar diretamente os tipos necessários do mcp-sdk.
 # Se o Pylance ainda reclamar, significa que a biblioteca mcp-sdk não tem
@@ -215,7 +216,8 @@ class TypeDBToolkit(Toolkit):
             result = await asyncio.wait_for(future, timeout=self._config.request_timeout)
             
             if result.isError:
-                error_content = result.content[0] if result.content else TextContent(text="Erro desconhecido")
+                # FIX: Corrigido para fornecer o parâmetro 'type' obrigatório.
+                error_content = result.content[0] if result.content else TextContent(type="text", text="Erro desconhecido")
                 raise ToolExecutionError(f"A ferramenta '{tool_name}' falhou: {error_content.text}")
 
             if result.content and isinstance(result.content[0], TextContent):
@@ -230,7 +232,7 @@ class TypeDBToolkit(Toolkit):
         except McpError as e:
             if e.error.code == 403 or "Authorization" in e.error.message:
                 raise AuthorizationError(e.error.message, e)
-            raise ToolExecutionError(tool_name, e.error.message, e)
+            raise ToolExecutionError(f"Ferramenta '{tool_name}' falhou: {e.error.message}", e)
         finally:
             self._pending_responses.pop(req_id, None)
 
@@ -250,7 +252,7 @@ class TypeDBToolkit(Toolkit):
     
     # --- API de Alto Nível ---
 
-    async def list_databases(self) -> list[str]:
+    async def list_databases(self) -> List[str]:
         return await self.execute_tool("list_databases")
 
     async def create_database(self, name: str) -> str:

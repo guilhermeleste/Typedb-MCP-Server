@@ -1,0 +1,26 @@
+{
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "information",
+  "reportUnknownParameterType": "information",
+  "reportUnknownArgumentType": "information",
+  "reportUnknownLambdaType": "information",
+  "reportUnknownVariableType": "information",
+  "reportUnknownMemberType": "information",
+  "reportAttributeAccessIssue": "information",
+  "strictListInference": false,
+  "strictDictionaryInference": false,
+  "strictParameterNoneValue": false,
+  "enableTypeIgnoreComments": true,
+  "stubPath": "typings",
+  "venvPath": ".",
+  "pythonVersion": "3.12",
+  "include": [
+    "src/**/*.py"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    ".venv"
+  ]
+}
