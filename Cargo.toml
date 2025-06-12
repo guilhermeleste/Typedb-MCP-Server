@@ -19,7 +19,6 @@ full-tests = []
 
 [dependencies]
 
-hvac = "0.11.0"
 anyhow = "1.0"
 axum-server = { version = "0.7.2", features = ["tls-rustls"] }
 axum = { version = "0.8.4", features = ["ws", "macros", "json"] }
@@ -58,6 +57,7 @@ serial_test = "3.2.0"
 serde_yaml = "0.9.34"
 chrono = { version = "0.4.41", features = ["serde"] }
 rustc_version_runtime = "0.3.0"
+vaultrs = "0.7.4"
 
 
 [dev-dependencies]

@@ -21,7 +21,6 @@ from ...config import get_ca_cert_path, get_oidc_token # Adjusted import path as
 # CORREÇÃO: Importar tipos específicos do websockets para type hinting.
 import websockets
 from websockets.client import WebSocketClientProtocol
-from websockets.exceptions import InvalidStatusCode
 
 
 from agno.tools import Toolkit
