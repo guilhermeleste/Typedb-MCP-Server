@@ -74,12 +74,16 @@ class TestExecutionWorkflow(Workflow):
     async def _initialize_toolkits(self) -> tuple[TypeDBToolkit, Optional[TypeDBToolkit]]:
         """Inicializa os toolkits necessários para a execução do teste."""
         logger.info("Inicializando toolkits de teste...")
-        admin_tk = await TypeDBToolkit.create(self.admin_config)
+        # Extrai server_url do admin_config. Assume-se que é o mesmo para security_config.
+        server_url = self.admin_config.server_url
+
+        admin_tk = await TypeDBToolkit.create(server_url=server_url, use_security_token=False)
         
         security_tk = None
         if self.security_config:
             logger.info("Inicializando toolkit de segurança com token restrito.")
-            security_tk = await TypeDBToolkit.create(self.security_config)
+            # server_url de security_config deve ser o mesmo, mas por consistência, pode-se usar self.security_config.server_url
+            security_tk = await TypeDBToolkit.create(server_url=server_url, use_security_token=True)
             
         return admin_tk, security_tk
 

@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "hvac>=1.2.1",
     "agno>=1.6.0",
     "google-genai>=1.20.0",
     "mcp[cli]>=1.9.4",
