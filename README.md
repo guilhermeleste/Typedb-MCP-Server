@@ -90,13 +90,23 @@ Para detalhes sobre configuração do Vault e uso em produção, consulte [`READ
 
 #### Desenvolvimento Local
 
-Para desenvolvimento local sem a complexidade do Vault, utilize `docker-compose.yml`. Crie o arquivo `local-dev-secrets/password.txt` com a senha desejada e execute:
+Para desenvolvimento e teste, o ambiente é orquestrado pelo `docker-compose.test.yml` e depende do Vault para gerenciamento de segredos.
 
-```bash
-docker compose up -d --build
-```
-
-O compose monta esse arquivo como um Docker Secret dentro do contêiner e a aplicação o lê através da variável `TYPEDB_PASSWORD_FILE=/run/secrets/db_password`.
+1.  **Pré-requisitos:** Certifique-se de que o Docker e o Docker Compose estão instalados.
+2.  **Configurar o Vault:** Execute o script de setup para configurar o ambiente do Vault. Este script prepara os motores de segredos, políticas e papéis necessários.
+    ```bash
+    ./scripts/setup-full-ecosystem-vault.sh
+    ```
+3.  **Obter Credenciais de AppRole:** O script acima exibirá um `RoleID` e `SecretID` para o `sentinel-client-app`. Crie um arquivo `typedb_sentinel/.env` e adicione essas credenciais:
+    ```env
+    SENTINEL_ROLE_ID="<role_id_gerado>"
+    SENTINEL_SECRET_ID="<secret_id_gerado>"
+    ```
+4.  **Iniciar o Ambiente:** Use o `docker-compose.test.yml` para iniciar todos os serviços necessários.
+    ```bash
+    docker compose -f docker-compose.test.yml up -d --build
+    ```
+    Agora o `typedb-mcp-server` estará rodando e configurado dinamicamente pelo seu processo de bootstrap que se comunica com o Vault.
 
 #### A partir do Código-Fonte
 

@@ -70,9 +70,7 @@ async fn test_websocket_connection_fails_to_wrong_path() -> Result<()> {
         ("ws", constants::MCP_SERVER_HOST_HTTP_PORT.to_string())
     };
 
-    let bad_ws_url = format!(
-        "{scheme_ws}://localhost:{host_port_str}/wrong/mcp/path"
-    );
+    let bad_ws_url = format!("{scheme_ws}://localhost:{host_port_str}/wrong/mcp/path");
 
     info!(
         "Ambiente '{}' pronto. Tentando conectar TestMcpClient a URL inválida: {}",
@@ -168,27 +166,23 @@ async fn test_server_tls_connection_succeeds_with_wss() -> Result<()> {
                 }
                 Err(ref list_tools_error) => {
                     // Tratar especificamente UnexpectedEof conforme documentação rustls
-                    if let McpClientError::WebSocket(ws_err) = list_tools_error { if let tokio_tungstenite::tungstenite::Error::Io(io_err) = ws_err {
-                        if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
-                            warn!("⚠️  list_tools retornou UnexpectedEof - conexão fechada sem close_notify");
-                            warn!("📖 Conforme documentação rustls, este erro pode ser tratado como EOF normal");
-                            warn!("🔍 Possível causa: aplicação usa length framing e conexão foi fechada adequadamente");
-                            info!("✅ Tratando UnexpectedEof como sucesso condicional para este teste");
+                    if let McpClientError::WebSocket(ws_err) = list_tools_error {
+                        if let tokio_tungstenite::tungstenite::Error::Io(io_err) = ws_err {
+                            if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
+                                warn!("⚠️  list_tools retornou UnexpectedEof - conexão fechada sem close_notify");
+                                warn!("📖 Conforme documentação rustls, este erro pode ser tratado como EOF normal");
+                                warn!("🔍 Possível causa: aplicação usa length framing e conexão foi fechada adequadamente");
+                                info!("✅ Tratando UnexpectedEof como sucesso condicional para este teste");
+                            } else {
+                                error!("❌ list_tools falhou com erro IO inesperado: {:?}", io_err);
+                                panic!("Erro IO inesperado em list_tools: {io_err:?}");
+                            }
                         } else {
-                            error!(
-                                "❌ list_tools falhou com erro IO inesperado: {:?}",
-                                io_err
-                            );
-                            panic!("Erro IO inesperado em list_tools: {io_err:?}");
+                            error!("❌ list_tools falhou com erro WebSocket: {:?}", ws_err);
+                            panic!("Erro WebSocket inesperado em list_tools: {ws_err:?}");
                         }
                     } else {
-                        error!("❌ list_tools falhou com erro WebSocket: {:?}", ws_err);
-                        panic!("Erro WebSocket inesperado em list_tools: {ws_err:?}");
-                    } } else {
-                        error!(
-                            "❌ list_tools falhou com erro inesperado: {:?}",
-                            list_tools_error
-                        );
+                        error!("❌ list_tools falhou com erro inesperado: {:?}", list_tools_error);
                         panic!("Erro inesperado em list_tools: {list_tools_error:?}");
                     }
                 }
@@ -283,78 +277,34 @@ async fn test_oauth_connection_succeeds_with_valid_token() -> Result<()> {
 
 #[tokio::test]
 #[serial]
-async fn test_oauth_connection_fails_with_invalid_token_signature() -> Result<()> {
+async fn test_admin_action_fails_with_readonly_token() -> Result<()> {
     let test_env = TestEnvironment::setup(
-        // Corrigido
-        "conn_oauth_bad_sig",
+        "conn_oauth_readonly",
         constants::OAUTH_ENABLED_TEST_CONFIG_FILENAME,
     )
     .await?;
     assert!(test_env.is_oauth_enabled);
-    info!(
-        "Ambiente '{}' pronto. Testando conexão OAuth com token de assinatura inválida.",
-        test_env.docker_env.project_name()
-    );
 
-    let now = crate::common::auth_helpers::current_timestamp_secs();
-    let claims = crate::common::auth_helpers::TestClaims {
-        sub: "user-bad-sig".to_string(),
-        exp: now + 3600,
-        iss: Some(constants::TEST_JWT_ISSUER.to_string()),
-        aud: Some(serde_json::json!(constants::TEST_JWT_AUDIENCE)),
-        scope: Some("test:scope".to_string()),
-        iat: Some(now),
-        nbf: Some(now),
-        custom_claim: None,
-    };
-    let bad_token = crate::common::auth_helpers::generate_test_jwt(
-        claims,
-        crate::common::auth_helpers::JwtAuthAlgorithm::HS256,
-    );
+    // 1. Obter um cliente com um token de escopo limitado ('readonly-role' do Vault)
+    info!("Conectando com token de escopo 'readonly'...");
+    let mut readonly_client = test_env.mcp_client_with_auth(Some("readonly")).await?;
 
-    let client_capabilities = rmcp::model::ClientCapabilities::default();
-    let client_impl = rmcp::model::Implementation {
-        name: "typedb-mcp-test-client-badsig".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-    let initialize_params = rmcp::model::InitializeRequestParam {
-        protocol_version: ProtocolVersion::LATEST,
-        capabilities: client_capabilities,
-        client_info: client_impl,
-    };
+    // 2. Tentar executar uma ação que requer permissões de administrador (ex: create_database)
+    let db_name = crate::common::unique_db_name("readonly_fail");
+    info!("Tentando criar um banco de dados com token readonly (deve falhar)...");
+    let result = readonly_client
+        .call_tool("create_database", Some(serde_json::json!({ "name": db_name })))
+        .await;
 
-    let client_result = crate::common::client::TestMcpClient::connect_and_initialize(
-        &test_env.mcp_ws_url,
-        Some(bad_token),
-        constants::DEFAULT_CONNECT_TIMEOUT,
-        constants::DEFAULT_REQUEST_TIMEOUT,
-        initialize_params,
-    )
-    .await;
-
-    assert!(client_result.is_err(), "Conexão com token de assinatura inválida deveria falhar.");
-
-    let err_for_log = match &client_result {
-        Ok(_) => "Sucesso inesperado".to_string(),
-        Err(e) => format!("{e:?}"),
-    };
-    info!("Conexão OAuth com token de assinatura inválida falhou como esperado: {}", err_for_log);
-
-    match client_result {
-        Err(McpClientError::HandshakeFailed(status, _)) => {
-            assert_eq!(
-                status,
-                http::StatusCode::UNAUTHORIZED,
-                "Esperado status 401 para token inválido."
-            );
+    // 3. Verificar se a operação foi negada com um erro de autorização
+    assert!(result.is_err(), "A criação do banco de dados deveria falhar com um token readonly.");
+    match result.expect_err("O resultado deveria ser um erro") {
+        McpClientError::McpErrorResponse { code, .. } => {
+            assert_eq!(code.0, -32001, "Esperado código de erro de Autorização Falhou (-32001).");
         }
-        Err(other_err) => {
-            panic!("Tipo de erro inesperado para token inválido: {other_err:?}");
-        }
-        Ok(_) => {
-            panic!("Conexão com token de assinatura inválida deveria ter falhado, mas obteve Ok.");
-        }
+        other => panic!("Recebido tipo de erro inesperado: {:?}", other),
     }
+    info!("A criação do banco de dados falhou com erro de autorização, como esperado.");
     Ok(())
 }
 
