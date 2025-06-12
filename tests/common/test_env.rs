@@ -66,7 +66,8 @@ pub enum TestProfile {
 impl TestProfile {
     /// Converte o enum `TestProfile` para a string de nome de perfil
     /// usada nos arquivos Docker Compose.
-    #[must_use] pub fn as_compose_profile(&self) -> &'static str {
+    #[must_use]
+    pub fn as_compose_profile(&self) -> &'static str {
         match self {
             TestProfile::TypeDbDefault => "typedb_default",
             TestProfile::TypeDbTls => "typedb_tls",
@@ -79,7 +80,8 @@ impl TestProfile {
     ///
     /// Alguns perfis (como `OAuthMock`) podem não ter um serviço `TypeDB` diretamente
     /// associado a eles, mas podem ser combinados com outros perfis que o tenham.
-    #[must_use] pub fn typedb_service_name(&self) -> Option<&'static str> {
+    #[must_use]
+    pub fn typedb_service_name(&self) -> Option<&'static str> {
         match self {
             TestProfile::TypeDbDefault => Some(constants::TYPEDB_SERVICE_NAME),
             TestProfile::TypeDbTls => Some(constants::TYPEDB_TLS_SERVICE_NAME),
@@ -115,7 +117,8 @@ impl TestConfiguration {
     /// - Usa o `config_filename` fornecido.
     /// - O servidor MCP não usa TLS.
     /// - A conexão MCP -> `TypeDB` não usa TLS.
-    #[must_use] pub fn default(config_filename: &str) -> Self {
+    #[must_use]
+    pub fn default(config_filename: &str) -> Self {
         Self {
             profiles: vec![TestProfile::TypeDbDefault],
             config_filename: config_filename.to_string(),
@@ -128,7 +131,8 @@ impl TestConfiguration {
     ///
     /// - Ativa o perfil `TypeDbTls` (que inicia o serviço `typedb-server-tls-it`).
     /// - Indica que a conexão `TypeDB` deve ser TLS.
-    #[must_use] pub fn with_typedb_tls(config_filename: &str) -> Self {
+    #[must_use]
+    pub fn with_typedb_tls(config_filename: &str) -> Self {
         Self {
             profiles: vec![TestProfile::TypeDbTls],
             config_filename: config_filename.to_string(),
@@ -140,7 +144,8 @@ impl TestConfiguration {
     /// Cria uma configuração para testar com autenticação `OAuth2` habilitada.
     ///
     /// - Ativa os perfis `TypeDbDefault` (assumindo que um `TypeDB` é necessário) e `OAuthMock`.
-    #[must_use] pub fn with_oauth(config_filename: &str) -> Self {
+    #[must_use]
+    pub fn with_oauth(config_filename: &str) -> Self {
         Self {
             profiles: vec![TestProfile::TypeDbDefault, TestProfile::OAuthMock],
             config_filename: config_filename.to_string(),
@@ -153,7 +158,8 @@ impl TestConfiguration {
     ///
     /// - Ativa o perfil `TypeDbDefault`.
     /// - Define `mcp_server_tls` como `true`.
-    #[must_use] pub fn with_mcp_server_tls(config_filename: &str) -> Self {
+    #[must_use]
+    pub fn with_mcp_server_tls(config_filename: &str) -> Self {
         Self {
             profiles: vec![TestProfile::TypeDbDefault],
             config_filename: config_filename.to_string(),
@@ -164,7 +170,8 @@ impl TestConfiguration {
 
     /// Cria uma configuração totalmente personalizada com todos os parâmetros explícitos.
     #[allow(dead_code)]
-    #[must_use] pub fn custom(
+    #[must_use]
+    pub fn custom(
         profiles: Vec<TestProfile>,
         config_filename: &str,
         mcp_server_tls: bool,
@@ -180,7 +187,8 @@ impl TestConfiguration {
 
     /// Adiciona um perfil Docker adicional à configuração existente, se ainda não estiver presente.
     #[allow(dead_code)]
-    #[must_use] pub fn with_profile(mut self, profile: TestProfile) -> Self {
+    #[must_use]
+    pub fn with_profile(mut self, profile: TestProfile) -> Self {
         if !self.profiles.contains(&profile) {
             self.profiles.push(profile);
         }
@@ -189,14 +197,16 @@ impl TestConfiguration {
 
     /// Define explicitamente se o servidor MCP deve usar TLS para seus endpoints.
     #[allow(dead_code)]
-    #[must_use] pub fn with_mcp_tls(mut self, enable_tls: bool) -> Self {
+    #[must_use]
+    pub fn with_mcp_tls(mut self, enable_tls: bool) -> Self {
         self.mcp_server_tls = enable_tls;
         self
     }
 
     /// Verifica se o perfil `OAuthMock` está ativo, indicando que a autenticação `OAuth2`
     /// deve estar habilitada no servidor MCP para os testes.
-    #[must_use] pub fn is_oauth_enabled(&self) -> bool {
+    #[must_use]
+    pub fn is_oauth_enabled(&self) -> bool {
         self.profiles.contains(&TestProfile::OAuthMock)
     }
 
@@ -204,7 +214,8 @@ impl TestConfiguration {
     /// com base se a conexão `TypeDB` deve ou não usar TLS.
     ///
     /// Este nome é usado para construir a variável `MCP_TYPEDB__ADDRESS`.
-    #[must_use] pub fn mcp_target_typedb_service_name(&self) -> &'static str {
+    #[must_use]
+    pub fn mcp_target_typedb_service_name(&self) -> &'static str {
         if self.typedb_connection_uses_tls {
             constants::TYPEDB_TLS_SERVICE_NAME
         } else {
@@ -214,7 +225,8 @@ impl TestConfiguration {
 
     /// Determina qual serviço `TypeDB` (o padrão ou o TLS) deve ter seu healthcheck aguardado
     /// como a dependência `TypeDB` primária, com base nos perfis Docker que estão ativos.
-    #[must_use] pub fn primary_typedb_service_to_wait_for_health(&self) -> &'static str {
+    #[must_use]
+    pub fn primary_typedb_service_to_wait_for_health(&self) -> &'static str {
         if self.profiles.contains(&TestProfile::TypeDbTls) {
             constants::TYPEDB_TLS_SERVICE_NAME
         } else if self.profiles.contains(&TestProfile::TypeDbDefault) {
@@ -229,7 +241,8 @@ impl TestConfiguration {
 
     /// Converte os enums [`TestProfile`] para as strings de nome de perfil
     /// usadas nos comandos do Docker Compose.
-    #[must_use] pub fn as_compose_profiles(&self) -> Vec<String> {
+    #[must_use]
+    pub fn as_compose_profiles(&self) -> Vec<String> {
         self.profiles.iter().map(|p| p.as_compose_profile().to_string()).collect()
     }
 }
@@ -343,7 +356,6 @@ impl TestEnvironment {
                 || config.profiles.contains(&TestProfile::OAuthMock)
                 || config.profiles.contains(&TestProfile::TypeDbTls))
         {
-
             info!(
                 "Aguardando serviço TypeDB padrão ('{}') ficar saudável (devido a depends_on/perfil) para projeto '{}'.",
                 constants::TYPEDB_SERVICE_NAME,
@@ -686,30 +698,17 @@ impl TestEnvironment {
     /// `Result<TestMcpClient>`: Um cliente MCP pronto para uso.
     pub async fn mcp_client_with_auth(&self, scopes: Option<&str>) -> Result<TestMcpClient> {
         let token_to_send = if self.is_oauth_enabled {
-            let effective_scopes = scopes.unwrap_or("");
-            let now = auth_helpers::current_timestamp_secs();
-            let claims = auth_helpers::TestClaims {
-                sub: "test-user-from-test-env".to_string(),
-                exp: now + 3600,
-                iat: Some(now),
-                nbf: Some(now),
-                iss: Some(constants::TEST_JWT_ISSUER.to_string()),
-                aud: Some(serde_json::json!(constants::TEST_JWT_AUDIENCE)),
-                scope: if effective_scopes.is_empty() {
-                    None
-                } else {
-                    Some(effective_scopes.to_string())
-                },
-                custom_claim: None,
+            // Se nenhum escopo for passado, usa o 'admin-role' por padrão.
+            // Se for passado "readonly", usa 'readonly-role'.
+            let role_name = match scopes {
+                Some("readonly") => "readonly-role",
+                _ => "admin-role",
             };
-            Some(auth_helpers::generate_test_jwt(claims, JwtAuthAlgorithm::RS256))
+            info!("Solicitando token JWT do Vault para o papel: '{}'", role_name);
+            Some(auth_helpers::generate_test_jwt_from_vault(role_name).await?)
         } else {
-            if scopes.is_some() && !scopes.unwrap_or("").is_empty() {
-                warn!(
-                    "TestEnvironment: Solicitado cliente com escopos ('{}'), mas OAuth não está habilitado para este ambiente (config: '{}'). Conectando sem token.",
-                    scopes.unwrap_or("<nenhum>"),
-                    self.determine_config_filename_from_flags()
-                );
+            if scopes.is_some() {
+                warn!("TestEnvironment: Solicitado cliente com escopos, mas OAuth está desabilitado. Conectando sem token.");
             }
             None
         };

@@ -34,10 +34,7 @@ pub mod test_env;
 pub mod test_utils;
 
 // Reexportações
-pub use auth_helpers::{
-    current_timestamp_secs, generate_test_jwt, JwtAuthAlgorithm, TestClaims, TEST_HS256_SECRET,
-    TEST_RSA_PRIVATE_KEY_PEM, TEST_RSA_PUBLIC_KEY_PEM,
-};
+pub use auth_helpers::{generate_test_jwt_from_vault, JwtAuthAlgorithm};
 pub use client::{McpClientError, TestMcpClient};
 pub use docker_helpers::DockerComposeEnv;
 pub use infrastructure_helpers::{
@@ -54,11 +51,9 @@ pub use test_utils::{
 #[cfg(test)]
 mod tests {
     use super::*; // Importa as reexportações do módulo `common`
-    use rmcp::model::CallToolResult;
-    // Usar o caminho completo para TestClaims de auth_helpers para evitar ambiguidade se houvesse outro
-    use crate::common::auth_helpers::TestClaims as AuthHelperTestClaims;
     use anyhow::Result; // Para os tipos de retorno das funções async
     use futures_util::future::BoxFuture;
+    use rmcp::model::CallToolResult;
     use std::time::Duration; // Para anotações de tipo explícitas
 
     #[test]
@@ -68,9 +63,9 @@ mod tests {
         let _docker_env_type_check: Option<DockerComposeEnv> = None;
         let _test_env_type_check: Option<TestEnvironment> = None;
 
-        // Teste de assinatura de função síncrona
-        let _jwt_fn_signature_check: fn(AuthHelperTestClaims, JwtAuthAlgorithm) -> String =
-            generate_test_jwt;
+        // Teste de assinatura de função assíncrona que gera JWT via Vault
+        let _jwt_fn_signature_check: for<'a> fn(&'a str) -> BoxFuture<'a, Result<String>> =
+            |role| Box::pin(auth_helpers::generate_test_jwt_from_vault(role));
         let _get_text_fn_signature_check: fn(CallToolResult) -> String = get_text_from_call_result;
         let _unique_db_name_fn_check: fn(&str) -> String = unique_db_name;
 

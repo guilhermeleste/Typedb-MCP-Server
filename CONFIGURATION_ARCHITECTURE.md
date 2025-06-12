@@ -43,31 +43,38 @@ With Vault integration, Typedb-MCP-Server now follows a **Vault-first security a
 
 ## 🔐 Secret Management Flow
 
-### Production Environment
+Com a nova arquitetura, o `typedb-mcp-server` busca ativamente sua configuração do Vault ao iniciar, em vez de depender do Vault Agent.
 
 ```mermaid
 graph LR
-    A[Vault Server] --> B[AppRole Auth]
-    B --> C[Vault Agent]
-    C --> D[Secret Templates]
-    D --> E[/vault/secrets/db_password.txt]
-    E --> F[MCP Server]
-```
+    A[Vault Server] --> B(Auth: AppRole)
+    B --> C{API do Vault}
+    C --> D[Secrets: PKI<br/>(Emite Certificados TLS)]
+    C --> E[Secrets: KV<br/>(Config OIDC)]
 
-### Development Environment  
+    F[Início do Contêiner] --> G[Executa binário vault_bootstrap]
+    G -- "1. Login com AppRole" --> B
+    B -- "2. Retorna Token do Vault" --> G
+    G -- "3. Solicita Certificado TLS" --> D
+    G -- "4. Solicita Config OIDC" --> E
 
-```mermaid
-graph LR
-    A[test-secrets/] --> B[Docker Secrets]
-    B --> C[/run/secrets/]
-    C --> D[MCP Server]
-    
-    E[Vault Dev Mode] --> F[init-vault-test.sh]
-    F --> G[AppRole Setup]
-    G --> H[Vault Agent]
-    H --> I[Secret Rendering]
-    I --> D
+    D -- "Retorna Certificado/Chave" --> H(Salva em /tmp/*.crt, .key)
+    E -- "Retorna jwks_uri" --> I(Exporta para ENV)
+
+    J[docker-entrypoint.sh] --> G
+    J --> K[Executa typedb_mcp_server]
+    H --> K
+    I --> K
 ```
+**Fluxo de Inicialização:**
+
+1.  O `docker-entrypoint.sh` executa o binário `vault_bootstrap`.
+2.  O `vault_bootstrap` lê as credenciais do AppRole do ambiente, se autentica no Vault e obtém um token do Vault.
+3.  Usando este token, ele solicita ao Vault:
+    *   Um certificado TLS de curta duração para o servidor (via motor PKI).
+    *   A configuração de OIDC (como o `jwks_uri`) do motor KV.
+4.  Ele salva os certificados em arquivos temporários (ex: `/tmp/mcp_server.crt`) e exporta outras configurações como variáveis de ambiente.
+5.  O `docker-entrypoint.sh` então executa a aplicação principal `typedb_mcp_server`, que lê os caminhos dos certificados e as configurações de OIDC do ambiente, iniciando-se de forma totalmente configurada.
 
 ## 📁 File Structure
 

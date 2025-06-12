@@ -88,29 +88,6 @@ services:
     networks:
       - typedb_mcp_test_network
 
-  # Mock OAuth2/JWKS Server usando Nginx.
-  mock-oauth2-server:
-    profiles: ["oauth_mock"] 
-    image: nginx:1.25.5-alpine
-    container_name: ${COMPOSE_PROJECT_NAME}-mock-oauth
-    ports:
-      - "8089:80" 
-    volumes:
-      - ./tests/resources/mock_jwks.json:/usr/share/nginx/html/.well-known/jwks.json:ro
-      - ./scripts/nginx-mock-oauth2.conf:/etc/nginx/conf.d/default.conf:ro
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f -s http://localhost/livez > /dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 5s 
-    networks:
-      - typedb_mcp_test_network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   # Vault Server para testes de integração (modo dev)
   vault-it:
@@ -120,22 +97,22 @@ services:
     ports:
       - "8200:8200"
     environment:
-      - VAULT_DEV_ROOT_TOKEN_ID=test-root-token
+      - VAULT_DEV_ROOT_TOKEN_ID=my-root-token
       - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
       - VAULT_ADDR=http://0.0.0.0:8200
     cap_add:
       - IPC_LOCK
     volumes:
-      - ./scripts/init-vault-test.sh:/vault/init-vault-test.sh:ro
+      - ./scripts/setup-full-ecosystem-vault.sh:/vault/scripts/setup-full-ecosystem-vault.sh:ro
       - ./test-secrets:/vault/test-secrets
     command: >
       sh -c "
-        vault server -dev -dev-root-token-id=test-root-token -dev-listen-address=0.0.0.0:8200 &
+        vault server -dev -dev-root-token-id=my-root-token -dev-listen-address=0.0.0.0:8200 &
         VAULT_PID=$$!
         sleep 5
         export VAULT_ADDR=http://localhost:8200
-        export VAULT_TOKEN=test-root-token
-        sh /vault/init-vault-test.sh
+        export VAULT_TOKEN=my-root-token
+        sh /vault/scripts/setup-full-ecosystem-vault.sh
         wait $$VAULT_PID
       "
     healthcheck:
