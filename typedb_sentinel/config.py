@@ -10,6 +10,8 @@ credenciais e parâmetros da aplicação, separando a configuração do código.
 Para usar, crie um arquivo .env na raiz do projeto com base no .env.example
 e preencha com os valores apropriados.
 """
+# CORREÇÃO: Importado 'Optional' para uso nas anotações de tipo.
+from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

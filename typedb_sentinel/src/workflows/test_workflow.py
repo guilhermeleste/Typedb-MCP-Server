@@ -12,15 +12,11 @@ dados estruturado.
 from __future__ import annotations
 
 import json
-import time
-from typing import Dict, List, Optional
+from typing import Optional
 
 from agno.agent import Agent
-from agno.run.response import RunEvent, RunResponse
-from agno.storage.sqlite import SqliteStorage
-from agno.team import Team
-from agno.workflow import Workflow
 from agno.utils.log import logger
+from agno.workflow import Workflow
 
 # Importa os componentes que o workflow orquestrará
 from src.agents.analyzer import ReportGeneratorAgent, ResultAnalyzerAgent
@@ -28,7 +24,6 @@ from src.agents.planner import TestPlannerAgent
 from src.agents.runner import TestRunnerTeam
 from src.models.plan_models import (
     AnalysisReport,
-    ExecutionResult,
     FinalReport,
     TestPlan,
 )
@@ -36,8 +31,8 @@ from src.toolkit.typedb_toolkit import (
     AuthorizationError,
     ConnectionError,
     TypeDBConfig,
+    TypeDBError,  # CORRIGIDO: TypeDBError importado
     TypeDBToolkit,
-    typedb_toolkit,
 )
 
 
@@ -127,7 +122,7 @@ class TestExecutionWorkflow(Workflow):
                 results = self.runner_team.run_test_plan(test_plan)
                 self.session_state["execution_results"] = [res.model_dump() for res in results]
                 self.write_to_storage()
-            execution_results = [ExecutionResult.model_validate(res) for res in self.session_state["execution_results"]]
+            # CORRIGIDO: Variável 'execution_results' removida por não ser utilizada
             logger.info("Execução do plano concluída.")
 
             # --- Etapa 3: Análise ---

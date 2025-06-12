@@ -19,7 +19,6 @@ Exemplos de uso:
 """
 
 import asyncio
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -113,8 +112,9 @@ def run(
         output_dir.mkdir(exist_ok=True)
         report_path = output_dir / f"TestReport_{workflow.session_id}.md"
         report_path.write_text(final_report.markdown_content)
-
-        logger.info(f"✅ Workflow concluído com sucesso!")
+        
+        # CORRIGIDO: Removido f-string desnecessário
+        logger.info("✅ Workflow concluído com sucesso!")
         logger.info(f"📄 Relatório salvo em: {report_path}")
 
     except Exception as e:

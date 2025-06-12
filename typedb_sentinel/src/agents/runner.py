@@ -10,14 +10,14 @@ orquestra a execução, garantindo que os passos sejam executados na ordem corre
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from agno.agent import Agent
 from agno.models.google import Gemini
 from agno.team import Team
 
 # CORREÇÃO: A importação de 'TypeDBConfig' foi removida, pois não é usada neste módulo.
-from src.toolkit.typedb_toolkit import TypeDBToolkit
+from src.toolkit.typedb_toolkit import TypeDBToolkit, ToolExecutionError
 from src.models.plan_models import ExecutionResult, TestPlan, TestStep
 
 # --- Agentes Especialistas ---
@@ -136,7 +136,7 @@ class TestRunnerTeam(Team):
             start_time = time.time()
             try:
                 # O líder da equipe (LLM) escolhe o melhor agente para a tarefa.
-                response = self.run(
+                self.run(
                     f"Execute o passo '{step.description}' usando a ferramenta '{step.tool_to_call}' e os parâmetros {step.parameters}."
                 )
                 
