@@ -1,0 +1,18 @@
+[project]
+name = "typedb-sentinel"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agno>=1.6.0",
+    "google-genai>=1.20.0",
+    "mcp[cli]>=1.9.4",
+    "pydantic>=2.11.5",
+    "pydantic-settings>=2.9.1",
+    "python-dotenv>=1.1.0",
+    "typedb-driver>=3.2.0",
+    "typeql-grammar>=2.28.6",
+    "typer>=0.16.0",
+    "websockets>=15.0.1",
+]

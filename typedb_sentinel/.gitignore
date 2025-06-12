@@ -1,0 +1,28 @@
+# .gitignore
+
+# Ambientes Virtuais
+.venv/
+venv/
+env/
+
+# Arquivos de Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Arquivos de Configuração Local
+.env
+
+# Banco de Dados e Dados Locais
+/data/
+*.db
+*.sqlite3
+
+# Relatórios Gerados
+/reports/*.md
+
+# Arquivos de IDE e Sistema Operacional
+.idea/
+.vscode/
+.DS_Store
