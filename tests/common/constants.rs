@@ -95,7 +95,7 @@ pub const MCP_SERVER_DEFAULT_READYZ_PATH: &str = "/readyz";
 
 /// Caminho padrão para o arquivo Docker Compose usado nos testes de integração,
 /// relativo à raiz do projeto Typedb-MCP-Server (onde o Cargo.toml principal está).
-pub const DEFAULT_DOCKER_COMPOSE_TEST_FILE: &str = "docker-compose.test.yml";
+pub const DEFAULT_DOCKER_COMPOSE_TEST_FILE: &str = "infra/docker-compose.test.yml";
 
 /// Nome do arquivo de configuração TOML base/default para os testes.
 /// Esperado em `tests/test_configs/`.

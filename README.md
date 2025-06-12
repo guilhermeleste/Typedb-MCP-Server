@@ -81,7 +81,7 @@ Construído em Rust, o servidor foi desenvolvido com foco em performance (utiliz
 O fluxo recomendado de produção utiliza o HashiCorp Vault para fornecer a senha do TypeDB através do Vault Agent. Configure um AppRole no Vault, armazene o segredo em `kv/typedb-mcp-server/config` e coloque os arquivos `role_id.txt` e `secret_id.txt` em `production-secrets/`. Em seguida execute:
 
 ```bash
-docker compose -f docker-compose.production.yml up -d --build
+docker compose -f infra/docker-compose.prod.yml up -d --build
 ```
 
 Esse compose inicia um Vault, o TypeDB e o servidor MCP. O Vault Agent roda no entrypoint do contêiner, renderiza a senha em `/vault/secrets/db_password.txt` e a aplicação a carrega via `TYPEDB_PASSWORD_FILE`.
@@ -90,7 +90,7 @@ Para detalhes sobre configuração do Vault e uso em produção, consulte [`READ
 
 #### Desenvolvimento Local
 
-Para desenvolvimento e teste, o ambiente é orquestrado pelo `docker-compose.test.yml` e depende do Vault para gerenciamento de segredos.
+Para desenvolvimento e teste, o ambiente é orquestrado pelo `infra/docker-compose.test.yml` e depende do Vault para gerenciamento de segredos.
 
 1.  **Pré-requisitos:** Certifique-se de que o Docker e o Docker Compose estão instalados.
 2.  **Configurar o Vault:** Execute o script de setup para configurar o ambiente do Vault. Este script prepara os motores de segredos, políticas e papéis necessários.
@@ -102,9 +102,9 @@ Para desenvolvimento e teste, o ambiente é orquestrado pelo `docker-compose.tes
     SENTINEL_ROLE_ID="<role_id_gerado>"
     SENTINEL_SECRET_ID="<secret_id_gerado>"
     ```
-4.  **Iniciar o Ambiente:** Use o `docker-compose.test.yml` para iniciar todos os serviços necessários.
+4.  **Iniciar o Ambiente:** Use o `infra/docker-compose.test.yml` para iniciar todos os serviços necessários.
     ```bash
-    docker compose -f docker-compose.test.yml up -d --build
+    docker compose -f infra/docker-compose.test.yml up -d --build
     ```
     Agora o `typedb-mcp-server` estará rodando e configurado dinamicamente pelo seu processo de bootstrap que se comunica com o Vault.
 
@@ -118,13 +118,13 @@ Consulte o [Guia de Instalação a partir do Código-Fonte](/docs/user_guide/03_
 
 ### Configuração Essencial
 
-A configuração é feita primariamente via arquivo TOML (padrão: `typedb_mcp_server_config.toml`) e pode ser sobrescrita ou complementada por variáveis de ambiente.
+A configuração é feita primariamente via arquivo TOML (padrão: `configs/typedb_mcp_server_config.toml`) e pode ser sobrescrita ou complementada por variáveis de ambiente.
 
 **1. Arquivo de Configuração TOML:**
 
-Crie ou utilize o arquivo `typedb_mcp_server_config.toml` (ou `config.dev.toml`, `config.test.toml` dependendo do ambiente).
+Crie ou utilize o arquivo `configs/typedb_mcp_server_config.toml` (ou `configs/config.dev.toml`, `configs/config.test.toml` dependendo do ambiente).
 
-**Exemplo Mínimo (`typedb_mcp_server_config.toml`):**
+**Exemplo Mínimo (`configs/typedb_mcp_server_config.toml`):**
 
 ```toml
 [typedb]
@@ -138,7 +138,7 @@ bind_address = "0.0.0.0:8787" # Onde o MCP Server escutará
 
 Variáveis de ambiente têm precedência sobre as configurações do arquivo TOML. Para facilitar o gerenciamento, especialmente em desenvolvimento local, você pode usar arquivos `.env`.
 
-- **`.env.example`**: Este arquivo serve como um template e documentação para as variáveis de ambiente suportadas. Copie-o para `.env`.
+- **`configs/.env.example`**: Este arquivo serve como um template e documentação para as variáveis de ambiente suportadas. Copie-o para `.env`.
 - **`.env`**: Crie este arquivo na raiz do projeto (copiando de `.env.example`) e preencha com seus valores locais. **Este arquivo não deve ser versionado se contiver segredos.**
 
 ## 🔧 Configuração
@@ -194,13 +194,13 @@ Exemplos:
 - `MCP_TYPEDB__ADDRESS="typedb.example.com:1729"`
 - `MCP_AUTH__OAUTH_ENABLED=false`
 
-Para todas as opções de configuração e variáveis de ambiente correspondentes, consulte a [Referência Completa de Configuração](/docs/reference/configuration.md) e o arquivo `.env.example`.
+Para todas as opções de configuração e variáveis de ambiente correspondentes, consulte a [Referência Completa de Configuração](/docs/reference/configuration.md) e o arquivo `configs/.env.example`.
 
 Veja também:
 
-- [`typedb_mcp_server_config.toml`](./typedb_mcp_server_config.toml) (configuração padrão)
-- [`config.example.toml`](./config.example.toml) (template para TOML)
-- [`.env.example`](./.env.example) (template para variáveis de ambiente)
+- [`configs/typedb_mcp_server_config.toml`](configs/typedb_mcp_server_config.toml) (configuração padrão)
+- [`configs/config.example.toml`](configs/config.example.toml) (template para TOML)
+- [`configs/.env.example`](configs/.env.example) (template para variáveis de ambiente)
 
 ### Execução
 
@@ -220,7 +220,7 @@ Após a instalação e configuração:
     ./target/release/typedb_mcp_server
     ```
 
-- **Com Docker Compose:** (já mencionado na instalação) `docker-compose up`
+- **Com Docker Compose:** (já mencionado na instalação) `docker compose -f infra/docker-compose.dev.yml up`
 
 Consulte o [Guia do Usuário - Executando o Servidor](/docs/user_guide/05_running_the_server.md) para mais detalhes.
 
