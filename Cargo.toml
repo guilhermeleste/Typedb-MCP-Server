@@ -19,6 +19,8 @@ full-tests = []
 
 [dependencies]
 
+hvac = "0.11.0"
+anyhow = "1.0"
 axum-server = { version = "0.7.2", features = ["tls-rustls"] }
 axum = { version = "0.8.4", features = ["ws", "macros", "json"] }
 axum-extra = { version = "0.10.1", features = ["typed-header"] }
@@ -56,7 +58,6 @@ serial_test = "3.2.0"
 serde_yaml = "0.9.34"
 chrono = { version = "0.4.41", features = ["serde"] }
 rustc_version_runtime = "0.3.0"
-anyhow = "1.0.98"
 
 
 [dev-dependencies]
@@ -162,3 +163,7 @@ print_stderr = "warn"
 [[bench]]
 name = "performance_benchmarks"
 harness = false  # Disable default harness, criterion has its own
+
+[[bin]]
+name = "vault_bootstrap"
+path = "src/bin/vault_bootstrap.rs"

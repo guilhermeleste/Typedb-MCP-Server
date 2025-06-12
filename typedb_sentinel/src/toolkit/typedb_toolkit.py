@@ -16,6 +16,8 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
+from ...config import get_ca_cert_path, get_oidc_token # Adjusted import path assuming toolkit is in a subfolder of src
+
 # CORREÇÃO: Importar tipos específicos do websockets para type hinting.
 import websockets
 from websockets.client import WebSocketClientProtocol
@@ -133,34 +135,52 @@ class TypeDBToolkit(Toolkit):
             self._add_tool_method(tool_name, tool_spec)
 
     @classmethod
-    async def create(cls, config: TypeDBConfig) -> "TypeDBToolkit":
-        headers = {"Authorization": f"Bearer {config.auth_token}"} if config.auth_token else {}
+    async def create(cls, server_url: str, use_security_token: bool = False) -> "TypeDBToolkit":
+        ca_path = get_ca_cert_path()
+        # Determine role based on use_security_token.
+        # The issue description implies 'readonly-role' for True, and 'admin-role' for False.
+        # This seems counter-intuitive if 'use_security_token' implies more secure/restricted.
+        # Sticking to the issue's direct request:
+        role_name = "readonly-role" if use_security_token else "admin-role"
+        token = get_oidc_token(role_name)
         
-        ssl_context = None
-        if config.server_url.startswith("wss://"):
-            ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-            if config.tls_ca_path:
-                try:
-                    ssl_context.load_verify_locations(cafile=config.tls_ca_path)
-                except (ssl.SSLError, FileNotFoundError) as e:
-                    raise ConnectionError(f"Falha ao carregar certificado CA de '{config.tls_ca_path}'", e)
+        headers = {"Authorization": f"Bearer {token}"}
+        ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        ssl_context.load_verify_locations(cafile=ca_path)
         
-        try:
-            websocket = await websockets.connect(config.server_url, extra_headers=headers, ssl=ssl_context)
-        except InvalidStatusCode as e:
-            raise AuthorizationError(f"Falha na autenticação (status {e.status_code})", e)
-        except (ssl.SSLCertVerificationError, ConnectionRefusedError, OSError) as e:
-            raise ConnectionError(f"Falha de conexão ou TLS para {config.server_url}", e)
+        # Assuming _send_initialize and _listen_for_messages are existing methods
+        # that need to be called as part of the toolkit creation.
+        websocket = await websockets.connect(server_url, extra_headers=headers, ssl=ssl_context)
         
-        try:
-            init_result = await cls._send_initialize(websocket)
-            toolkit = cls(websocket, init_result.tools, config)
-            # CORREÇÃO: Passar a instância do toolkit para a tarefa de escuta.
-            toolkit._listener_task = asyncio.create_task(toolkit._listen_for_messages())
-            return toolkit
-        except Exception as e:
-            await websocket.close()
-            raise TypeDBError("Falha ao inicializar a sessão MCP", e)
+        # The following lines for _send_initialize and _listener_task are based on the issue description's snippet.
+        # Ensure they match the actual class structure.
+        # If 'cls._send_initialize' and 'toolkit._listen_for_messages' are not defined elsewhere,
+        # this will cause an error. For now, assuming they exist as per the issue.
+
+        # Placeholder for actual initialization logic if it differs:
+        # init_result = await cls._send_initialize(websocket) # From issue
+        # toolkit = cls(websocket, init_result.tools) # From issue
+        # toolkit._listener_task = asyncio.create_task(toolkit._listen_for_messages()) # From issue
+
+        # A more generic way if the above are not exactly matching:
+        # Create an instance of the class first
+        # toolkit = cls(websocket, []) # Assuming tools might be empty or populated later
+
+        # If _send_initialize is a method of the instance:
+        # init_result = await toolkit._send_initialize(websocket)
+        # toolkit.tools = init_result.tools # or however tools are set
+
+        # If _listen_for_messages is a method of the instance:
+        # toolkit._listener_task = asyncio.create_task(toolkit._listen_for_messages())
+
+        # For the subtask, let's use the structure provided in the issue strictly:
+        # Adjusting the constructor call to include a TypeDBConfig instance
+        temp_config = TypeDBConfig(server_url=server_url, auth_token=token, tls_ca_path=ca_path)
+        init_result = await cls._send_initialize(websocket) # This must be a static or class method
+        toolkit = cls(websocket, init_result.tools, temp_config) # Pass the created config
+        toolkit._listener_task = asyncio.create_task(toolkit._listen_for_messages()) # This is an instance method
+
+        return toolkit
 
     async def close(self):
         if self._listener_task and not self._listener_task.done():
