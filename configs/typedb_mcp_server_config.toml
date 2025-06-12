@@ -32,7 +32,7 @@ username = "admin"
 
 # SENHA DO TYPEDB:
 # A senha para o TypeDB deve ser lida de um arquivo indicado por TYPEDB_PASSWORD_FILE
-# ou fornecida via Vault (conforme docker-compose.production.yml).
+# ou fornecida via Vault (conforme infra/docker-compose.prod.yml).
 # Não armazene senhas em plain text neste arquivo.
 
 # Habilita (true) ou desabilita (false) TLS para a conexão com o servidor TypeDB.

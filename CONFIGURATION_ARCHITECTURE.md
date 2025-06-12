@@ -21,9 +21,9 @@ With Vault integration, Typedb-MCP-Server now follows a **Vault-first security a
 
 - **Purpose**: Application structure and non-sensitive settings
 - **Files**:
-  - `typedb_mcp_server_config.toml` (default)
-  - `config.dev.toml` (development)
-  - `config.test.toml` (testing)
+  - `configs/typedb_mcp_server_config.toml` (default)
+  - `configs/config.dev.toml` (development)
+  - `configs/config.test.toml` (testing)
 - **Contains**: Server settings, endpoints, feature flags
 
 ### 3. **Environment Variables (.env) - DEVELOPMENT OVERRIDES**
@@ -84,13 +84,13 @@ typedb-mcp-server/
 │   └── /vault/secrets/db_password.txt (rendered by Vault Agent)
 │
 ├── ⚙️ Configuration files
-│   ├── typedb_mcp_server_config.toml (default)
-│   ├── config.dev.toml (development)
-│   ├── config.test.toml (testing)
-│   └── config.example.toml (template)
+│   ├── configs/typedb_mcp_server_config.toml (default)
+│   ├── configs/config.dev.toml (development)
+│   ├── configs/config.test.toml (testing)
+│   └── configs/config.example.toml (template)
 │
 ├── 🌍 Environment variables
-│   ├── .env.example (template)
+│   ├── configs/.env.example (template)
 │   └── .env (local, gitignored)
 │
 └── 🧪 Development secrets
@@ -135,8 +135,8 @@ MCP_AUTH__OAUTH_ENABLED=false
 ### Option 1: Full Vault Integration (Recommended)
 
 ```bash
-# Use docker-compose with Vault
-docker-compose up -d
+# Use Docker Compose with Vault
+docker compose -f infra/docker-compose.dev.yml up -d
 ./scripts/init-vault-test.sh
 ```
 
@@ -148,7 +148,7 @@ cp test-secrets/typedb_password.txt.example test-secrets/typedb_password.txt
 echo "password" > test-secrets/typedb_password.txt
 
 # Use development compose
-docker-compose -f docker-compose.yml up -d
+docker compose -f infra/docker-compose.dev.yml up -d
 ```
 
 ## 📊 Configuration Precedence
@@ -220,5 +220,5 @@ RUST_LOG=debug ./target/debug/typedb_mcp_server
 
 - [Vault Setup Guide](test-secrets/README.md)
 - [Security Audit Results](SECURITY_AUDIT_RESULTS.md)
-- [Docker Compose Configuration](docker-compose.yml)
+- [Docker Compose Configuration](infra/docker-compose.dev.yml)
 - [Integration Tests](tests/integration/)

@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   typedb-mcp-server:
-    build: .
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
     image: typedb-mcp-server-prod:latest
     restart: unless-stopped
     ports:

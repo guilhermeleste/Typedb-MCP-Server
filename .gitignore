@@ -277,10 +277,10 @@ authorized_keys
 !**/templates/
 
 # Track specific config files that are templates
-!config.example.toml
-!config.dev.toml
-!config.test.toml
-!.env.example
+!configs/config.example.toml
+!configs/config.dev.toml
+!configs/config.test.toml
+!configs/.env.example
 
 # Track test configurations that don't contain secrets
 !tests/test_configs/default.test.toml

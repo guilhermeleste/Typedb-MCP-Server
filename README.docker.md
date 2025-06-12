@@ -28,7 +28,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 
 ### Ambiente Real (Auth Server Externo)
 
-No `docker-compose.yml`:
+No `infra/docker-compose.dev.yml`:
 
 ```yaml
 services:
@@ -42,7 +42,7 @@ services:
 
 ### Ambiente de Desenvolvimento/Teste (Mock JWKS)
 
-No `docker-compose.yml`:
+No `infra/docker-compose.dev.yml`:
 
 ```yaml
 services:
@@ -97,4 +97,4 @@ docker run --rm -p $PORT:80 -v $(pwd)/$MOCK_JWKS_FILE:/usr/share/nginx/html/.wel
 
 ---
 
-> Consulte o Dockerfile e docker-compose.yml para mais exemplos e variáveis de ambiente suportadas.
+> Consulte o Dockerfile e `infra/docker-compose.dev.yml` para mais exemplos e variáveis de ambiente suportadas.

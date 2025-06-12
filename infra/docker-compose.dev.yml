@@ -3,15 +3,15 @@ version: '3.8'
 services:
   typedb-mcp-server:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: infra/Dockerfile
     container_name: typedb-mcp-server
     ports:
       - "${MCP_SERVER_PORT_HTTP:-8787}:8787"
       - "${MCP_SERVER_PORT_HTTPS:-8443}:8443"
       - "${MCP_METRICS_PORT:-9090}:9090"
     volumes:
-      - ./config.dev.toml:/app/typedb_mcp_server_config.toml:ro
+      - ./configs/config.dev.toml:/app/typedb_mcp_server_config.toml:ro
       - ./certs/generated:/app/certs:ro
     environment:
       - RUST_LOG=${RUST_LOG:-info,typedb_mcp_server_lib=debug}

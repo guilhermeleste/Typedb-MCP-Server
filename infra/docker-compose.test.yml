@@ -10,8 +10,8 @@ services:
   typedb-mcp-server-it:
     profiles: ["typedb_default", "typedb_tls", "oauth_mock", "vault_integration"]
     build:
-      context: . 
-      dockerfile: Dockerfile 
+      context: ..
+      dockerfile: infra/Dockerfile
     container_name: ${COMPOSE_PROJECT_NAME}-mcp-server 
     ports:
       - "8788:8787"   # MCP HTTP/WS (Host:Container)

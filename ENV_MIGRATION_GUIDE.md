@@ -16,7 +16,7 @@ OAUTH_CLIENT_SECRET=oauth_secret
 VAULT_TOKEN=vault_token
 TYPEDB_ADDRESS=localhost:1729
 RUST_LOG=info
-MCP_CONFIG_PATH=config/dev.toml
+MCP_CONFIG_PATH=configs/config.dev.toml
 ```
 
 ### After Vault Integration
@@ -26,7 +26,7 @@ MCP_CONFIG_PATH=config/dev.toml
 RUST_LOG=debug
 MCP_TYPEDB__ADDRESS=localhost:1729
 MCP_AUTH__OAUTH_ENABLED=false
-MCP_CONFIG_PATH=config/dev.toml
+MCP_CONFIG_PATH=configs/config.dev.toml
 ```
 
 **All secrets now managed by Vault! 🔐**
@@ -44,7 +44,7 @@ cp .env .env.backup
 
 ```bash
 # Copy new template
-cp .env.example .env
+cp configs/.env.example .env
 
 # Edit with only non-sensitive configurations
 nano .env
@@ -96,7 +96,7 @@ cargo run
 ## 📋 Migration Checklist
 
 - [ ] Backup existing `.env` file
-- [ ] Copy new `.env.example` to `.env`
+- [ ] Copy new `configs/.env.example` to `.env`
 - [ ] Remove all sensitive variables from `.env`
 - [ ] Set up Vault development environment OR local secret files
 - [ ] Test application startup with new configuration
